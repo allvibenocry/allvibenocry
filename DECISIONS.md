@@ -476,3 +476,100 @@ app runs as its image's own user and Compose cannot change a file secret's
 owner outside Swarm; its directory is mode 0700 and belongs to the service
 user, so on the host nothing else can reach it. Prod's password is never mounted
 into anything of dev's.
+
+## D22. A backup target must be provably off the machine
+
+*2026-09-27*
+
+`allvibe backup-target set <directory>` accepts a directory only if all of
+these hold, and `backup` checks them again every time, because a disk that was
+there yesterday may be unplugged today:
+
+1. **It is not on the root filesystem.** An unplugged USB disk leaves its mount
+   point behind as an empty directory on the root filesystem, so this also
+   catches "the disk is not connected".
+2. **A network filesystem** (NFS, SMB/CIFS, SSHFS and the like) **is off the
+   machine** by definition, and passes.
+3. **It is not on the same filesystem as Docker's data** (compared by device
+   number), which is where every project's volumes are.
+4. **It is not on the same physical disk** as the root or the data. The disks
+   under a mount are found through `/sys/dev/block`, through partitions and
+   through device-mapper layers (LVM, LUKS), so a second partition on the system
+   disk is refused.
+5. **It is a real disk**: a tmpfs or overlay that cannot be told apart from the
+   machine is refused.
+6. **The service user can write to it**, proven by writing and deleting a file
+   as that user (CLAUDE.md, mistake 15).
+
+The test host's `external-backup-mount` override (D14) declares exactly one
+mount point a separate disk; nothing else is excused, and the root filesystem
+never is. Without the override, the test host's backup volume is refused as
+"on the same filesystem as the data", which is true: on the workstation every
+Docker volume shares one virtual disk.
+
+**Why.** Rule 2 says outside the machine's own disk, and the failure it guards
+against is the one where the disk dies and takes the backups with it. So the
+check asks the kernel where the bytes actually go, instead of trusting a path
+that looks external.
+
+## D23. What a backup is, and what a restore check proves
+
+*2026-09-27*
+
+**A backup** is one file and its manifest, in
+`<target>/allvibe/<project>/`:
+
+- `<project>-prod-<UTC time>.dump.age`: `pg_dump` in its custom format, run
+  inside prod's own database container (so the client always matches the
+  server), streamed into `age` and encrypted to the host key and the recovery key
+  (D13). It is written as `.partial`, flushed and renamed.
+- `<same name>.json`, written last: when, which release prod was running, what
+  prod's own health check said just before (the entry count), the checksum, and
+  the two public keys. A backup without a manifest is incomplete by definition.
+
+Backups taken before a release go in `releases/` and are never pruned. Others
+are pruned after 30 days (`backupRetentionDays`), by age and never the newest
+three, and only files this code named.
+
+**A restore check** takes a backup (the newest, or a named one), then:
+
+1. checks its checksum and decrypts **the whole file** with the host key into a
+   private temporary file, so a damaged backup fails before anything is
+   restored;
+2. starts a scratch Postgres of the same image on a scratch **internal**
+   network, and restores into it with `pg_restore --no-owner --exit-on-error`;
+3. starts **the version of the app the backup was taken from** against that
+   copy, and asks the app's own `/healthz`, which reads the data;
+4. removes the containers, the network and the decrypted file, whatever
+   happened.
+
+It reports the entry count from the restored copy beside the count prod
+reported when the backup was taken. Nothing it creates shares a name, network
+or volume with prod, so it cannot touch prod even by mistake.
+
+**Why.** A dump that `pg_restore` accepts can still be useless to the app: the
+right proof is the app itself reading the restored data. Decrypting before
+restoring means `age`'s authentication covers every byte before any is used.
+
+## D24. The daily backup is a systemd timer, and every run is recorded
+
+*2026-09-27*
+
+`allvibe-backup.timer` runs `allvibe-backup.service` every day at 03:30 plus
+up to 30 random minutes, `Persistent=true` so a run missed while the machine was
+off happens at the next boot. install.sh **enables and starts** it. The service
+runs `allvibe scheduled-backup` as the service user: for each project, a backup
+of prod and then a restore check of that very backup.
+
+- **Each project is its own operation.** It stops at its first failure (rule 7),
+  but one project's failure does not leave the others without a backup.
+- **Every run is recorded** in `/var/lib/allvibe/runs/` with its steps, its
+  result and, on failure, the reason (`allvibe runs` lists them), and the
+  journal has the same output.
+- **A failure is loud.** The service exits non-zero, systemd marks it failed,
+  and `allvibe doctor` shows the last run's failed step as a problem.
+
+**Why.** Vikt's backup schedule was a documented cron line for two passes, and
+nothing ran it (Vikt D103). A timer that install.sh enables is running from the
+first minute, and a record of every run, failed ones included, is the only way
+to know that it still is.

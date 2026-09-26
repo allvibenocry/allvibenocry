@@ -15,6 +15,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BRAND, INSTALL_ROOT, NAMES } from "../lib/brand.js";
+import { checkTarget, humanBytes, listBackups } from "../lib/backup.js";
 import { readConfig } from "../lib/config.js";
 import { containerState, engineInfo } from "../lib/docker.js";
 import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../lib/hostfacts.js";
@@ -150,10 +151,50 @@ export function checks(): Check[] {
       "target",
       projects.length ? "problem" : "ok",
       projects.length
-        ? `No backup target is set, and there ${projects.length === 1 ? "is a project" : `are ${projects.length} projects`} to protect: allvibe backup-target set <path>`
+        ? `No backup target is set, and there ${projects.length === 1 ? "is a project" : `are ${projects.length} projects`} to protect: ${NAMES.command} backup-target set <path>`
         : "Backups: no projects yet, so nothing needs backing up. Connect a backup disk before creating one",
       "data",
     );
+  } else {
+    const target = checkTarget(config.backupTarget);
+    add(
+      "target",
+      target.ok ? "ok" : "problem",
+      target.ok
+        ? `Backup target ${config.backupTarget}: ${target.why}; ${humanBytes(target.freeBytes ?? 0)} free`
+        : `Backup target ${config.backupTarget}: ${target.why}. Backups and releases will fail until ${target.fix ?? "it is fixed"}`,
+      "data",
+    );
+  }
+
+  /* Each project: its newest backup, and whether the last restore check passed. */
+  const targetUsable = config.backupTarget ? checkTarget(config.backupTarget).ok : false;
+  for (const name of projects) {
+    if (config.backupTarget && !targetUsable) {
+      add(`backup-${name}`, "problem", `${name}: its backups cannot be checked while the backup target is unusable (above)`, "data");
+      continue;
+    }
+    const latest = config.backupTarget ? listBackups(config, name).at(-1) : undefined;
+    const check = lastRecord("restore-check", name);
+    const hours = latest ? (Date.now() - new Date(latest.manifest.created).getTime()) / 3_600_000 : Infinity;
+    const age = !latest ? "" : hours < 1 ? "less than an hour ago" : hours < 48 ? `${Math.round(hours)} hours ago` : `${Math.round(hours / 24)} days ago`;
+    if (!latest) {
+      add(`backup-${name}`, "problem", `${name}: no backup yet. ${NAMES.command} backup ${name}`, "data");
+    } else if (!check || !check.ok) {
+      add(
+        `backup-${name}`,
+        "problem",
+        `${name}: last backup ${age}, but ${check ? `its last restore check FAILED at "${check.failedStep}"` : "no backup has been restore-checked yet"}: ${NAMES.command} restore-check ${name}`,
+        "data",
+      );
+    } else {
+      add(
+        `backup-${name}`,
+        hours > 36 ? "warn" : "ok",
+        `${name}: last backup ${age}; last restore check ${check.started.slice(0, 16).replace("T", " ")} UTC passed${check.facts.entries !== undefined && check.facts.entries !== null ? ` (${check.facts.entries} entries)` : ""}`,
+        "data",
+      );
+    }
   }
 
   add("hostkey", hostKeyOk() ? "ok" : "problem", hostKeyOk() ? "The backup key for restore tests is in place" : `The backup key ${NAMES.hostKey} is missing or damaged`);

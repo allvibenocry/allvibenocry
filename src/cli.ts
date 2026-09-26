@@ -4,6 +4,7 @@
  * /usr/local/bin/<command>, which runs it as the service user.
  */
 import { BRAND } from "./lib/brand.js";
+import { backupCommands } from "./commands/backup.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
 import { project } from "./commands/project.js";
 import { runs } from "./commands/runs.js";
@@ -19,6 +20,13 @@ const HELP = `${BRAND.product}: ${C} <command>
   project list                 every project, and whether its dev and prod are running
   project status <name>        one project in detail
   project remove <name>        says what would be deleted; --delete-everything deletes it
+  backup-target set <dir>      where backups go: a directory on a separate disk
+  backup-target show           where they go, and whether it is usable
+  backup <project>             an encrypted backup of prod, now
+  backups <project>            the backups of a project
+  restore-check <project>      restore the latest backup into a scratch copy and check it
+  recovery-key status          whether the recovery key has been confirmed
+  recovery-key confirm < file  confirm your copy of the recovery key
   runs [project] [--limit N]   what has been done, and whether it worked
   version                      the installed version
 
@@ -33,6 +41,7 @@ const COMMANDS: Record<string, Handler> = {
   doctor: (args) => doctor(args),
   runs: (args) => runs(args),
   project: (args) => project(args),
+  ...backupCommands,
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);
     return 0;
