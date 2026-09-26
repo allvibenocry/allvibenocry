@@ -1,0 +1,4 @@
+# LF everywhere: install.sh, the systemd units and the CLI run on Debian, and a
+# script with CRLF line endings fails there in ways that are hard to see.
+* text=auto eol=lf
+*.png binary

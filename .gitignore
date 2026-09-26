@@ -1,0 +1,28 @@
+# Local configuration and anything that could hold a secret or a detail of
+# the owner's own infrastructure (rules 4 and 10). The committed example is
+# local.example.env.
+local.env
+.env
+.env.*
+*.env
+!*.example.env
+.local/
+*.pem
+*.key
+id_*
+
+# Build output and dependencies
+node_modules/
+dist/
+bundle/
+*.tsbuildinfo
+
+# Scratch output from checks and the test host
+out/
+scratch/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
