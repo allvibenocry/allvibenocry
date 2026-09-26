@@ -364,3 +364,115 @@ without stopping every app.
   and the last lines are shown when something fails.
 - **It ends by running `allvibe doctor`**, and fails if the doctor finds a
   problem, so a finished installation is a checked one.
+
+#### Amendment, 2026-09-27 (item 5)
+
+**install.sh fails only on problems with the installation itself.** Every
+`doctor` check now has a scope, "install" or "data"; install.sh runs
+`doctor --for-install`, which prints everything but exits 1 only for install
+problems. Found when reinstalling on a host that had a project and no backup
+disk yet: the installation had completed, and it was reported as failed
+because `doctor` rightly flagged the missing backup target and the unconfirmed
+recovery key. Those are about the data the host holds; they are still shown,
+in plain language, and `doctor` on its own still exits 1 for them.
+
+## D18. Projects are reached at the host's address and a port per environment
+
+*2026-09-27*
+
+From any machine on the LAN, a project's prod is
+`http://<host address>:<port>` and its dev is the next port up. No DNS, router
+or hosts file is edited anywhere.
+
+- **One proxy, one port per environment.** Ports come from a range starting at
+  8100: project slot *i* gets 8100+2*i* for prod and 8100+2*i*+1 for dev, 49
+  projects in all, and the proxy's own health endpoint is 8199 on loopback.
+  Ports are checked free on the host before a project gets them.
+- **The apps publish nothing to the network.** Each app publishes its port on
+  the host's loopback only (the prod or dev port plus 10000), where only the
+  proxy, running on the host's network, reaches it.
+- **IPv4 only.** The proxy listens on `0.0.0.0`, never on IPv6: a host with a
+  global IPv6 address would otherwise be reachable from the internet with no
+  router change at all. Publishing is a later brief's decision.
+- **Prod refuses every container at its door.** Prod's server block denies every
+  range Docker hands out on the host (its address pool and the default
+  bridge's subnet, read from Docker when the block is written), so no
+  container, dev or otherwise, reaches prod even the way a browser on the LAN
+  does. Rule 1 therefore holds at the network level, not only by the absence
+  of shared networks. Verified from inside a dev app: prod's containers do not
+  resolve by name, time out by address, prod's loopback port refuses, and prod's
+  front door answers 403 by the host's and by the LAN address, while dev's own
+  door answers.
+
+**Why.** An address and a port work from every device, every browser and every
+network without anything configured anywhere, which is the whole requirement
+for a beginner. Names are friendlier, but each way of getting them without
+touching DNS has a catch: wildcard DNS services such as nip.io depend on a third
+party and are blocked by many routers' rebinding protection, and multicast
+names (`.local`) do not resolve the same way on every device. The panel, which
+comes later, will link to projects, so nobody has to remember a port. Names can
+be added in front of this without changing it.
+
+**What the test host could not show:** reachability from *another* machine on the
+LAN. Its ports are published on the workstation's loopback only. It is listed in
+STATE.md under "To verify on real hardware".
+
+## D19. The starter template is a guestbook in plain Node.js with one dependency
+
+*2026-09-27*
+
+A new project starts as a guestbook: one page, one form, one table
+(`templates/guestbook/`). It is **Node.js 24 with `node:http`**, server-rendered
+HTML, and **one dependency, the `pg` driver**, locked by `package-lock.json`. It
+applies its own migrations at start (numbered SQL files, each applied once and
+recorded, never edited afterwards), refuses to start without its database
+password, and answers `GET /healthz` with `{"ok":true,"entries":N}` after
+asking the database, which is the smoke check the suite runs. The page shows a
+coloured "dev" or "prod" badge and the version.
+
+**Why.** The template is what a beginner and their AI agent read first and build
+on, so it should be as small as a real app can be: one file of server code that
+fits on a screen, nothing hidden in a framework, and one dependency to keep up
+to date. Node.js is the language of the suite too (D11). Postgres is the only
+database (D10). A health endpoint that queries the database means "healthy"
+and "can read its data" are the same thing, which is what a restore test
+needs. Frameworks (Express, Next.js, Django) were rejected for the template,
+not for projects: an agent can add one when a project needs it.
+
+## D20. Creating a project puts the template's first commit into prod as v1
+
+*2026-09-27*
+
+`allvibe project create` builds dev from the working tree and prod from the
+template's first commit, which becomes **v1** (a git tag and an image
+`allvibe-<project>:v1`), both with an empty database. Every later version
+reaches prod only through `allvibe release` (item 7), with its backup and
+restore test (rule 2).
+
+**Why.** A project needs a prod to be released to, and at creation there is no
+data anywhere to protect, so there is nothing for a backup to hold. Starting
+prod at v1 also gives the first release something to roll back to.
+
+`allvibe project remove <name>` deletes a project with both its environments
+and their data, and only with `--delete-everything`; without it, it lists
+exactly what would go. Backups on the backup target are never touched. It
+exists because a create that fails half-way must be retryable (rule 7 names
+the failure; this is what the failure message tells you to run).
+
+## D21. A project's secrets are files, never environment variables
+
+*2026-09-27*
+
+Each environment's database password is generated on the host (32 random
+bytes), written to `/var/lib/allvibe/projects/<name>/secrets/<env>/db_password`,
+and handed to that environment's containers as a Compose secret, mounted at
+`/run/secrets/db_password`. The app and Postgres read the file
+(`DATABASE_PASSWORD_FILE`, `POSTGRES_PASSWORD_FILE`). It is never printed.
+
+**Why.** An environment variable shows up in `docker inspect`, in a process's
+environment and in crash reports; a file mounted into the one container that
+needs it does not (rule 4). The file itself is readable by any uid, because the
+app runs as its image's own user and Compose cannot change a file secret's
+owner outside Swarm; its directory is mode 0700 and belongs to the service
+user, so on the host nothing else can reach it. Prod's password is never mounted
+into anything of dev's.

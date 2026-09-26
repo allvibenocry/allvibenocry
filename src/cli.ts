@@ -5,6 +5,7 @@
  */
 import { BRAND } from "./lib/brand.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
+import { project } from "./commands/project.js";
 import { runs } from "./commands/runs.js";
 import { scheduledBackup } from "./commands/scheduled.js";
 import { setup } from "./commands/setup.js";
@@ -14,6 +15,10 @@ const C = BRAND.command;
 const HELP = `${BRAND.product}: ${C} <command>
 
   doctor [--json]              the state of this host, in plain language
+  project create <name>        a new project from the starter template, with dev and prod
+  project list                 every project, and whether its dev and prod are running
+  project status <name>        one project in detail
+  project remove <name>        says what would be deleted; --delete-everything deletes it
   runs [project] [--limit N]   what has been done, and whether it worked
   version                      the installed version
 
@@ -27,6 +32,7 @@ type Handler = (args: string[]) => number | Promise<number>;
 const COMMANDS: Record<string, Handler> = {
   doctor: (args) => doctor(args),
   runs: (args) => runs(args),
+  project: (args) => project(args),
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);
     return 0;

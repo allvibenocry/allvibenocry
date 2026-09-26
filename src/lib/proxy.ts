@@ -7,7 +7,7 @@
  * Nothing else on the host publishes anything.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import path from "node:path";
+import { posix as path } from "node:path";
 import { NAMES } from "./brand.js";
 import { statusPort, type HostConfig } from "./config.js";
 import { composeUp, containerState, docker, tryDocker, waitHealthy } from "./docker.js";

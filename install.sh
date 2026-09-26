@@ -436,10 +436,13 @@ CHANGES=$((CHANGES + setup_changes))
 rm -f "$setup_output"
 
 # ---------------------------------------------------------------------------
-step "How the host is" "$CMD doctor finds no problems"
+step "How the host is" "$CMD doctor finds no problem with the installation itself"
 
-if ! "$WRAPPER" doctor | sed 's/^/    /'; then
-  fail "$CMD doctor found a problem (above)"
+# Fails only on the installation's own checks. A host that needs a backup disk
+# or a confirmed recovery key is reported above, not failed: that is about the
+# data it holds, not about how it was installed.
+if ! "$WRAPPER" doctor --for-install | sed 's/^/    /'; then
+  fail "$CMD doctor found a problem with the installation (above)"
 fi
 
 # ---------------------------------------------------------------------------

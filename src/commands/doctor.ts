@@ -5,6 +5,12 @@
  * problem (something will fail), or i information. "All green" means no
  * warnings and no problems. `--json` gives the same for the web UI (rule 5).
  * Exit 1 when there is a problem.
+ *
+ * Every check has a scope: "install" (is the suite installed and running as it
+ * should be) or "data" (is what the host holds protected: the backup target,
+ * the recovery key, the last backup). `--for-install` exits 1 only for install
+ * problems, so install.sh fails on a broken installation and not on a missing
+ * backup disk, which doctor still reports.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -19,10 +25,13 @@ import { lastRecord } from "../lib/steps.js";
 
 export type Status = "ok" | "warn" | "problem" | "info";
 
+export type Scope = "install" | "data";
+
 export interface Check {
   id: string;
   status: Status;
   text: string;
+  scope: Scope;
 }
 
 const SYMBOL: Record<Status, string> = { ok: "✓", warn: "!", problem: "✗", info: "i" };
@@ -49,7 +58,7 @@ function uidOf(user: string): number | null {
 
 export function checks(): Check[] {
   const list: Check[] = [];
-  const add = (id: string, status: Status, text: string) => list.push({ id, status, text });
+  const add = (id: string, status: Status, text: string, scope: Scope = "install") => list.push({ id, status, text, scope });
   const overrides = readOverrides({ file: NAMES.overridesFile });
 
   /* The machine */
@@ -133,6 +142,7 @@ export function checks(): Check[] {
     "timer",
     !timerOk ? "problem" : lastRun && !lastRun.ok ? "problem" : "ok",
     timerOk ? `Daily backup and restore test: scheduled${next ? `, next ${next}` : ""}; ${lastText}` : `The daily backup timer is ${enabled}/${active}`,
+    timerOk ? "data" : "install",
   );
 
   if (!config.backupTarget) {
@@ -142,6 +152,7 @@ export function checks(): Check[] {
       projects.length
         ? `No backup target is set, and there ${projects.length === 1 ? "is a project" : `are ${projects.length} projects`} to protect: allvibe backup-target set <path>`
         : "Backups: no projects yet, so nothing needs backing up. Connect a backup disk before creating one",
+      "data",
     );
   }
 
@@ -149,17 +160,18 @@ export function checks(): Check[] {
 
   const recovery = recoveryStatus();
   if (recovery.state === "missing") {
-    add("recovery", "problem", "There is no recovery key for the backups");
+    add("recovery", "problem", "There is no recovery key for the backups", "data");
   } else if (recovery.state === "pending") {
     add(
       "recovery",
       projects.length ? "problem" : "ok",
       `Recovery key: created, not yet confirmed. Copy ${NAMES.recoveryPending} off this machine, then confirm it: ${NAMES.command} recovery-key confirm < your-copy${projects.length ? ". Releases are refused until then" : ""}`,
+      "data",
     );
   } else if (recovery.state === "overdue") {
-    add("recovery", "warn", `Recovery key: last confirmed ${recovery.confirmedAt?.slice(0, 10)}. Show it again to prove you still have it: ${NAMES.command} recovery-key confirm < your-copy`);
+    add("recovery", "warn", `Recovery key: last confirmed ${recovery.confirmedAt?.slice(0, 10)}. Show it again to prove you still have it: ${NAMES.command} recovery-key confirm < your-copy`, "data");
   } else {
-    add("recovery", recovery.pendingOnMachine ? "warn" : "ok", `Recovery key: confirmed ${recovery.confirmedAt?.slice(0, 10)}${recovery.pendingOnMachine ? `, but a copy is still in ${NAMES.recoveryPending}` : ""}`);
+    add("recovery", recovery.pendingOnMachine ? "warn" : "ok", `Recovery key: confirmed ${recovery.confirmedAt?.slice(0, 10)}${recovery.pendingOnMachine ? `, but a copy is still in ${NAMES.recoveryPending}` : ""}`, "data");
   }
 
   if (overrides.active) {
@@ -174,6 +186,7 @@ export function checks(): Check[] {
 
 export function doctor(args: string[]): number {
   const list = checks();
+  const installProblems = list.filter((c) => c.status === "problem" && c.scope === "install").length;
   const problems = list.filter((c) => c.status === "problem").length;
   const warnings = list.filter((c) => c.status === "warn").length;
   const summary = problems ? `${problems} problem(s)${warnings ? ` and ${warnings} warning(s)` : ""}` : warnings ? `${warnings} warning(s), no problems` : "All green.";
@@ -185,5 +198,6 @@ export function doctor(args: string[]): number {
     for (const check of list) process.stdout.write(`  ${SYMBOL[check.status]} ${check.text}\n`);
     process.stdout.write(`\n${summary}\n`);
   }
+  if (args.includes("--for-install")) return installProblems ? 1 : 0;
   return problems ? 1 : 0;
 }

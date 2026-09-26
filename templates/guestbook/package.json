@@ -1,0 +1,10 @@
+{
+  "name": "guestbook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A guestbook: the starting point of a project.",
+  "dependencies": {
+    "pg": "8.23.0"
+  }
+}
