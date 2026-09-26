@@ -20,6 +20,14 @@ and without losing data.
   data.
 - Let you do all of it from a browser.
 
+## Where things are
+
+- [STATE.md](STATE.md): what works, and what has not been verified yet.
+- [docs/walkthrough.md](docs/walkthrough.md): the whole thing, step by step, on
+  a disposable test host.
+- [CLAUDE.md](CLAUDE.md) and [DECISIONS.md](DECISIONS.md): the rules this is
+  built by, and every decision with its reason.
+
 ## Licence
 
 [GNU Affero General Public License v3.0](LICENSE). Free and open source.

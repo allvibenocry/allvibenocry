@@ -172,3 +172,34 @@ something goes wrong for a reason that could happen again.
     Vikt's scheduled backup failed with `EACCES` because a mount's owner did not
     match the app's uid (Vikt D168). *Here:* a backup target is tested by
     writing to it as the real writer before it is accepted.
+
+From the first brief, here:
+
+16. **Check an environment signal in the real environment before building on
+    it.** The test overrides were to be gated on `systemd-detect-virt`, which on
+    Docker Desktop answers `wsl`, not `docker`; the gate would never have opened
+    (D14 amendment). *Here:* look at what the signal actually says on every
+    kind of machine it must work on, first.
+17. **A check about one thing must not fail an operation about another.** The
+    installer reported a completed reinstall as failed, because `doctor` rightly
+    flagged a missing backup disk (D17 amendment). *Here:* checks carry a scope,
+    and an operation fails only on the checks that are about it.
+18. **"Previous" is what actually ran before, not the entry before it in a
+    list.** After a rollback and a new release, rollback went to the version
+    before in the list, not the one prod had run (D26). *Here:* record what was
+    replaced, and go back to that. The same mistake as number 4, in a new place.
+19. **A failure message names the cause.** A failed deploy first reported the
+    last line of a stack trace, "Node.js v24.21.0". *Here:* pick the line that
+    says what went wrong, and show that.
+20. **An operation that can fail half-way must be retryable.** A project whose
+    creation failed at step 6 could not be created again, because its name was
+    taken by the half-made one. *Here:* the failure says how to clear it
+    (`project remove`), and clearing it is one command.
+21. **Paths on the host are POSIX paths, wherever the code is tested.** `path.join`
+    on Windows produced backslashes in paths meant for Debian; the code was
+    right on Debian and its tests failed on the workstation. *Here:*
+    `path.posix` for every host path.
+22. **Keep the guard strict; change the example instead.** Docker's default
+    ranges in a test tripped the rule 10 guard. *Here:* examples use the
+    documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`), and the guard's
+    allowlist holds only the address pools the product itself sets (D16).

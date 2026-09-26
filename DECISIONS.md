@@ -647,3 +647,50 @@ rollback; a release stopped at the backup step with the target unmounted, and
 prod, images, tags and records unchanged; and a confirmed data rollback, after
 which the entry written since the release was gone from prod and present in the
 backup taken first.
+
+## D27. The images the suite uses, pinned
+
+*2026-09-27*
+
+Every image the suite pulls is pinned by index digest, the tag beside it for
+the reader (Vikt D138):
+
+| Image | Used for |
+|---|---|
+| `postgres:18.6-alpine` | every project's database, and every restore check's scratch copy |
+| `node:24.21.0-alpine` | the starter template's base (Node 24 is the current long-term release) |
+| `nginxinc/nginx-unprivileged:1.30.5-alpine` | the reverse proxy, nginx's stable branch |
+| `debian:trixie-20260918` | the test host only |
+
+A project's own images are built on the host (`allvibe-<project>:dev` and
+`:v<N>`), labelled with the project, the environment and the commit, and never
+pulled from anywhere.
+
+**Postgres 18** changed where its image keeps data: the volume is mounted at
+`/var/lib/postgresql`, not `…/data` as with 17 and before. The compose file does
+that. A restore check uses the image recorded in the backup's manifest, so a
+backup is always restored by the Postgres that took it.
+
+**Why pinned.** A tag is somebody else's name for an image, and can be moved
+under an unchanged file (CLAUDE.md, mistake 11). Upgrading one of these is a
+reviewed change to one line.
+
+## D28. What the first brief deliberately leaves simple
+
+*2026-09-27*
+
+Recorded so they are decisions, not surprises:
+
+- **No lock between operations.** The nightly backup and a release started at
+  the same minute would both back up and restore-check; nothing would be lost,
+  but the work would be done twice. A lock per project comes with the web UI,
+  which will start operations people did not watch start.
+- **Release images and release backups are kept.** Every `v<N>` image stays on
+  the host and every release backup stays in `releases/`, because any of them
+  may be what a rollback needs. Pruning them needs a rule for which rollbacks are
+  still possible, and that comes when disk space on real hardware says it must.
+- **The owner edits dev by hand, as the service user.** Until the agent
+  container exists, a change in dev is a file edited on the host
+  (`runuser -u allvibe -- …`), then `allvibe dev deploy` and `dev commit`.
+- **Nothing is published to the internet**, and the proxy listens on IPv4 only
+  (D18). Publishing, TLS and tunnels are later briefs.
