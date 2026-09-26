@@ -6,6 +6,8 @@
  *   node test/host/host.mjs reset            # thrown away and created fresh
  *   node test/host/host.mjs restart          # a container restart, standing in for a reboot
  *   node test/host/host.mjs exec -- <cmd>    # run a command as root on it
+ *   node test/host/host.mjs exec --stdin-file <file> -- <cmd>   # with a local file as its input
+ *   node test/host/host.mjs pull <remote-file> <local-file>     # copy a file off it
  *   node test/host/host.mjs shell            # a root shell on it
  *   node test/host/host.mjs push <local> <remote-dir>
  *   node test/host/host.mjs override list|set <key>=<value>|unset <key>
@@ -119,8 +121,8 @@ const docker = (args, options) => run("docker", args, options);
 const say = (line = "") => process.stdout.write(`${line}\n`);
 
 /** Run interactively, passing the terminal through. Returns the exit code. */
-function attached(file, args) {
-  return spawnSync(file, args, { stdio: "inherit" }).status ?? 1;
+function attached(file, args, input) {
+  return spawnSync(file, args, { stdio: input === undefined ? "inherit" : ["pipe", "inherit", "inherit"], input }).status ?? 1;
 }
 
 function exists() {
@@ -336,12 +338,43 @@ function sshArgs(tty) {
   ];
 }
 
+/**
+ * A command as root on the host. `--stdin-file <file>` hands a local file to it
+ * as its standard input, byte for byte, whatever shell this is run from
+ * (PowerShell has no `<`, and its pipes re-encode text).
+ */
 function execOnHost(args) {
+  let input;
+  if (args[0] === "--stdin-file") {
+    if (!args[1]) throw new Error("usage: exec --stdin-file <local file> -- <command>");
+    input = readFileSync(args[1]);
+    args = args[2] === "--" ? args.slice(3) : args.slice(2);
+  }
   if (args.length === 0) throw new Error("usage: exec -- <command> [args]");
-  const tty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  if (REMOTE) return attached("ssh", [...sshArgs(tty), `sudo -n ${args.map(shq).join(" ")}`]);
+  const tty = input === undefined && Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if (REMOTE) return attached("ssh", [...sshArgs(tty), `sudo -n ${args.map(shq).join(" ")}`], input);
   if (!exists()) throw new Error(`${NAME} does not exist; node test/host/host.mjs create`);
-  return attached("docker", ["exec", "-i", ...(tty ? ["-t"] : []), NAME, ...args]);
+  return attached("docker", ["exec", "-i", ...(tty ? ["-t"] : []), NAME, ...args], input);
+}
+
+/**
+ * A file off the host, byte for byte, without passing through a terminal or a
+ * shell's redirection (which in Windows PowerShell 5.1 rewrites it as UTF-16).
+ * Used for the recovery key: it goes into a file, never onto the screen.
+ */
+function pull(remoteFile, localFile) {
+  if (!remoteFile || !localFile) throw new Error("usage: pull <remote file> <local file>");
+  mkdirSync(path.dirname(path.resolve(localFile)), { recursive: true });
+  if (REMOTE) {
+    const staging = `/tmp/${CMD}-pull-${Date.now()}`;
+    run("ssh", [...sshArgs(false), `sudo -n install -m 600 -o $(id -u) ${shq(remoteFile)} ${shq(staging)}`]);
+    run("scp", ["-o", "BatchMode=yes", `${REMOTE}:${staging}`, localFile]);
+    run("ssh", [...sshArgs(false), `rm -f ${shq(staging)}`]);
+  } else {
+    if (!exists()) throw new Error(`${NAME} does not exist`);
+    docker(["cp", `${NAME}:${remoteFile}`, localFile]);
+  }
+  say(`pulled    ${remoteFile} to ${localFile} (not shown)`);
 }
 
 function shell() {
@@ -492,7 +525,8 @@ function resources([action, file]) {
 
 const USAGE = `usage: node test/host/host.mjs <command>
   create | reset [--keep-backup-target] | restart | remove | status
-  exec -- <command> [args]    shell    push <local> <remote-dir>
+  exec [--stdin-file <file>] -- <command> [args]    shell
+  push <local> <remote-dir>    pull <remote-file> <local-file>
   override list | set <key>=<value> | unset <key>
   resources snapshot <file> | compare <file>
 `;
@@ -508,6 +542,7 @@ async function main() {
     case "exec": return execOnHost(rest[0] === "--" ? rest.slice(1) : rest);
     case "shell": return shell();
     case "push": return push(rest[0], rest[1]);
+    case "pull": return pull(rest[0], rest[1]);
     case "override": return overrides(rest);
     case "resources": return resources(rest);
     default:

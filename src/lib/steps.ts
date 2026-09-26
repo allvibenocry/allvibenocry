@@ -22,6 +22,9 @@ export interface StepOutcome {
 }
 
 export const ok = (evidence: string, changed?: boolean): StepOutcome => ({ ok: true, evidence, changed });
+
+/** "1 entry", "2 entries". */
+export const entries = (n: number | null | undefined) => (n === null || n === undefined ? "? entries" : `${n} ${n === 1 ? "entry" : "entries"}`);
 export const fail = (why: string, fix?: string): StepOutcome => ({ ok: false, evidence: "", why, fix });
 
 export interface Step {

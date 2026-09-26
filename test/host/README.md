@@ -20,6 +20,8 @@ the test host as `C:/Program Files/Git/root/x.sh`. PowerShell does not do this.
 | `node test/host/host.mjs exec -- <command>` | Runs a command as root on the test host. Standard input is passed through, so `… exec -- cmd < file` works. |
 | `node test/host/host.mjs shell` | A root shell on the test host. |
 | `node test/host/host.mjs push <local> <remote-dir>` | Copies a file or directory onto the test host. |
+| `node test/host/host.mjs exec --stdin-file <file> -- <command>` | The same, with a local file as the command's standard input, byte for byte, from any shell. |
+| `node test/host/host.mjs pull <remote-file> <local-file>` | Copies a file off the test host, byte for byte, never through the screen. |
 | `node test/host/host.mjs override list` / `set <key>=<value>` / `unset <key>` | The test overrides (below). |
 | `node test/host/host.mjs status` | What exists, the port mapping, systemd's state, the overrides. |
 | `node test/host/host.mjs remove` | Removes the container, its volumes and its image. Nothing is left. |

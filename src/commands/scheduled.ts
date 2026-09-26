@@ -12,7 +12,7 @@ import { NAMES } from "../lib/brand.js";
 import { readConfig } from "../lib/config.js";
 import { listBackups, prune, type Backup } from "../lib/backup.js";
 import { listProjects } from "../lib/project.js";
-import { ok, runSteps, saveRecord } from "../lib/steps.js";
+import { entries, ok, runSteps, saveRecord } from "../lib/steps.js";
 import { backupSteps, runRestoreCheck } from "./backup.js";
 
 export async function scheduledBackup(): Promise<number> {
@@ -56,7 +56,7 @@ export async function scheduledBackup(): Promise<number> {
           projects.length === 0
             ? ok("no projects yet, so there is nothing to back up")
             : failed.length === 0
-              ? ok(results.map((r) => `${r.project}: ${r.backup}, restored with ${r.entries ?? "?"} entries`).join("\n"))
+              ? ok(results.map((r) => `${r.project}: ${r.backup}, restored with ${entries(r.entries)}`).join("\n"))
               : { ok: false, evidence: "", why: failed.map((r) => `${r.project}: ${!r.backedUp ? "the backup failed" : "the restore check failed"}`).join("\n"), fix: `the reasons are in the runs above, and in: ${NAMES.command} runs` },
       },
     ],

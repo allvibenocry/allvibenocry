@@ -25,12 +25,12 @@ The first brief, nine items:
 5. Projects. **Built**: `allvibe project create|list|status|remove` (D18-D21). On a fresh test host: a guestbook created, an entry written through a browser in prod and another in dev, each seeing only its own; rule 1 probed from inside dev.
 6. Backup and restore test. **Built**: `allvibe backup-target`, `backup`, `backups`, `restore-check`, `recovery-key`, and the daily timer (D22-D24). On the test host: a backup on the backup volume, a restore check showing the entry count from the restored copy, the root filesystem refused, and the timer active after install and after a restart.
 7. Release and rollback. **Built**: `allvibe release [--dry-run]`, `rollback [--restore-data --confirm-data-loss]`, `dev deploy`, `dev commit` (D25, D26). On the test host: a dev change live in prod with its entries intact; a broken release rolled back automatically; a manual rollback; a release with the backup target unmounted stopped at the backup step and changed nothing; a confirmed data rollback.
-8. Walkthrough.
+8. Walkthrough. **Built**: [docs/walkthrough.md](docs/walkthrough.md), run end to end on a fresh test host, every part as written.
 9. Record.
 
 ## Next
 
-Item 8.
+Item 9.
 
 ## To verify on real hardware
 

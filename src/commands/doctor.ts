@@ -22,7 +22,7 @@ import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../l
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
 import { readOverrides } from "../lib/overrides.js";
 import { tryRun } from "../lib/run.js";
-import { lastRecord } from "../lib/steps.js";
+import { entries, lastRecord } from "../lib/steps.js";
 
 export type Status = "ok" | "warn" | "problem" | "info";
 
@@ -191,7 +191,7 @@ export function checks(): Check[] {
       add(
         `backup-${name}`,
         hours > 36 ? "warn" : "ok",
-        `${name}: last backup ${age}; last restore check ${check.started.slice(0, 16).replace("T", " ")} UTC passed${check.facts.entries !== undefined && check.facts.entries !== null ? ` (${check.facts.entries} entries)` : ""}`,
+        `${name}: last backup ${age}; last restore check ${check.started.slice(0, 16).replace("T", " ")} UTC passed${check.facts.entries !== undefined && check.facts.entries !== null ? ` (${entries(check.facts.entries as number)})` : ""}`,
         "data",
       );
     }

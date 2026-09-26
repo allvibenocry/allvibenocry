@@ -25,7 +25,7 @@ import {
 import { containerState } from "../lib/docker.js";
 import { confirmRecovery, recoveryStatus } from "../lib/keys.js";
 import { containerName, readProject, type Project } from "../lib/project.js";
-import { fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
+import { entries, fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
 
 const C = NAMES.command;
 
@@ -62,7 +62,7 @@ export function backupSteps(project: Project, config: HostConfig, kind: BackupKi
         return ok(
           `${out.backup.file} (${humanBytes(m.bytes)}, sha256 ${m.sha256.slice(0, 12)}…)\n` +
             `encrypted to this machine's backup key and to the recovery key; prod ${m.release?.version ?? "?"}` +
-            `${m.prodCheck?.entries !== undefined && m.prodCheck?.entries !== null ? `, ${m.prodCheck.entries} entries when it was taken` : ""}`,
+            `${m.prodCheck?.entries !== undefined && m.prodCheck?.entries !== null ? `, ${entries(m.prodCheck.entries)} when it was taken` : ""}`,
         );
       },
     },
