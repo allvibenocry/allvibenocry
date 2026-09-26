@@ -6,6 +6,10 @@ easily. Later, the same commands talk to a real Debian 13 machine over SSH.
 
 Needs Node 22 and Docker. Run everything from the repository root.
 
+**From Git Bash on Windows, set `MSYS_NO_PATHCONV=1` first.** Git Bash rewrites
+arguments that look like Unix paths, so `exec -- bash /root/x.sh` would reach
+the test host as `C:/Program Files/Git/root/x.sh`. PowerShell does not do this.
+
 ## Commands
 
 | Command | What it does |

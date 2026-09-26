@@ -50,3 +50,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: guard
         run: node scripts/guard.mjs
+
+  tests:
+    name: unit tests and shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The runner's own Node and shellcheck: no setup action to pin.
+      - name: unit tests
+        run: |
+          node --version
+          npm ci --no-audit --no-fund
+          npm test
+      - name: shellcheck install.sh
+        run: shellcheck -x install.sh

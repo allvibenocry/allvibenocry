@@ -1,0 +1,454 @@
+#!/usr/bin/env bash
+# Turns a fresh Debian 13 x86-64 machine into a host for the suite (D8, D11).
+#
+#   sudo ./install.sh
+#
+# Run it from an unpacked bundle (`npm run bundle` makes one), which holds this
+# script, brand.conf and the CLI. It is idempotent: run it again and it changes
+# nothing, and says so.
+#
+# It stops at the first failure (rule 7), naming the step, what went wrong and
+# what would have to be true. It never prompts, and never prints a secret
+# (rule 4): the keys it creates go into files only the service user can read.
+set -Eeuo pipefail
+
+HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# The names, defined once (D1).
+# shellcheck source-path=SCRIPTDIR source=brand.conf
+. "$HERE/brand.conf"
+CMD=$COMMAND_NAME
+SERVICE_USER=$CMD
+INSTALL_DIR=/opt/$CMD
+ETC_DIR=/etc/$CMD
+STATE_DIR=/var/lib/$CMD
+OVERRIDES=$ETC_DIR/test-overrides
+WRAPPER=/usr/local/bin/$CMD
+UNIT_SERVICE=/etc/systemd/system/$CMD-backup.service
+UNIT_TIMER=/etc/systemd/system/$CMD-backup.timer
+LOG=/var/log/$CMD-install.log
+
+# Docker's apt signing key, as published in Docker's installation guide.
+DOCKER_KEY_FINGERPRINT=9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+# Under 8 GB installed: the kernel reports a little less than what is
+# installed, so anything under 7 GiB has less than 8 GB.
+LOW_MEMORY_MB=7168
+# Where Docker takes app networks from (D16): the first that does not overlap
+# a network this machine is already on.
+POOLS=(172.20.0.0/14 10.201.0.0/16)
+
+export DEBIAN_FRONTEND=noninteractive
+
+STEPS=11
+N=0
+STEP=""
+NEED=""
+CHANGES=0
+WARNINGS=0
+
+step() {
+  N=$((N + 1)); STEP=$1; NEED=$2
+  printf '\n[%d/%d] %s\n' "$N" "$STEPS" "$STEP"
+}
+changed() { CHANGES=$((CHANGES + 1)); printf '      changed: %s\n' "$*"; }
+unchanged() { printf '      unchanged: %s\n' "$*"; }
+note() { printf '      %s\n' "$*"; }
+warn() {
+  WARNINGS=$((WARNINGS + 1))
+  printf '\n  ! %s\n' "$1"
+  shift
+  for line in "$@"; do printf '    %s\n' "$line"; done
+}
+fail() {
+  trap - ERR
+  printf '\nFAILED at step %d/%d: %s\n' "$N" "$STEPS" "$STEP" >&2
+  printf '  %s\n' "$1" >&2
+  printf '\n  what would have to be true:\n  %s\n' "${2:-$NEED}" >&2
+  printf '\nNothing after this step was attempted. The full log is %s.\n' "$LOG" >&2
+  exit 1
+}
+on_error() {
+  local code=$? line=$1
+  fail "a command failed with exit $code (install.sh line $line)"
+}
+trap 'on_error $LINENO' ERR
+
+# A command whose output belongs in the log, not on the screen. On failure,
+# its last lines are shown.
+quiet() {
+  if ! "$@" >>"$LOG" 2>&1; then
+    tail -n 15 "$LOG" | sed 's/^/      | /' >&2
+    return 1
+  fi
+}
+
+# The test overrides (D14): honoured only inside a Docker container.
+overrides_active() {
+  [ -f "$OVERRIDES" ] && [ -f /.dockerenv ] && [ "$(cat /run/systemd/container 2>/dev/null || true)" = docker ]
+}
+override() {
+  if overrides_active; then sed -n "s/^$1=//p" "$OVERRIDES" | tail -n 1; fi
+}
+
+# ---------------------------------------------------------------------------
+step "This machine" "run it as root, on Debian 13 (trixie), on an x86-64 machine (D8)"
+
+[ "$(id -u)" = 0 ] || fail "install.sh is not running as root" "run it as root: sudo ./install.sh"
+: >>"$LOG" && chmod 600 "$LOG"
+printf '\n==== install.sh %s\n' "$(date -u +%FT%TZ)" >>"$LOG"
+
+os_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d '"')
+os_version=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '"')
+os_pretty=$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release | tr -d '"')
+if [ "$os_id" != debian ] || [ "$os_version" != 13 ]; then
+  fail "this is ${os_pretty:-an unknown system}, not Debian 13" "install on Debian 13 (trixie); version 1 supports no other system (D8)"
+fi
+machine=$(uname -m)
+architecture=$(dpkg --print-architecture)
+if [ "$machine" != x86_64 ] || [ "$architecture" != amd64 ]; then
+  fail "this is a $machine ($architecture) machine, not x86-64" "install on an x86-64 (amd64) machine; version 1 supports no other architecture (D8)"
+fi
+note "$os_pretty on x86-64, as root"
+if overrides_active; then
+  note "TEST HOST: overrides active in $OVERRIDES ($(grep -v '^#' "$OVERRIDES" | grep . | paste -sd ' ' - || true))"
+elif [ -f "$OVERRIDES" ]; then
+  note "$OVERRIDES exists, but this is not a Docker test container, so it is ignored"
+fi
+
+# ---------------------------------------------------------------------------
+step "Memory and system disk" "nothing: these are warnings, and the installation continues"
+
+memory_mb=$(override memory-mb)
+memory_source=""
+if [ -n "$memory_mb" ]; then
+  memory_source=" (declared by the test host)"
+else
+  memory_mb=$(( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1024 ))
+fi
+memory_gb=$(awk -v mb="$memory_mb" 'BEGIN { printf (mb < 10240 ? "%.1f" : "%.0f"), mb / 1024 }')
+if [ "$memory_mb" -lt "$LOW_MEMORY_MB" ]; then
+  warn "This computer has about $memory_gb GB of memory$memory_source. $PRODUCT_NAME works best with 8 GB or more." \
+    "It will work, but running the dev and prod copies of several apps at the same time" \
+    "may be slow, and the computer may run out of memory. More memory helps most."
+else
+  note "memory: $memory_gb GB$memory_source"
+fi
+
+disk=$(override system-disk)
+disk_source=""
+if [ -n "$disk" ]; then
+  disk_source=" (declared by the test host)"
+else
+  root_source=$(findmnt -n -o SOURCE / || true)
+  disk=unknown
+  if [[ $root_source == /dev/* ]]; then
+    case "$(lsblk -n -d -o ROTA "$root_source" 2>/dev/null | tr -d ' ' || true)" in
+      1) disk=rotational ;;
+      0) disk=ssd ;;
+    esac
+  fi
+fi
+case "$disk" in
+  rotational)
+    warn "This computer's system disk is a spinning hard disk, not an SSD$disk_source." \
+      "Everything will work, but installing, building and starting apps will be" \
+      "noticeably slow. An SSD is the single biggest improvement for an old computer." ;;
+  ssd) note "system disk: SSD$disk_source" ;;
+  *) note "system disk: its type could not be determined" ;;
+esac
+
+# ---------------------------------------------------------------------------
+step "Packages from Debian" "the machine can reach Debian's package mirrors (apt-get update works)"
+
+debian_packages=(ca-certificates curl gnupg age git nodejs)
+missing=()
+for package in "${debian_packages[@]}"; do
+  dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed" || missing+=("$package")
+done
+if [ ${#missing[@]} -eq 0 ]; then
+  unchanged "${debian_packages[*]}"
+else
+  quiet apt-get update
+  quiet apt-get install -y --no-install-recommends "${missing[@]}"
+  changed "installed ${missing[*]}"
+fi
+node_major=$(node -p 'process.versions.node.split(".")[0]')
+[ "$node_major" -ge 20 ] || fail "Node.js $node_major is too old" "Debian 13's nodejs package, version 20 or later"
+note "Node.js $(node -p 'process.versions.node') (Debian's own package, D15)"
+
+# ---------------------------------------------------------------------------
+step "Docker Engine, from Docker's own repository" "the machine can reach download.docker.com, and Docker's signing key has the published fingerprint"
+
+keyring=/etc/apt/keyrings/docker.asc
+sources=/etc/apt/sources.list.d/docker.sources
+key_fingerprint() {
+  local home
+  home=$(mktemp -d)
+  GNUPGHOME=$home gpg --batch --with-colons --show-keys "$1" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }' || true
+  rm -rf "$home"
+}
+if [ ! -f "$keyring" ]; then
+  install -m 0755 -d /etc/apt/keyrings
+  downloaded=$(mktemp)
+  quiet curl -fsSL https://download.docker.com/linux/debian/gpg -o "$downloaded"
+  [ "$(key_fingerprint "$downloaded")" = "$DOCKER_KEY_FINGERPRINT" ] ||
+    fail "the key downloaded from download.docker.com does not have Docker's published fingerprint" \
+      "Docker's apt signing key has fingerprint $DOCKER_KEY_FINGERPRINT"
+  install -m 0644 "$downloaded" "$keyring"
+  rm -f "$downloaded"
+  changed "Docker's signing key, fingerprint checked"
+else
+  [ "$(key_fingerprint "$keyring")" = "$DOCKER_KEY_FINGERPRINT" ] ||
+    fail "$keyring is not Docker's signing key" "the key at $keyring has fingerprint $DOCKER_KEY_FINGERPRINT"
+  unchanged "Docker's signing key"
+fi
+
+sources_content="Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: trixie
+Components: stable
+Architectures: amd64
+Signed-By: $keyring"
+if [ "$(cat "$sources" 2>/dev/null || true)" != "$sources_content" ]; then
+  printf '%s\n' "$sources_content" >"$sources"
+  changed "$sources"
+else
+  unchanged "$sources"
+fi
+
+docker_packages=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
+missing=()
+for package in "${docker_packages[@]}"; do
+  dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed" || missing+=("$package")
+done
+if [ ${#missing[@]} -eq 0 ]; then
+  unchanged "${docker_packages[*]}"
+else
+  quiet apt-get update
+  quiet apt-get install -y "${missing[@]}"
+  changed "installed ${missing[*]}"
+fi
+if [ "$(systemctl is-enabled docker 2>/dev/null || true)" != enabled ] || ! systemctl is-active --quiet docker; then
+  quiet systemctl enable --now docker
+  changed "Docker started, and starts at boot"
+fi
+note "Docker Engine $(docker version --format '{{.Server.Version}}'), Compose $(docker compose version --short)"
+
+# ---------------------------------------------------------------------------
+step "Docker's address pool and logs" "/etc/docker/daemon.json is valid JSON, and one of ${POOLS[*]} does not overlap this machine's networks"
+
+daemon_result=$(node - /etc/docker/daemon.json "${POOLS[@]}" <<'NODE'
+// Merges the suite's settings into daemon.json, keeping anything else in it.
+// An address pool that is already set is kept: changing it under existing
+// networks would strand them.
+const fs = require("fs");
+const { execFileSync } = require("child_process");
+const [file, ...candidates] = process.argv.slice(2);
+let current = {};
+try {
+  current = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch (error) {
+  if (error.code !== "ENOENT") { console.log("invalid"); process.exit(0); }
+}
+const toInt = (ip) => ip.split(".").reduce((n, part) => n * 256 + Number(part), 0);
+const range = (cidr) => {
+  const [ip, bits] = cidr.split("/");
+  const size = 2 ** (32 - Number(bits));
+  const start = Math.floor(toInt(ip) / size) * size;
+  return [start, start + size - 1];
+};
+const overlaps = (a, b) => { const [a0, a1] = range(a); const [b0, b1] = range(b); return a0 <= b1 && b0 <= a1; };
+const routes = execFileSync("ip", ["-4", "route", "show"], { encoding: "utf8" })
+  .split("\n").map((line) => line.split(" ")[0]).filter((dest) => /^\d+\.\d+\.\d+\.\d+(\/\d+)?$/.test(dest))
+  .map((dest) => (dest.includes("/") ? dest : `${dest}/32`));
+let pools = current["default-address-pools"];
+if (!pools) {
+  const free = candidates.find((candidate) => !routes.some((route) => overlaps(candidate, route)));
+  if (!free) { console.log("nopool"); process.exit(0); }
+  pools = [{ base: free, size: 24 }];
+}
+const next = {
+  ...current,
+  "default-address-pools": pools,
+  "log-driver": current["log-driver"] ?? "local",
+  "log-opts": current["log-opts"] ?? { "max-size": "10m", "max-file": "3" },
+  "live-restore": current["live-restore"] ?? true,
+};
+const text = `${JSON.stringify(next, null, 2)}\n`;
+const same = fs.existsSync(file) && fs.readFileSync(file, "utf8") === text;
+if (!same) { fs.mkdirSync("/etc/docker", { recursive: true }); fs.writeFileSync(file, text); }
+console.log(`${same ? "unchanged" : "changed"} ${pools.map((p) => p.base).join(",")}`);
+NODE
+)
+case "$daemon_result" in
+  invalid) fail "/etc/docker/daemon.json is not valid JSON" ;;
+  nopool) fail "every candidate address pool overlaps a network this machine is on" ;;
+  changed*)
+    quiet systemctl restart docker
+    changed "/etc/docker/daemon.json: address pool ${daemon_result#changed }, local logs with rotation, live restore; Docker restarted" ;;
+  unchanged*) unchanged "/etc/docker/daemon.json (address pool ${daemon_result#unchanged })" ;;
+  *) fail "could not read or write /etc/docker/daemon.json ($daemon_result)" ;;
+esac
+
+# ---------------------------------------------------------------------------
+step "The service user" "useradd and usermod work"
+
+if ! getent group "$SERVICE_USER" >/dev/null; then
+  groupadd --system "$SERVICE_USER"
+  changed "group $SERVICE_USER"
+fi
+if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
+  useradd --system --gid "$SERVICE_USER" --home-dir "$STATE_DIR" --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+  changed "user $SERVICE_USER"
+else
+  unchanged "user $SERVICE_USER"
+fi
+if ! id -nG "$SERVICE_USER" | tr ' ' '\n' | grep -qx docker; then
+  usermod -aG docker "$SERVICE_USER"
+  changed "$SERVICE_USER may use Docker"
+else
+  unchanged "$SERVICE_USER may use Docker"
+fi
+
+# ---------------------------------------------------------------------------
+step "Directories" "the directories can be created and owned"
+
+ensure_dir() {
+  local dir=$1 owner=$2 mode=$3
+  if [ ! -d "$dir" ]; then
+    install -d -o "${owner%%:*}" -g "${owner##*:}" -m "$mode" "$dir"
+    changed "$dir"
+  elif [ "$(stat -c '%U:%G %a' "$dir")" != "$owner $mode" ]; then
+    chown "$owner" "$dir"
+    chmod "$mode" "$dir"
+    changed "$dir: owner and mode"
+  else
+    unchanged "$dir"
+  fi
+}
+ensure_dir "$INSTALL_DIR" root:root 755
+ensure_dir "$ETC_DIR" "$SERVICE_USER:$SERVICE_USER" 750
+ensure_dir "$STATE_DIR" "$SERVICE_USER:$SERVICE_USER" 750
+
+# ---------------------------------------------------------------------------
+step "The $CMD command" "the bundle holds dist/cli.js, brand.conf and VERSION"
+
+if [ ! -f "$HERE/dist/cli.js" ] || [ ! -f "$HERE/VERSION" ]; then
+  fail "this directory is not a complete bundle" "run install.sh from a bundle made by npm run bundle"
+fi
+version=$(cat "$HERE/VERSION")
+bundle_id=$(cd "$HERE" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12)
+release_dir=$INSTALL_DIR/releases/$version-$bundle_id
+if [ ! -d "$release_dir" ]; then
+  rm -rf "$release_dir.partial"
+  mkdir -p "$release_dir.partial"
+  cp -a "$HERE/." "$release_dir.partial/"
+  chown -R root:root "$release_dir.partial"
+  chmod -R go-w,a+rX "$release_dir.partial"
+  mv "$release_dir.partial" "$release_dir"
+  changed "$release_dir"
+else
+  unchanged "$release_dir"
+fi
+if [ "$(readlink "$INSTALL_DIR/current" 2>/dev/null || true)" != "$release_dir" ]; then
+  ln -sfn "$release_dir" "$INSTALL_DIR/current"
+  changed "$INSTALL_DIR/current -> $version"
+else
+  unchanged "$INSTALL_DIR/current -> $version"
+fi
+
+wrapper_content="#!/bin/sh
+# Generated by $PRODUCT_NAME's install.sh. Runs the CLI as the service user.
+set -e
+CLI=$INSTALL_DIR/current/dist/cli.js
+if [ \"\$(id -u)\" = 0 ]; then exec runuser -u $SERVICE_USER -- env HOME=$STATE_DIR /usr/bin/node \"\$CLI\" \"\$@\"; fi
+if [ \"\$(id -un)\" = $SERVICE_USER ]; then exec /usr/bin/node \"\$CLI\" \"\$@\"; fi
+echo \"$CMD: run it as root: sudo $CMD \$*\" >&2
+exit 1"
+if [ "$(cat "$WRAPPER" 2>/dev/null || true)" != "$wrapper_content" ]; then
+  printf '%s\n' "$wrapper_content" >"$WRAPPER"
+  chmod 755 "$WRAPPER"
+  changed "$WRAPPER"
+else
+  unchanged "$WRAPPER"
+fi
+
+# ---------------------------------------------------------------------------
+step "The daily backup and restore test" "systemd accepts the timer, and it is enabled and active"
+
+service_content="[Unit]
+Description=$PRODUCT_NAME: daily backup and restore test
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=$SERVICE_USER
+Group=$SERVICE_USER
+Environment=HOME=$STATE_DIR
+ExecStart=/usr/bin/node $INSTALL_DIR/current/dist/cli.js scheduled-backup
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=2h"
+timer_content="[Unit]
+Description=$PRODUCT_NAME: daily backup and restore test
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target"
+units_changed=0
+if [ "$(cat "$UNIT_SERVICE" 2>/dev/null || true)" != "$service_content" ]; then
+  printf '%s\n' "$service_content" >"$UNIT_SERVICE"; units_changed=1
+fi
+if [ "$(cat "$UNIT_TIMER" 2>/dev/null || true)" != "$timer_content" ]; then
+  printf '%s\n' "$timer_content" >"$UNIT_TIMER"; units_changed=1
+fi
+if [ $units_changed = 1 ]; then
+  systemctl daemon-reload
+  changed "$(basename "$UNIT_SERVICE"), $(basename "$UNIT_TIMER")"
+else
+  unchanged "$(basename "$UNIT_SERVICE"), $(basename "$UNIT_TIMER")"
+fi
+timer=$(basename "$UNIT_TIMER")
+if [ "$(systemctl is-enabled "$timer" 2>/dev/null || true)" != enabled ] || ! systemctl is-active --quiet "$timer"; then
+  quiet systemctl enable --now "$timer"
+  changed "$timer enabled and started"
+else
+  unchanged "$timer enabled and active"
+fi
+
+# ---------------------------------------------------------------------------
+step "Keys, configuration and the reverse proxy" "$CMD setup succeeds (it prints its own reason when it does not)"
+
+setup_output=$(mktemp)
+if ! "$WRAPPER" setup >"$setup_output" 2>&1; then
+  sed 's/^/    /' "$setup_output" >&2
+  rm -f "$setup_output"
+  fail "$CMD setup did not finish"
+fi
+sed -n 's/^       \(changed\|unchanged\): /      \1: /p' "$setup_output"
+setup_changes=$(grep -c '^       changed: ' "$setup_output" || true)
+CHANGES=$((CHANGES + setup_changes))
+rm -f "$setup_output"
+
+# ---------------------------------------------------------------------------
+step "How the host is" "$CMD doctor finds no problems"
+
+if ! "$WRAPPER" doctor | sed 's/^/    /'; then
+  fail "$CMD doctor found a problem (above)"
+fi
+
+# ---------------------------------------------------------------------------
+printf '\n'
+if [ "$CHANGES" -eq 0 ]; then
+  printf 'Nothing changed: this machine was already set up, and everything checked above is as it should be.\n'
+else
+  printf 'Installed %s %s: %d change(s).\n' "$PRODUCT_NAME" "$version" "$CHANGES"
+fi
+if [ "$WARNINGS" -gt 0 ]; then
+  printf '%d warning(s) above: worth reading, and nothing that stops the installation.\n' "$WARNINGS"
+fi

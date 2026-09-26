@@ -47,6 +47,8 @@ const EXTERNAL_NAMES = [
  */
 const ALLOWED_ADDRESSES = new Map([
   // [address, why it is here]
+  ["172.20.0.0/14", "the pool Docker hands project networks from (D16): a design value, nobody's network"],
+  ["10.201.0.0/16", "the fallback pool (D16), used when the first overlaps the machine's own networks"],
 ]);
 
 const PRIVATE_V4 =

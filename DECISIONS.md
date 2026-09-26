@@ -287,3 +287,80 @@ host, and nothing else on the workstation has to change.
   the setup on the pinned Debian image and is committed as a labelled image, so
   no build cache is left on the workstation; if the harness pulled the base
   image, it removes that reference afterwards.
+
+## D15. The CLI runs on Debian's own Node.js, with no runtime dependencies, as the service user
+
+*2026-09-27*
+
+- **Node.js is Debian 13's `nodejs` package** (20.19.2 at the time of writing),
+  installed by apt like everything else.
+- **The CLI has no runtime dependencies.** It is TypeScript compiled to
+  JavaScript that uses only Node's standard library; it drives Docker, git,
+  `age` and systemd through their own command lines. A host never runs
+  `npm install`.
+- **It is installed as a bundle** (`npm run bundle`): install.sh, `brand.conf`,
+  the compiled CLI, the templates and a `VERSION` that names the exact commit
+  (and says `-dirty` when the tree had uncommitted changes). install.sh copies
+  it to `/opt/allvibe/releases/<version>-<content hash>` and points
+  `/opt/allvibe/current` at it, so the installed version is always known.
+- **It runs as the service user `allvibe`.** `/usr/local/bin/allvibe` is a small
+  wrapper: run with sudo, it switches to the service user; run as the service
+  user, it runs directly; anyone else is told to use sudo. So every file the
+  suite creates has one owner, whoever started the command.
+
+**Why.** Debian patches its own Node.js for the life of the release, through the
+same unattended security updates as the rest of the machine, and adds no
+third-party repository or signing key to trust. No runtime dependencies means
+nothing to install, audit or update on a beginner's machine, and nothing that
+can fail to download on the day it is needed. The service user owns the state,
+so a file root created cannot later refuse the timer.
+
+**Instead.** NodeSource's repository for a newer Node (another repository and
+key to trust, and upgrades on its schedule rather than Debian's); a bundled Node
+binary (security updates would be this project's job); running the CLI in a
+container (it drives the host's Docker, systemd and files, so it would need all
+of them mounted in).
+
+## D16. Docker hands out addresses away from the home network, keeps logs small, and restarts without stopping apps
+
+*2026-09-27*
+
+install.sh writes three settings into `/etc/docker/daemon.json`, keeping
+anything else in it:
+
+- **`default-address-pools`**: `172.20.0.0/14`, split into `/24` networks, or
+  `10.201.0.0/16` if the first overlaps a network the machine is already on.
+  An existing pool is never changed, since networks already made from it would
+  be stranded.
+- **`log-driver: local`**, 10 MB per file, three files per container.
+- **`live-restore: true`**.
+
+**Why.** Every project makes several Docker networks. With Docker's defaults,
+once the `172.17`–`172.31` ranges are used up it starts handing out
+`192.168.x.0/20`, which is the most common home network range: the day a
+beginner creates their fifth or sixth project, their machine can stop reaching
+their own router. A fixed pool, checked against the machine's own routes, can
+never do that. Small rotating logs keep an old laptop's disk from filling with
+container logs. Live restore lets Docker itself be updated or restarted
+without stopping every app.
+
+## D17. What install.sh checks, and how it reports
+
+*2026-09-27*
+
+- **It refuses** anything that is not Debian 13 on x86-64, and anything not run
+  as root, before it changes anything.
+- **It warns, in plain language, and carries on** below 8 GB of memory and on a
+  spinning system disk. The memory line is drawn at 7 GiB of `MemTotal`, because
+  the kernel reports a little less than what is installed: an 8 GB machine shows
+  about 7.6 GiB and must not be warned.
+- **Every step says `changed` or `unchanged`**, and the last line says either
+  what was installed and how many changes, or "Nothing changed". That is what
+  makes idempotency visible rather than claimed.
+- **It verifies Docker's signing key by its published fingerprint** before
+  trusting Docker's repository.
+- **It stops at the first failure** (rule 7), with the step, what went wrong, and
+  what would have to be true; command output goes to a log only root can read,
+  and the last lines are shown when something fails.
+- **It ends by running `allvibe doctor`**, and fails if the doctor finds a
+  problem, so a finished installation is a checked one.

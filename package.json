@@ -1,0 +1,21 @@
+{
+  "name": "suite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The operational core of the suite: install.sh and the CLI it installs. Names in brand.conf.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"test/unit/*.test.mjs\"",
+    "bundle": "npm run build && node scripts/bundle.mjs",
+    "guard": "node scripts/guard.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}
