@@ -40,6 +40,8 @@ export interface Release {
   at: string;
   /** The backup taken just before this release, which a data rollback would restore. */
   backup: string | null;
+  /** The version prod ran when this one replaced it: what a rollback goes back to. */
+  from?: string | null;
 }
 
 export interface Project {
@@ -48,8 +50,10 @@ export interface Project {
   created: string;
   template: string;
   ports: { prod: number; dev: number; prodApp: number; devApp: number };
-  /** Every version prod has run, oldest first. The last is what runs now. */
+  /** Every version ever released to prod, oldest first. */
   releases: Release[];
+  /** The version prod runs now: the last release, or an earlier one after a rollback. */
+  current?: string;
 }
 
 /* ------------------------------------------------------------- names -- */
@@ -105,7 +109,28 @@ export function saveProject(project: Project): void {
   writeAtomic(projectFile(project.name), `${JSON.stringify(project, null, 2)}\n`, 0o640);
 }
 
-export const currentRelease = (project: Project): Release | null => project.releases.at(-1) ?? null;
+export const currentRelease = (project: Project): Release | null =>
+  (project.current ? project.releases.find((r) => r.version === project.current) : undefined) ?? project.releases.at(-1) ?? null;
+
+/**
+ * What a rollback goes back to: the version prod ran when the current one was
+ * released, which is also what the release's backup holds the data of. Not
+ * simply the one before it in the list: after a rollback and a new release,
+ * those differ. Releases recorded without it fall back to the list's order.
+ */
+export function previousRelease(project: Project): Release | null {
+  const current = currentRelease(project);
+  if (!current) return null;
+  if (current.from) return project.releases.find((r) => r.version === current.from) ?? null;
+  const at = project.releases.findIndex((r) => r.version === current.version);
+  return at > 0 ? project.releases[at - 1] : null;
+}
+
+/** The next version number: never reused, even after a rollback. */
+export function nextVersion(project: Project): string {
+  const highest = Math.max(0, ...project.releases.map((r) => Number(r.version.replace(/^v/, "")) || 0));
+  return `v${highest + 1}`;
+}
 
 /* ------------------------------------------------------------- ports -- */
 

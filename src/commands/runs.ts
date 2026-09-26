@@ -13,7 +13,7 @@ export function runs(args: string[]): number {
   for (const r of records) {
     const when = r.started.slice(0, 19).replace("T", " ");
     const what = `${r.kind}${r.project ? ` ${r.project}` : ""}${r.dryRun ? " (dry run)" : ""}`;
-    const result = r.ok ? "ok" : `FAILED at "${r.failedStep}": ${r.steps.at(-1)?.why ?? ""}`;
+    const result = r.ok ? "ok" : `FAILED at "${r.failedStep}": ${(r.steps.at(-1)?.why ?? "").split("\n")[0]}`;
     process.stdout.write(`${when} UTC  ${what.padEnd(34)} ${result}\n`);
   }
   return 0;

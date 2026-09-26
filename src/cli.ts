@@ -5,8 +5,10 @@
  */
 import { BRAND } from "./lib/brand.js";
 import { backupCommands } from "./commands/backup.js";
+import { dev } from "./commands/dev.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
 import { project } from "./commands/project.js";
+import { releaseCommands } from "./commands/release.js";
 import { runs } from "./commands/runs.js";
 import { scheduledBackup } from "./commands/scheduled.js";
 import { setup } from "./commands/setup.js";
@@ -20,6 +22,11 @@ const HELP = `${BRAND.product}: ${C} <command>
   project list                 every project, and whether its dev and prod are running
   project status <name>        one project in detail
   project remove <name>        says what would be deleted; --delete-everything deletes it
+  dev deploy <project>         rebuild dev from its working tree, and check it
+  dev commit <project> <msg>   commit dev's changes: a release is a commit
+  release <project>            dev's commit to prod, after a backup and a restore check
+  release <project> --dry-run  every check, and nothing changed
+  rollback <project>           prod back to its previous version, keeping its data
   backup-target set <dir>      where backups go: a directory on a separate disk
   backup-target show           where they go, and whether it is usable
   backup <project>             an encrypted backup of prod, now
@@ -42,6 +49,8 @@ const COMMANDS: Record<string, Handler> = {
   runs: (args) => runs(args),
   project: (args) => project(args),
   ...backupCommands,
+  ...releaseCommands,
+  dev: (args) => dev(args),
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);
     return 0;
@@ -49,6 +58,12 @@ const COMMANDS: Record<string, Handler> = {
   setup: () => setup(),
   "scheduled-backup": () => scheduledBackup(),
 };
+
+// Output piped into something that stops reading (`| head`) is not an error.
+process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EPIPE") process.exit(process.exitCode ?? 0);
+  throw error;
+});
 
 async function main(): Promise<number> {
   const [command, ...args] = process.argv.slice(2);

@@ -573,3 +573,77 @@ of prod and then a restore check of that very backup.
 nothing ran it (Vikt D103). A timer that install.sh enables is running from the
 first minute, and a record of every run, failed ones included, is the only way
 to know that it still is.
+
+## D25. A release is a commit that dev ran, behind a restorable backup
+
+*2026-09-27*
+
+`allvibe release <project>` runs these steps and stops at the first failure
+(rule 7):
+
+1. **Dev runs the commit being released, and answers its smoke check.** The
+   repository has nothing uncommitted, and the image dev runs was built from
+   exactly its HEAD. Otherwise dev's smoke check tested something other than
+   what is about to be released (CLAUDE.md, mistake 4).
+2. **The recovery key is confirmed** (D13): until it is, a backup cannot be
+   restored anywhere but on this machine, which is not what rule 2 asks for.
+3. **A fresh backup of prod**, on a target proven off the machine (D22), kept in
+   `releases/` and never pruned, because it is what a data rollback needs.
+4. **A restore check of that backup** (D23), in four steps.
+5. **Prod built from dev's commit**, from `git archive` of the commit, never from
+   the working tree, as `allvibe-<project>:v<N>`. Version numbers are never
+   reused, even after a rollback.
+6. **Prod deployed** on it, and 7. **prod answers its smoke check**.
+8. **The version tag** `v<N>` on the commit, and the release recorded with its
+   commit, its backup, and the version it replaced.
+
+**If step 6 or 7 fails, prod goes back automatically** to the version it ran
+before, keeping its data (D26), and the release is recorded as failed with
+the outcome of the rollback. A crash loop counts as a failure at once, not
+after a timeout, and the failure names the line the app printed about why.
+
+`--dry-run` runs every check and changes nothing: dev, the recovery key, the
+target, a restore check of the newest existing backup, the commit's Dockerfile,
+prod's current answer, and whether the tag is free. What it would change, it
+says it would.
+
+**Commands for dev.** `allvibe dev deploy` rebuilds dev from its working tree;
+`allvibe dev commit "<message>"` commits it. Both exist because a release is a
+commit and dev must run it; the agent that comes later will use the same two.
+
+## D26. Rollback keeps prod's data, and restoring data is a separate, confirmed choice
+
+*2026-09-27*
+
+`allvibe rollback <project>` goes back to **the version prod ran when the current
+one was released** (recorded with each release; not simply the one before it
+in the list, since after a rollback and a new release those differ). It changes
+**only the code**: prod's data stays as it is, so nothing written since the
+release is lost, and rule 8 has nothing to ask.
+
+If the older version cannot run on today's data (a migration in the newer one
+changed it in a way the old code cannot read), the rollback's smoke check
+fails, it stops, and it says so, naming the other way:
+
+- `allvibe rollback <project> --restore-data` also puts the data back, to the
+  backup taken just before the current version was released. Without
+  `--confirm-data-loss` it only says what would be lost: the time the data goes
+  back to, and prod's entry count now against the backup's. With it, it
+  **first takes a backup of prod as it is**, then replaces prod's database
+  (dropped and created empty, then restored, so nothing mixes), then deploys the
+  older version and checks it. Even a confirmed mistake is recoverable from that
+  first backup.
+
+**Why.** The common rollback is "the new code is wrong", and the data written
+since the release is real (people signed the guestbook). Throwing it away
+should never be the default and never happen silently (rule 8). A failed
+migration inside a transaction leaves the schema as it was, which is why the
+automatic rollback after a failed release keeps every entry.
+
+**Verified on the test host:** a change released and prod's entries intact; a
+release whose migration fails in prod (a unique constraint that prod's data
+breaks and dev's does not) rolled back automatically with all entries; a manual
+rollback; a release stopped at the backup step with the target unmounted, and
+prod, images, tags and records unchanged; and a confirmed data rollback, after
+which the entry written since the release was gone from prod and present in the
+backup taken first.

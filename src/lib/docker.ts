@@ -12,12 +12,13 @@ export interface ContainerState {
   health: string;
   image: string;
   startedAt: string;
+  restartCount: number;
   labels: Record<string, string>;
 }
 
 export function containerState(name: string): ContainerState {
   const result = tryDocker(["container", "inspect", name]);
-  if (result.code !== 0) return { exists: false, id: "", status: "absent", health: "none", image: "", startedAt: "", labels: {} };
+  if (result.code !== 0) return { exists: false, id: "", status: "absent", health: "none", image: "", startedAt: "", restartCount: 0, labels: {} };
   const [c] = JSON.parse(result.stdout);
   return {
     exists: true,
@@ -26,18 +27,25 @@ export function containerState(name: string): ContainerState {
     health: c.State?.Health?.Status ?? "none",
     image: c.Config?.Image ?? "",
     startedAt: c.State?.StartedAt ?? "",
+    restartCount: c.RestartCount ?? 0,
     labels: c.Config?.Labels ?? {},
   };
 }
 
-/** Wait until a container is running and, if it has a health check, healthy. */
+/**
+ * Wait until a container is running and, if it has a health check, healthy.
+ * Returns early on a container that has exited, is unhealthy, or has been
+ * restarted since the wait began: a crash loop is a failure, not a delay.
+ */
 export async function waitHealthy(name: string, timeoutMs = 120_000): Promise<ContainerState> {
   const deadline = Date.now() + timeoutMs;
   let state = containerState(name);
+  const restartsBefore = state.restartCount;
   while (Date.now() < deadline) {
     state = containerState(name);
     if (state.status === "running" && (state.health === "healthy" || state.health === "none")) return state;
-    if (state.status === "exited" || state.status === "dead" || state.health === "unhealthy") return state;
+    if (state.status === "exited" || state.status === "dead" || state.status === "restarting" || state.health === "unhealthy") return state;
+    if (state.restartCount > restartsBefore) return state;
     await sleep(1000);
   }
   return state;

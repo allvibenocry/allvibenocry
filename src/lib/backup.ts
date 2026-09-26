@@ -312,9 +312,15 @@ export async function restoreIntoScratch(project: Project, context: RestoreCheck
   const ready = await until(() => tryDocker(["exec", context.scratchDb, "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "app"]).code === 0, 90_000);
   if (!ready) throw new Error("the scratch database did not start within 90 s");
 
-  await new Promise<void>((resolve, reject) => {
-    const fd = openSync(context.decrypted, "r");
-    const restore = spawn("docker", ["exec", "-i", context.scratchDb, "pg_restore", "-U", "app", "-d", "app", "--no-owner", "--no-privileges", "--exit-on-error"], {
+  await pgRestore(context.scratchDb, context.decrypted);
+  return `restored into ${context.scratchDb} on the scratch network ${context.network}: ${publicTables(context.scratchDb)} tables`;
+}
+
+/** pg_restore inside a database container, from a decrypted dump, streamed. */
+function pgRestore(container: string, file: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const fd = openSync(file, "r");
+    const restore = spawn("docker", ["exec", "-i", container, "pg_restore", "-U", "app", "-d", "app", "--no-owner", "--no-privileges", "--exit-on-error"], {
       stdio: [fd, "pipe", "pipe"],
     });
     let said = "";
@@ -326,8 +332,23 @@ export async function restoreIntoScratch(project: Project, context: RestoreCheck
     });
     restore.on("error", reject);
   });
-  const tables = tryDocker(["exec", context.scratchDb, "psql", "-U", "app", "-d", "app", "-At", "-c", "select count(*) from information_schema.tables where table_schema = 'public'"]).stdout.trim();
-  return `restored into ${context.scratchDb} on the scratch network ${context.network}: ${tables} tables`;
+}
+
+const publicTables = (container: string) =>
+  tryDocker(["exec", container, "psql", "-U", "app", "-d", "app", "-At", "-c", "select count(*) from information_schema.tables where table_schema = 'public'"]).stdout.trim();
+
+/**
+ * Prod's database replaced by a decrypted backup: only for an explicit,
+ * confirmed data rollback (rule 8), after a backup of the current state. The
+ * database is dropped and created empty first, so nothing of the replaced
+ * data mixes with the restored.
+ */
+export async function replaceProdData(project: Project, context: RestoreCheckContext): Promise<string> {
+  const db = containerName(project.name, "prod", "db");
+  tryDocker(["stop", containerName(project.name, "prod", "app")]);
+  docker(["exec", db, "psql", "-U", "app", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "drop database app with (force)", "-c", "create database app owner app"]);
+  await pgRestore(db, context.decrypted);
+  return `prod's app stopped, its database emptied and restored from the backup: ${publicTables(db)} tables`;
 }
 
 /** The backed-up version of the app, against the restored copy, and its own health check. */
