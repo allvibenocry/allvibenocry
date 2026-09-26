@@ -265,3 +265,25 @@ that depends on one is listed under "To verify on real hardware" in STATE.md.
 **Why a container, not a VM.** The workstation already has Docker; a container
 is created and thrown away in seconds, so every test can start from a fresh
 host, and nothing else on the workstation has to change.
+
+#### Amendment, 2026-09-26 (item 3): what was found building it
+
+- **The gate is two files, not `systemd-detect-virt`.** Inside the test host on
+  Docker Desktop, `systemd-detect-virt --container` answers `wsl`, not `docker`,
+  because the kernel is WSL2's and systemd checks for WSL first. The overrides
+  are therefore honoured only when `/.dockerenv` exists **and**
+  `/run/systemd/container` (written by systemd from the `container` variable
+  Docker passes to it) says `docker`. Both are true in the test host on any
+  Docker, and neither on a real installation.
+- **Memory cannot be measured either.** The container reads the Docker VM's
+  memory, 4 GB on the owner's workstation, so the low-memory warning would fire
+  on every test host and `doctor` could never be green. So the harness
+  **declares** the hardware the test host stands for, as overrides written at
+  creation: `memory-mb=16384`, `system-disk=ssd` and
+  `external-backup-mount=/mnt/allvibe-backup`. A test forces a warning by
+  changing a declaration. That replaces the "force" overrides the table above
+  describes, and it tests both directions of each check, not only the warning.
+- **The test host's image is committed, not built.** A labelled container runs
+  the setup on the pinned Debian image and is committed as a labelled image, so
+  no build cache is left on the workstation; if the harness pulled the base
+  image, it removes that reference afterwards.
