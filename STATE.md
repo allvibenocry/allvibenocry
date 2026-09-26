@@ -12,8 +12,8 @@
 
 The first brief, nine items:
 
-1. Foundation. **Built** (this commit).
-2. Vikt inventory.
+1. Foundation. **Built** (a17ca48).
+2. Vikt inventory. **Built**: [docs/vikt-inventory.md](docs/vikt-inventory.md), and the mistakes section of CLAUDE.md.
 3. Local test host.
 4. Host bootstrap: `install.sh` and `allvibe doctor`.
 5. Projects: dev and prod stacks.
@@ -24,7 +24,7 @@ The first brief, nine items:
 
 ## Next
 
-Item 2.
+Item 3.
 
 ## To verify on real hardware
 

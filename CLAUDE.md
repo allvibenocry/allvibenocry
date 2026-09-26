@@ -108,4 +108,67 @@ secrets (D6).
 
 ## Mistakes we do not repeat
 
-Seeded from Vikt's history in item 2 of the first brief.
+Each of these happened, in Vikt or here, and cost something. The ones from Vikt
+name its decision ("Vikt D103" is Vikt's DECISIONS.md, not ours); the inventory
+is [docs/vikt-inventory.md](docs/vikt-inventory.md). Add to this list whenever
+something goes wrong for a reason that could happen again.
+
+1. **A schedule that is documented is not a schedule.** Vikt's nightly backup was
+   a cron line in a comment for two passes, so the only backups were the ones
+   somebody started by hand, and later the host turned out to have no copy of the
+   scripts at all (Vikt D103, D163). *Here:* install enables the timer, and
+   `doctor` reports whether it is active and what its last run did.
+2. **A backup that has never been restored is a hope.** A file of the right size
+   and a green job prove nothing until something has read it back (Vikt D96,
+   D168). *Here:* a restore check after every backup and before every release.
+3. **Built is not done.** Vikt documented a Dockerfile layer as done that had
+   never been built, and it failed the first time anything did (Vikt D103, the
+   `postgresql-client` layer). *Here:* rule 6, and reports that keep what was run
+   apart from what was only written.
+4. **A check that answers an adjacent question.** "The newest workflow run"
+   instead of "this tag's run", "CI for the branch tip" instead of "CI for the
+   commit being released", an authenticated pull instead of the anonymous one the
+   host would make: each passed while the real question failed (Vikt D183,
+   D160). *Here:* identify things by their exact identity, and ask the question
+   the real consumer will ask, the way it will ask it.
+5. **A test that cannot fail the way the real thing fails.** Eleven tests of a
+   network destination connected to an address that refused at TCP, so none
+   reached the authentication that was broken; and a green test once asserted
+   the very bug it guarded against (Vikt D132, D157). *Here:* before trusting a
+   check, make it fail once for the right reason.
+6. **A value that is not forwarded is silently absent.** A setting typed into a
+   panel that the compose file never passed on left features off while every
+   screen showed them configured (Vikt D147). *Here:* the suite generates both
+   the configuration and the file that consumes it, from one description.
+7. **The file that runs is not the file in the repository.** Vikt's production
+   stack was a hand-edited file that did not read the variable the runbook set,
+   so the runbook could not have worked (Vikt D156). *Here:* the suite writes
+   every file it deploys, and never edits one in place by hand.
+8. **An interrupted write leaves something that looks finished.** *Here:* write
+   to a temporary name and rename when complete, as Vikt's backup does (Vikt
+   D96), and flush before renaming.
+9. **Cleanup that deletes what it did not create.** Vikt's retention job recursed
+   and would have deleted the rollback dump of the running release (Vikt D159).
+   *Here:* delete only what this code made, where it made it, and never the
+   backup a rollback needs. On the workstation: only what carries the test
+   harness's label, and never a global prune.
+10. **A step that needs a password ends with the password in a transcript.** A
+    credential pasted into a session was burned and rotated, twice (Vikt D158).
+    *Here:* no step asks for one (rule 4).
+11. **A tag is somebody else's name for an image.** Two images vanished or
+    changed under unchanged tags in one week (Vikt D138). *Here:* every image is
+    pinned by index digest.
+12. **Prose and the thing that runs must not be the same text.** A regular
+    expression over a document read a sentence explaining when *not* to set a
+    variable as an instruction to set it (Vikt D193, D194). *Here:* inputs are
+    structured data, never scraped from documentation.
+13. **A working copy is not the committed file.** On Windows, CRLF working copies
+    differ from their LF blobs, and a script sent from one fails on Linux with
+    "bad interpreter" (Vikt D163). *Here:* `.gitattributes` keeps LF everywhere.
+14. **A client of another version fails only at restore time.** A `pg_dump` one
+    major version behind the server refuses to run (Vikt D96, D103). *Here:* dump
+    and restore through the database image of the right version.
+15. **A directory that looks right is not writable by the process that writes.**
+    Vikt's scheduled backup failed with `EACCES` because a mount's owner did not
+    match the app's uid (Vikt D168). *Here:* a backup target is tested by
+    writing to it as the real writer before it is accepted.
