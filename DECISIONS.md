@@ -785,3 +785,26 @@ Debian package works unchanged.
 
 **Revisit** when Debian's security support for `nodejs` in Debian 13 ends or
 becomes limited, or when the CLI needs something Node.js 20 does not have.
+
+## D33. The website's promises are planned here, or they come off the website
+
+*2026-09-27. The architect's review of the website.*
+
+The website's main page promised six things this repository did not have, not
+even as planned: a key vault, the control panel at `allvibe.local`, an installer
+on a USB stick, disk health warnings, a monthly check-up, and moving to a new
+computer. **All six stay, as Planned**, and are now entries in
+[docs/roadmap.md](docs/roadmap.md), each with its reason. The review added two
+more: **full disk encryption offered at install**, and **a decision about the
+control panel's runtime** before it is built.
+
+- `allvibe.local` names the machine, for the control panel, with its address as
+  the fallback. Projects keep one port per environment on the host's address,
+  as D18 and D30 decided.
+- The website may never claim more than this repository supports, at least as
+  Planned. Its main page says so in one line, and links to its technical page,
+  which shows what is built and what is planned.
+
+**Why.** A promise on the website that nobody has written down here is a promise
+nobody is working towards. Writing it down makes it either a plan or a
+correction.

@@ -89,6 +89,122 @@ rollback is reported as done. The plan:
 - **The project template gets a rule: within one release, migrations only add,
   never drop or rename.**
 
+## A key vault
+
+**Planned.** One of the website's promises, made a plan by the architect's
+review of the website (D33).
+
+API keys, such as the key for the AI service a user brings, are **stored
+encrypted on the machine and handed to apps at run time**: never in code, never
+in the repository, never pasted into a chat.
+
+**Why.** A key written into code ends up in git history, and from there on
+GitHub once the GitHub integration exists; the key check before push (CLAUDE.md)
+catches that mistake, and the vault is the place that makes it unnecessary.
+Handing a secret to an app at run time is how a project's database password
+already works (D21: a file mounted into the one container that needs it, never
+an environment variable). A vault extends that to the keys a user brings, and
+keeps dev from ever holding prod's (rule 1).
+
+## The control panel at allvibe.local
+
+**Planned.** One of the website's promises (D33).
+
+The control panel answers at **`allvibe.local`**, a name announced on the home
+network by multicast DNS (mDNS), with **the machine's address as the fallback**.
+The name is the machine's, not each project's: **projects keep one port per
+environment on the host's address**, as D18 and D30 decided, and the panel
+links to them.
+
+**Why.** A beginner needs one address to type, once; after that the panel's
+links take them everywhere (D30). mDNS needs no DNS server, router change or
+hosts file. D18 rejected `.local` names *for projects* because they do not
+resolve the same way on every device, and that is why the address stays as the
+fallback and why projects are not given such names.
+
+## An installer on a USB stick
+
+**Planned.** One of the website's promises (D33).
+
+**An installer image for a USB stick** that installs Debian 13 and the suite on
+an old computer.
+
+**Why.** Today a host starts as a Debian 13 installation with an SSH server,
+then `install.sh` run as root (docs/walkthrough.md): a terminal, which the
+thesis says a beginner must never need (CLAUDE.md, rule 5). An image that does
+both is the one step a beginner can take without one. It is also where full
+disk encryption can be offered (below), since that is decided when the system
+disk is set up.
+
+## Disk health warnings
+
+**Planned.** One of the website's promises (D33).
+
+**Warnings in plain language from the disk's own health data** (what the disk
+reports about its wear and its errors), in `allvibe doctor` and later in the
+panel: for example, that the disk is wearing out and should be replaced.
+
+**Why.** On an old computer the disk is the part most likely to fail, and a
+warning before it fails is worth more than a restore after. The backups (D22,
+D23) make a dead disk survivable; this makes it expected. `doctor` already
+speaks in plain language (D17).
+
+## A monthly check-up
+
+**Planned.** One of the website's promises (D33).
+
+Once a month, **updates are prepared in the test copy**, dev, **for the user to
+try**, and then **shipped through the gates like any other change**: a fresh
+backup, a restore check, the health check, and a rollback if it fails (D25).
+
+**Why.** Every image the suite uses is pinned by digest (D27), and a project's
+dependencies are locked, so nothing updates by itself, which is right: a tag is
+somebody else's name for an image (CLAUDE.md, mistake 11). But nothing updating
+means security fixes wait until something updates them on purpose. The same
+gates as any change make an update as safe as one.
+
+## Moving to a new computer
+
+**Planned.** One of the website's promises (D33).
+
+**Install on the new computer, point it at the backups, and restore the whole
+machine with the recovery key.**
+
+**Why.** D13 already says that restoring on a new machine needs the recovery key
+and nothing else, and every backup can be restore-checked (D23). What is missing
+is the move itself. Today a backup holds prod's database only (D23); moving a
+machine also needs each project's code, its releases and its settings, which
+this entry includes.
+
+## Full disk encryption, offered at install
+
+**Planned.** From the architect's review of the website (D33).
+
+**Encrypting the system disk, offered when the machine is installed.**
+
+**Why.** The host key that decrypts the backups sits on the same computer (D13),
+so a thief who takes the laptop and its backup disk together can read the
+backups. Disk encryption closes that: without it, a stolen computer is readable
+as it is. It belongs with the USB installer, since it is decided when the
+system disk is set up. To decide when it is built: how the machine unlocks at
+boot without somebody typing a passphrase, since it is meant to come back on its
+own after a power cut.
+
+## The control panel's runtime
+
+**Planned: a decision to make before the control panel is built.** From the
+architect's review of the website (D33).
+
+**Which Node.js the panel runs on.**
+
+**Why.** The CLI runs on Debian 13's own Node.js 20 (D15), and that is
+deliberate (D32): it listens on no port. On 2026-09-27 Debian's security tracker
+listed six 2026 CVEs still open for Node.js 20 in Debian 13, fixed only in newer
+Debian releases. That is acceptable for a command-line tool; it is not for a
+web server. The panel could, for example, run in a container on the official
+Node.js 24 image, pinned by digest like every image the suite uses (D27), and
+updated through the monthly check-up.
+
 ## Also planned, and recorded elsewhere
 
 These were named when their decisions were made, and are not repeated here:
