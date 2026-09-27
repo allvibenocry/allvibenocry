@@ -94,7 +94,7 @@ rollback is reported as done. The plan:
 **Planned.** One of the website's promises, made a plan by the architect's
 review of the website (D33).
 
-API keys, such as the key for the AI service a user brings, are **stored
+API keys, the keys an app needs for services outside the machine, are **stored
 encrypted on the machine and handed to apps at run time**: never in code, never
 in the repository, never pasted into a chat.
 
