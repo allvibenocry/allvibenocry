@@ -1,6 +1,8 @@
 # State
 
-*Updated 2026-09-27, at the end of the first brief. The report is
+*Updated 2026-09-27: the architect's review of the first brief is recorded
+(D29 to D32), and what is planned is in [docs/roadmap.md](docs/roadmap.md). The
+first brief's report is
 [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
 
 Everything below has been **built and run by the implementer on the local test
@@ -48,9 +50,12 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
 | 8. Walkthrough | Built and run end to end on a fresh test host. |
 | 9. Record | This file, DECISIONS.md, CLAUDE.md and the report. |
 
-**Waiting for:** the owner to try each item (rule 6), and the architect's review,
-in particular of D13 (the recovery key, a proposal) and D18 (how projects are
-reached).
+**Waiting for:** the owner to try each item (rule 6).
+
+**Reviewed by the architect:** D13, the recovery key, is accepted (D29); D18,
+how projects are reached, is accepted for version 1 (D30); D26, rollback and
+data, is accepted with a known gap (D31); and D15's use of Debian's Node.js 20
+is recorded as deliberate (D32). The review changes no code.
 
 ## Known
 
@@ -62,8 +67,13 @@ reached).
 
 ## Next
 
-The next brief. Candidates from this one: a lock between operations, pruning
-old release images and backups, the web UI calling this CLI, and the laptop.
+What is planned, and not built, is in **[docs/roadmap.md](docs/roadmap.md)**:
+off-site backups, the recovery key in the web UI, a lost recovery key, and
+rollback past a migration, all Planned.
+
+The next brief. Candidates from the first one: a lock between operations,
+pruning old release images and backups, the web UI calling this CLI, and the
+laptop.
 
 ## To verify on real hardware
 

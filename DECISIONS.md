@@ -694,3 +694,94 @@ Recorded so they are decisions, not surprises:
   (`runuser -u allvibe -- …`), then `allvibe dev deploy` and `dev commit`.
 - **Nothing is published to the internet**, and the proxy listens on IPv4 only
   (D18). Publishing, TLS and tunnels are later briefs.
+
+## D29. The architect accepts D13, with two follow-ups
+
+*2026-09-27. The architect's review of the first brief.*
+
+D13 was a proposal: every backup encrypted to a host key and a recovery key,
+the recovery key never printed, and confirmed before any release. **The
+architect has accepted it as it stands.** Nothing in D13 changes.
+
+Two follow-ups, for later briefs, are in [docs/roadmap.md](docs/roadmap.md),
+marked Planned:
+
+- **Keeping the recovery key once there is a web UI.** Today the owner copies a
+  file off the machine by hand (docs/walkthrough.md, step 6). A beginner will
+  instead get the key as a download and as a printable recovery sheet.
+- **A lost recovery key.** A new key for future backups, with a clear warning
+  that older backups open only with the old key. Today there is no way to
+  replace it: `ensureRecoveryKey` makes one key, once (`src/lib/keys.ts`).
+
+## D30. The architect accepts D18 for version 1
+
+*2026-09-27. The architect's review of the first brief.*
+
+D18, one port per environment on the host's address, with prod's front door
+refusing every range Docker hands out, **is accepted for version 1**. Nothing in
+D18 changes.
+
+**Beginners should never type a port.** The control panel will show links to
+each project's dev and prod, and names come with tunnels later. The port stays
+what it is today, an implementation detail that something else presents.
+
+## D31. The architect accepts D26, with a known gap in rollback
+
+*2026-09-27. The architect's review of the first brief.*
+
+D26, rollback keeps prod's data and restoring data needs `--restore-data
+--confirm-data-loss`, **is accepted**, with a gap that is now known and
+recorded.
+
+**The gap.** Rolling back past a release whose migration *succeeded* runs old
+code against a newer schema. Today `allvibe rollback` deploys the older version
+on prod's current data and asks its health check; if the old code answers, the
+rollback is reported as done (`codeRollbackSteps` in
+`src/commands/release.ts`), even though the database now has tables or columns
+that the old code was never written for. D26 already covers the two other
+cases: a migration that failed left the schema as it was, and old code that
+cannot read the data fails its smoke check, stops, and names `--restore-data`.
+
+**What closes it**, in a later brief, Planned in
+[docs/roadmap.md](docs/roadmap.md):
+
+- **Releases record their schema version**, alongside the commit and the
+  backup they already record.
+- **Rollback explains, and offers `--restore-data`, when the database is newer
+  than the version it goes back to**, instead of finding out only if a smoke
+  check happens to fail.
+- **A rule in the project template: within one release, migrations only add,
+  never drop or rename**, so that the version before can still run on the
+  schema after.
+
+## D32. D15's Node.js 20 is a deliberate choice
+
+*2026-09-27. Makes the reasoning of D15 explicit, at the architect's request;
+D15 stays as it was written.*
+
+**Upstream support for Node.js 20 ended on 2026-04-30** (the Node.js release
+schedule). The CLI runs on Debian 13's own `nodejs` package, 20.19.2, and that
+is deliberate: **Debian keeps patching its package for Debian 13's lifetime**,
+through the same unattended security updates as the rest of the machine (D15).
+The version number is upstream's; the maintenance is Debian's.
+
+**What was checked, on 2026-09-27**, so this rests on more than the premise:
+
+- Debian's security tracker lists `20.19.2+dfsg-1+deb13u3` in trixie-security,
+  with fixes for 2026 CVEs backported into it.
+- The same page lists six 2026 CVEs as still open for trixie, fixed in forky and
+  sid, which carry Node.js 24. **Debian's patches reach trixie when its security
+  team backports them, not when upstream releases a fix.**
+- Debian 13's release notes, section 5.2.3, name the packages whose security
+  support is limited: browser engines, and Go and Rust packages. Node.js is not
+  among them.
+
+**Why that is enough here.** The host's Node.js runs only this CLI, which uses
+Node's standard library alone (D15), opens no network port, and is started by
+the owner or by the backup timer as the service user. The apps themselves run
+in their own containers on Node.js 24 (D19, D27), which is not the host's.
+install.sh requires Node.js 20 or later rather than exactly 20, so a newer
+Debian package works unchanged.
+
+**Revisit** when Debian's security support for `nodejs` in Debian 13 ends or
+becomes limited, or when the CLI needs something Node.js 20 does not have.
