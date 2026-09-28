@@ -24,4 +24,13 @@ if [ "${AGENT_SIGN_IN:-key}" = key ] && [ -r /run/secrets/ANTHROPIC_API_KEY ]; t
 '
 fi
 printf '{\n%s  "permissions": { "defaultMode": "auto" },\n  "disableClaudeAiConnectors": true\n}\n' "$helper" > "$HOME/.claude/settings.json"
+# Its conversations, kept after it stops (D60): Claude Code writes a session's
+# transcript under ~/.claude/projects/<the working directory>, which for
+# /workspace is -workspace; that one directory is a link to the one narrow
+# mount made for it. Everything else in its home, its login included, stays in
+# memory.
+if [ -d /agent-transcripts ]; then
+  mkdir -p "$HOME/.claude/projects"
+  ln -sfn /agent-transcripts "$HOME/.claude/projects/-workspace"
+fi
 exec "$@"

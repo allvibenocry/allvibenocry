@@ -14,10 +14,13 @@
 # two hosts of the account's sign-in, while every other host Claude Code's
 # documentation lists stays refused. Its settings: auto mode, set explicitly,
 # and the key helper only with a key. Its home, where a login lives: in memory,
-# with no mount or volume. From inside the gate: the same machine's ports,
-# router, device and link-local address refused, and the model's API reached.
-# What must keep working: the agent reaches its dev app, its dev database and
-# the gate. Values are compared by hash and never printed. Every line ends with
+# with no mount or volume. Its mounts: its working copy, the directory its
+# conversations are kept in (D60) and, with a key, its key; its activity log
+# not among them. From inside the gate: the same machine's ports, router,
+# device and link-local address refused, and the model's API reached. From
+# inside the activity logger: all of those refused, the model's API too, and
+# prod. What must keep working: the agent reaches its dev app, its dev
+# database, the gate and the activity logger. Values are compared by hash and never printed. Every line ends with
 # the verdict; the last line counts the ones that are not as they must be.
 set -u
 C=${1:?usage: agent-isolation.sh <command> <project> <prod value file> <dev value file> [agent value file] [device address] [device port]}
@@ -30,6 +33,7 @@ DEVICE_PORT=${7:-8080}
 OTHER_PORT=${OTHER_PORT:-9999}
 A=$C-$P-agent
 G=$C-$P-agent-egress
+L=$C-$P-agent-activity
 API=api.anthropic.com
 # The hosts each way of signing in lets through (src/lib/agent.ts, ALLOWED_HOSTS).
 SIGN_IN_HOSTS="claude.ai platform.claude.com"
@@ -124,10 +128,16 @@ verdict "a way of signing in taken away, in its settings" "$(in_settings 'forceL
 verdict "its home, /home/agent, in memory (tmpfs)" "$(docker exec "$A" awk '$2 == "/home/agent" && $3 == "tmpfs" { print "present" }' /proc/mounts)" reached
 verdict "a mount or volume for its home" "$(docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$A" | tr ' ' '\n' | grep -c '^/home' || true)" blocked
 verdict "swap it may use, where memory would be written out" "$(docker exec "$A" cat /sys/fs/cgroup/memory.swap.max)" blocked
+verdict "its activity log, /log" "$(file /log)" blocked
+v_mounts=$(docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$A" | tr ' ' '
+' | grep -v -x -e /workspace -e /agent-transcripts -e /run/secrets/ANTHROPIC_API_KEY -e '' | tr '
+' ' ')
+verdict "a mount but its working copy, conversations, key" "${v_mounts:-none}" blocked
 verdict "a volume of its own" "$(docker inspect -f '{{range .Mounts}}{{.Type}} {{end}}' "$A" | tr ' ' '\n' | grep -c '^volume$' || true)" blocked
 verdict "its dev app, $C-$P-dev-app:3000" "$(http "$A" "$C-$P-dev-app" 3000 /healthz)" reached
 verdict "its dev database, $C-$P-dev-db:5432" "$(tcp "$A" "$C-$P-dev-db" 5432)" reached
 verdict "the gate, $G:3128" "$(tcp "$A" "$G" 3128)" reached
+verdict "its activity logger, $L:3129" "$(tcp "$A" "$L" 3129)" reached
 
 echo "from inside the egress gate, $G:"
 verdict "this machine's SSH, by its address" "$(tcp "$G" "$lan" 22)" blocked
@@ -140,6 +150,25 @@ verdict "the router, $router:80" "$(tcp "$G" "$router" 80)" blocked
 verdict "a device on the home network, $DEVICE:$DEVICE_PORT" "$(tcp "$G" "$DEVICE" "$DEVICE_PORT")" blocked
 verdict "link-local, 169.254.169.254:80" "$(tcp "$G" 169.254.169.254 80)" blocked
 verdict "$API, its one way out, over TLS" "$(api_over_tls "$G")" reached
+
+echo "from inside the activity logger, $L:"
+verdict "this machine's SSH, by its address" "$(tcp "$L" "$lan" 22)" blocked
+for gw in $(gateways "$L"); do
+  verdict "this machine's SSH, by the gateway $gw" "$(tcp "$L" "$gw" 22)" blocked
+  verdict "prod's door, by the gateway, $prod_port" "$(tcp "$L" "$gw" "$prod_port")" blocked
+done
+verdict "the router, $router:80" "$(tcp "$L" "$router" 80)" blocked
+verdict "a device on the home network, $DEVICE:$DEVICE_PORT" "$(tcp "$L" "$DEVICE" "$DEVICE_PORT")" blocked
+verdict "link-local, 169.254.169.254:80" "$(tcp "$L" 169.254.169.254 80)" blocked
+verdict "$API, over TLS" "$(api_over_tls "$L")" blocked
+verdict "resolve $C-$P-prod-db" "$(resolve "$L" "$C-$P-prod-db")" blocked
+verdict "prod's database by address, 5432" "$(tcp "$L" "$prod_db_ip" 5432)" blocked
+verdict "the Docker socket" "$(docker exec "$L" sh -c '[ -e /var/run/docker.sock ] && echo present || echo absent')" blocked
+v_mounts=$(docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$L" | tr ' ' '
+' | grep -v -x -e /log -e /activity.mjs -e /usr/local/bin/gitleaks -e '' | tr '
+' ' ')
+verdict "a mount but the log, its script, the scanner" "${v_mounts:-none}" blocked
+docker inspect -f '  user {{.Config.User}}; privileged {{.HostConfig.Privileged}}; read-only root {{.HostConfig.ReadonlyRootfs}}; capabilities dropped {{.HostConfig.CapDrop}}; networks {{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$L"
 
 echo "what docker inspect says of the agent:"
 docker inspect -f '  user {{.Config.User}}; privileged {{.HostConfig.Privileged}}; read-only root {{.HostConfig.ReadonlyRootfs}}; capabilities dropped {{.HostConfig.CapDrop}}; memory {{.HostConfig.Memory}}, with swap {{.HostConfig.MemorySwap}}; pids {{.HostConfig.PidsLimit}}' "$A"

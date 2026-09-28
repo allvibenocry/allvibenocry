@@ -1,7 +1,9 @@
 #!/bin/sh
-# What a session of the agent leaves on this machine (D46): nothing on disk
-# while it runs, and nothing at all once it is stopped. Run on the host, as
-# root, with the agent running; it stops the agent itself.
+# What a session of the agent leaves on this machine (D46, D60): nothing on
+# disk while it runs, and nothing once it is stopped, but what it keeps on
+# purpose: its conversations' transcripts and its activity log, which must hold
+# neither marker. Run on the host, as root, with the agent running, after
+# agent-activity.sh has given it a session; it stops the agent itself.
 #
 #   sh agent-leftovers.sh <command> <project>
 #
@@ -17,13 +19,15 @@
 #     disk before it is trusted to find nothing.
 #
 # Then: both markers inside the agent; neither on this machine's disk while it
-# runs; `<command> agent stop`; and neither anywhere after: every file on the
-# machine (all but /proc, /sys and /dev), its journal, and Docker's containers
-# and volumes. The last line counts what is not as it must be.
+# runs, the transcripts and the log among it; `<command> agent stop`; neither
+# anywhere after: every file on the machine (all but /proc, /sys and /dev), its
+# journal, and Docker's containers and volumes; and the transcripts and the
+# log still there. The last line counts what is not as it must be.
 set -u
 C=${1:?usage: agent-leftovers.sh <command> <project>}
 P=${2:?project}
 A=$C-$P-agent
+DATA=/var/lib/$C/projects/$P/agent
 total=0
 wrong=0
 
@@ -69,12 +73,19 @@ verdict "the control, once removed" "$(on_disk "$mem/control")" blocked
 verdict "the login or typed marker, on this machine's disk" "$(on_disk "$mem/session")" blocked
 verdict "either, in the agent's log" "$(docker logs "$A" 2>&1 | grep -cF -f "$mem/session")" blocked
 verdict "either, in the gate's log" "$(docker logs "$A-egress" 2>&1 | grep -cF -f "$mem/session")" blocked
+verdict "either, in the activity logger's own log" "$(docker logs "$A-activity" 2>&1 | grep -cF -f "$mem/session")" blocked
+verdict "either, in its kept transcripts and activity log" "$(grep -rlsF -f "$mem/session" "$DATA" | wc -l)" blocked
+transcripts_before=$(find "$DATA/transcripts" -name '*.jsonl' | wc -l)
+log_before=$(wc -l < "$DATA/log/activity.jsonl")
 
 echo "$C agent stop $P:"
 "$C" agent stop "$P" 2>&1 | sed 's/^/  | /'
 echo "after it:"
 verdict "the agent's container" "$(docker ps -aq --filter "name=^$A\$" | wc -l)" blocked
 verdict "the gate's container" "$(docker ps -aq --filter "name=^$A-egress\$" | wc -l)" blocked
+verdict "the activity logger's container" "$(docker ps -aq --filter "name=^$A-activity\$" | wc -l)" blocked
+verdict "its transcripts, all kept ($transcripts_before before)" "$([ "$(find "$DATA/transcripts" -name '*.jsonl' | wc -l)" -eq "$transcripts_before" ] && echo "$transcripts_before" || echo changed)" reached
+verdict "its activity log, all kept ($log_before lines before)" "$([ "$(wc -l < "$DATA/log/activity.jsonl")" -eq "$log_before" ] && echo "$log_before" || echo changed)" reached
 verdict "new Docker volumes" "$(($(docker volume ls -q | wc -l) - volumes_before))" blocked
 verdict "the login or typed marker, anywhere on this machine" "$(on_disk "$mem/session")" blocked
 verdict "either, in the journal" "$(journalctl --no-pager -o cat 2>/dev/null | grep -cF -f "$mem/session")" blocked

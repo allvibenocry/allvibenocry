@@ -1655,6 +1655,17 @@ The open question about Anthropic's Commercial Terms is now a gate for releasing
 the product to other people, not a stop for developing it (D52). The owner has
 tried this mode: walkthrough step 23 worked as written (2026-09-28).
 
+#### Amendment, 2026-09-29 (D60)
+
+The agent's conversations are now kept on the machine: Claude Code's own
+transcripts, through a mount of only the directory it writes them to, so what
+the person types to Claude Code and what it answers stays on disk until
+deleted, and is in no backup. Point 3 holds: the login stays in memory, and the
+leftovers probe finds no stand-in login in the kept files. Point 4 holds for the
+terminal itself: what is typed into the shell outside Claude Code is still not
+recorded. Every tool call is also logged, one line each, outside the agent's
+reach.
+
 ## D47. The agent's permission mode is auto, set explicitly
 
 *2026-09-28. The fourth brief, item 1. The architect's decision.*
@@ -2038,3 +2049,111 @@ battery, low battery and no battery through stand-ins, and, without the
 override, the kernel's own, which has no battery there. Against the previous
 bundle, 1 of 12. **Not verified on a real laptop**: see STATE.md, "To verify
 on real hardware".
+
+## D60. The agent's activity log, and its conversations kept
+
+*2026-09-29. The fifth brief, item 11. An amendment to D46, recorded here in
+full with a note under D46.*
+
+**What.** Two things the agent leaves on the machine on purpose, in
+`/var/lib/allvibe/projects/<project>/agent/`, outside the working copy, the
+service user's alone (mode 0700):
+
+1. **The activity log**, `log/activity.jsonl`: one line per tool call, with
+   the time, the session, the tool, its target and whether it failed. The
+   target is the file's path (Read, Write, Edit, MultiEdit, NotebookEdit), the
+   pattern and where (Glob, Grep), the address (WebFetch), the query
+   (WebSearch), the task's description (Task, Agent), or a command's first
+   line (Bash), with "(and N more lines, not logged)" when it has more, since
+   the rest of a heredoc is a file's content. Never a file's content, never a
+   tool's output, at most 300 characters. `allvibe agent activity <project>
+   [--lines N]` shows it.
+2. **Its conversations**: Claude Code's own transcripts of each session, one
+   JSONL file per session, and whatever else Claude Code keeps per project
+   there (its memory directory). `allvibe agent transcripts <project>` lists
+   them; `--delete` deletes them all.
+
+**How the log is written.** Claude Code's managed settings, baked into the
+agent's image at `/etc/claude-code/managed-settings.json`, owned by root and
+read-only to the agent, set two hooks, PostToolUse and PostToolUseFailure, on
+every tool. The hook sends its line over HTTP to a small logger beside the
+agent (`<command>-<project>-agent-activity`): on dev's internal network only,
+as the service user, read-only, with no capabilities, and with the log's
+directory mounted into it and into nothing else. So the agent can add lines
+and do nothing else to them: the log is not in its container. The logger:
+
+- takes lines only from the agent's own address, as `POST /log`, at most 4 kB,
+  in the hook's shape; anything else is refused (403 or 400);
+- runs the key check's pinned scanner (gitleaks, D38) over each target and
+  writes "(held something that looks like a key or a password: not logged)"
+  instead when it finds one, or when the scanner cannot run: it fails closed;
+- writes one line per tool call: Claude Code calls both hooks for some failed
+  calls, so a call's events are gathered by its id for a moment and written
+  once, as failed if either says so.
+
+The hook never blocks the agent: if the logger does not answer within three
+seconds, the line is lost and the agent carries on.
+
+**Turning it off is not the agent's to do.** Claude Code does not let user or
+project settings turn off hooks set in managed settings. Seen on the test host:
+with `"disableAllHooks": true` in the agent's own settings and in its
+project's (`.claude/settings.json` and `.claude/settings.local.json`), a hook of
+its own stops running, and the log's hook still writes every line. Before
+that, as a control, the same hook of its own is seen running, so the settings
+are known to be read.
+
+**How the conversations are kept, and the login is not.** The agent's home
+stays in memory (D46). One directory is mounted from the machine, the one
+Claude Code writes its transcripts to, and nothing else from the home: the
+project's transcripts directory at `/agent-transcripts`, linked by the
+entrypoint to `~/.claude/projects/-workspace`. The login
+(`~/.claude/.credentials.json`) and the settings stay in memory, and go when
+the agent stops.
+
+**Not in backups.** Neither the transcripts nor the log is in a backup.
+Backups carry what is needed to bring the apps back: prod's data and the key
+vault (D13, D37). A conversation can hold anything the person typed to the
+agent or the agent read, including something secret, and a backup goes to the
+backup target and is kept for a long time. Losing the machine loses the
+conversations, which is the lesser harm. The session review (D54) may ask for
+this again; it would be a new decision.
+
+**Deleting them.** `allvibe agent transcripts <project> --delete` deletes
+every conversation, and refuses while the agent runs, since it may be writing
+one; the log is kept. `allvibe project remove` deletes both, and says so
+before it does. The log is not rotated yet: at about 150 bytes a line, ten
+thousand tool calls are 1.5 MB.
+
+**Known limits.**
+
+- **What the agent reads or is told is in its transcript.** If the person
+  pastes a key into the conversation, or the agent prints a file holding one,
+  the transcript keeps it, on this machine, until it is deleted. The log is
+  scanned; the transcripts are not, since they are Claude Code's own files.
+- **The agent can add lines of its own making.** It cannot change or delete
+  one, but a line the agent sent itself looks like one its hook sent.
+- **If the logger is down, lines are lost**, and the agent does not stop.
+  `agent start` starts it, and `agent stop` stops it last, gently, so it
+  writes what it is still gathering.
+- **The log records tool calls, not the model's words**: those are in the
+  transcript.
+
+**Verified (built, not tried by a person).** Unit tests for the hook's line,
+the logger's checks and the gathering. On the test host, a real session of
+the pinned Claude Code, run against a stand-in for the model's API
+(`test/host/stub-api.mjs`, which asks for four tool calls and never needs a
+model, a key or an account), in both ways of signing in
+(`test/host/agent-activity.sh`, 29 of 29 in each): one line per call, the
+written file's path without its content, a fake key withheld, a failed call
+once and as failed, a line from dev's app refused, a line the agent sent
+itself with a fake key withheld, the log absent from the agent, the managed
+settings read-only to it, the hooks off in its own and its project's settings
+with the log still written, a transcript kept for each session, deleting them
+refused while it runs, and neither a stand-in login nor a stand-in key nor the
+vault's values in the log or the transcripts. The isolation probe, extended to
+the logger and to the agent's mounts, 89 of 89 with a key and 88 of 88 with an
+account; the leftovers probe, extended to the kept files, 17 of 17 in both;
+the vault check finds no value in them. Against the previous bundle the new
+probe fails, 11 of 22 as they must be (the probe then had 22 checks).
+**Not verified**: a session with a real model, in either way of signing in:
+that is the owner's to try.

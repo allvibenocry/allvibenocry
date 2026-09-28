@@ -25,10 +25,11 @@ test("one network, dev's; one working copy; the key as one read-only file", () =
   assert.deepEqual(values("--network"), ["allvibe-recipes-dev-internal"]);
   assert.deepEqual(values("-v"), [
     "/var/lib/allvibe/projects/recipes/repo:/workspace",
+    "/var/lib/allvibe/projects/recipes/agent/transcripts:/agent-transcripts",
     "/run/allvibe/keys/recipes/agent/ANTHROPIC_API_KEY:/run/secrets/ANTHROPIC_API_KEY:ro",
   ]);
   const withoutKey = agentRunArgs({ project: "recipes", image: "i", uid: 998, gid: 997, keyFile: null });
-  assert.equal(withoutKey.filter((a) => a === "-v").length, 1, "no key, no key mount");
+  assert.equal(withoutKey.filter((a) => a === "-v").length, 2, "no key, no key mount");
 });
 
 test("not root, no capabilities, read-only, limited, never restarted by itself", () => {
@@ -82,7 +83,7 @@ const account = agentRunArgs({ project: "recipes", image: "i", uid: 998, gid: 99
 const valuesOf = (list, flag) => list.flatMap((a, i) => (list[i - 1] === flag ? [a] : []));
 
 test("with an account: no key file, the working copy only, and it says how it signs in", () => {
-  assert.deepEqual(valuesOf(account, "-v"), ["/var/lib/allvibe/projects/recipes/repo:/workspace"]);
+  assert.deepEqual(valuesOf(account, "-v"), ["/var/lib/allvibe/projects/recipes/repo:/workspace", "/var/lib/allvibe/projects/recipes/agent/transcripts:/agent-transcripts"]);
   assert.ok(!account.join(" ").includes(AGENT_KEY), "nothing of the key");
   assert.ok(valuesOf(account, "-e").includes("AGENT_SIGN_IN=account"));
   assert.ok(valuesOf(account, "--label").includes("allvibe.sign-in=account"));

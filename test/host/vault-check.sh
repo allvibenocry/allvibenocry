@@ -36,6 +36,7 @@ check() { # $1 label, $2 value file, $3 scope
   echo "  the repository's working tree:        $(grep -a -r -F -l -f "$f" "$REPO" 2>/dev/null | wc -l)"
   echo "  the vault's files on disk:            $(grep -a -r -F -l -f "$f" "$VAULT" 2>/dev/null | wc -l)"
   echo "  the backup target:                    $(grep -a -r -F -l -f "$f" "$TARGET" 2>/dev/null | wc -l)"
+  echo "  the agent's activity log, transcripts: $(grep -a -r -F -l -f "$f" "$STATE/projects/$P/agent" 2>/dev/null | wc -l)"
   echo "  in memory, for the app (should be 1): $(grep -a -r -F -l -f "$f" /run/$C/keys/$P/$3 2>/dev/null | wc -l)"
 }
 

@@ -180,7 +180,10 @@ own after a power cut.
 from the key vault, in the agent container. **Built** (the fourth brief, D46 to
 D48): the same Claude Code signed in to the person's own Claude account,
 through Claude Code's own sign-in, with the login in the agent's memory only;
-built and run on the test host, the sign-in itself not yet tried. **Still
+built and run on the test host, and the sign-in tried by the owner
+(2026-09-28). **Built** (the fifth brief, D60): the agent's activity log, one
+line per tool call, and its conversations kept on the machine, not in backups;
+built and run on the test host with a stand-in for the model. **Still
 planned**: everything else below.
 
 **The coding agent in dev is an official, unmodified vendor tool**, installed
@@ -459,7 +462,8 @@ spam.
 
 ## A session review
 
-**Planned** (D54). In advanced mode.
+**Planned** (D54). In advanced mode. What it reads now exists: the agent's
+activity log and its kept conversations (D60).
 
 **A timeline that weaves together** what the person asked, the plan, the agent's
 tool calls, the commits with their diffs, the checks, the person's

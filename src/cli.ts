@@ -32,6 +32,8 @@ const HELP = `${BRAND.product}: ${C} <command>
   agent start <project> --sign-in account   the same, for you to sign in to your own Claude account in it
   agent shell <project>        its own session, in this terminal; -- <command> runs a command instead
   agent stop <project>         the agent gone
+  agent activity <project>     what the agent did: one line per tool call
+  agent transcripts <project>  its kept conversations; --delete deletes them
   plan <project>               the plan dev runs, and where each step stands
   plan tried <project> <step>  you tried this step in dev, and it works (only you can mark it)
   release <project>            dev's commit to prod, after a backup and a restore check; every step of its plan tried

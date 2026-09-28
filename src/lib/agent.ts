@@ -16,11 +16,12 @@
  *   a read-only root filesystem and limits on memory, CPU and processes.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { posix as path } from "node:path";
 import { INSTALL_ROOT, NAMES } from "./brand.js";
 import { containerState, docker, tryDocker, type ContainerState } from "./docker.js";
-import { networkName, containerName, repoDir } from "./project.js";
+import { scannerPath } from "./keycheck.js";
+import { networkName, containerName, projectDir, repoDir } from "./project.js";
 import { keyNames, runtimeFile, secretPath, unlockScope } from "./vault.js";
 
 const C = NAMES.command;
@@ -62,16 +63,29 @@ export const AGENT_KEY = "ANTHROPIC_API_KEY";
 /** The egress gate runs on the same pinned Node image as the template (D27). */
 export const EGRESS_IMAGE = "node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1";
 export const EGRESS_PORT = 3128;
+/** The activity logger beside the agent (D60). */
+export const ACTIVITY_PORT = 3129;
 
 export const agentContainer = (project: string) => `${C}-${project}-agent`;
 export const egressContainer = (project: string) => `${C}-${project}-agent-egress`;
 export const egressNetwork = (project: string) => `${C}-${project}-agent-egress`;
+export const activityContainer = (project: string) => `${C}-${project}-agent-activity`;
+/**
+ * What the agent leaves on the machine on purpose (D60), outside the working
+ * copy: its conversations' transcripts and its activity log. Only the service
+ * user can read them. Not in the backups; `agent transcripts --delete`
+ * deletes the transcripts, and `project remove` deletes both.
+ */
+export const agentDataDir = (project: string) => path.join(projectDir(project).split("\\").join("/"), "agent");
+export const transcriptsDir = (project: string) => path.join(agentDataDir(project), "transcripts");
+export const activityDir = (project: string) => path.join(agentDataDir(project), "log");
+export const activityLog = (project: string) => path.join(activityDir(project), "activity.jsonl");
 const agentDir = () => path.join(INSTALL_ROOT.split("\\").join("/"), "agent");
 
 /** The files the image is built from: they, the version and the uid name it, so a change is a new image. */
 export function agentImageTag(uid: number, gid: number, dir = agentDir()): string {
   const hash = createHash("sha256");
-  for (const file of ["Dockerfile", "entrypoint.sh", "package.json", "package-lock.json"]) hash.update(readFileSync(path.join(dir, file)));
+  for (const file of ["Dockerfile", "entrypoint.sh", "package.json", "package-lock.json", "activity-hook.mjs", "managed-settings.json"]) hash.update(readFileSync(path.join(dir, file)));
   hash.update(`${uid}:${gid}`);
   return `${C}-agent:${CLAUDE_CODE_VERSION}-${hash.digest("hex").slice(0, 12)}`;
 }
@@ -117,12 +131,17 @@ export function agentRunArgs(o: AgentRunOptions): string[] {
     "--memory", "2g", "--memory-swap", "2g", "--cpus", "2", "--pids-limit", "512",
     "--restart", "no",
     "-v", `${repoDir(o.project)}:/workspace`,
+    // Only the directory Claude Code writes its transcripts to, never its
+    // login or settings (D60); the entrypoint links it into the home.
+    "-v", `${transcriptsDir(o.project)}:/agent-transcripts`,
     ...(o.keyFile ? ["-v", `${o.keyFile}:${secretPath(AGENT_KEY)}:ro`] : []),
     "-w", "/workspace",
     "-e", `AGENT_SIGN_IN=${signIn}`,
+    "-e", `AGENT_ACTIVITY_URL=http://${activityContainer(o.project)}:${ACTIVITY_PORT}/log`,
     "-e", `HTTPS_PROXY=${proxy}`, "-e", `https_proxy=${proxy}`,
     "-e", `HTTP_PROXY=${proxy}`, "-e", `http_proxy=${proxy}`,
-    "-e", `NO_PROXY=${devApp},${devDb},localhost,127.0.0.1`, "-e", `no_proxy=${devApp},${devDb},localhost,127.0.0.1`,
+    "-e", `NO_PROXY=${devApp},${devDb},${activityContainer(o.project)},localhost,127.0.0.1`,
+    "-e", `no_proxy=${devApp},${devDb},${activityContainer(o.project)},localhost,127.0.0.1`,
     "-e", "GIT_AUTHOR_NAME=Claude Code (agent)", "-e", "GIT_AUTHOR_EMAIL=agent@localhost",
     "-e", "GIT_COMMITTER_NAME=Claude Code (agent)", "-e", "GIT_COMMITTER_EMAIL=agent@localhost",
     o.image,
@@ -143,6 +162,28 @@ export function egressRunArgs(project: string, script: string, signIn: SignIn = 
     "-e", `ALLOW=${ALLOWED_HOSTS[signIn].join(",")}`,
     "-v", `${script}:/egress.mjs:ro`,
     EGRESS_IMAGE, "node", "/egress.mjs",
+  ];
+}
+
+/**
+ * The activity logger's `docker run` arguments (D60): on dev's internal
+ * network only, as the service user, so that it can write the log, which is
+ * mounted into it and into nothing else; the key check's scanner read-only.
+ */
+export function activityRunArgs(project: string, script: string, uid: number, gid: number, scanner: string): string[] {
+  return [
+    "run", "-d",
+    "--name", activityContainer(project),
+    "--label", `${C}.project=${project}`, "--label", `${C}.env=dev`, "--label", `${C}.role=agent-activity`,
+    "--network", networkName(project, "dev", "internal"),
+    "--user", `${uid}:${gid}`,
+    "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+    "--memory", "64m", "--pids-limit", "64", "--restart", "no",
+    "-e", `AGENT_HOST=${agentContainer(project)}`,
+    "-v", `${script}:/activity.mjs:ro`,
+    "-v", `${scanner}:/usr/local/bin/gitleaks:ro`,
+    "-v", `${activityDir(project)}:/log`,
+    EGRESS_IMAGE, "node", "/activity.mjs",
   ];
 }
 
@@ -186,6 +227,19 @@ export function ensureEgress(project: string, signIn: SignIn = "key"): string {
   return `${egressContainer(project)} started: ${hosts}`;
 }
 
+/** The agent's transcripts and activity log directories, only the service user's (D60). */
+export function ensureAgentData(project: string): void {
+  for (const dir of [transcriptsDir(project), activityDir(project)]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+/** The activity logger, started afresh beside the agent. */
+export function ensureActivity(project: string): string {
+  ensureAgentData(project);
+  tryDocker(["rm", "-f", activityContainer(project)]);
+  docker(activityRunArgs(project, path.join(agentDir(), "activity.mjs"), process.getuid?.() ?? 0, process.getgid?.() ?? 0, scannerPath()));
+  return `${activityContainer(project)} started: one line per tool call, to ${activityLog(project)}`;
+}
+
 /**
  * The agent container, started afresh: with a key, the key from the vault;
  * with an account, nothing from the vault at all, for the person signs in
@@ -204,8 +258,10 @@ export function startAgent(project: string, image: string, signIn: SignIn = "key
 /** The agent and its egress gate gone; images are kept. Returns what was removed. */
 export function stopAgent(project: string): string[] {
   const removed: string[] = [];
-  for (const name of [agentContainer(project), egressContainer(project)]) {
+  for (const name of [agentContainer(project), egressContainer(project), activityContainer(project)]) {
     if (!containerState(name).exists) continue;
+    // The activity logger writes what it is still gathering when it is stopped (D60).
+    if (name === activityContainer(project)) tryDocker(["stop", "--time", "5", name]);
     docker(["rm", "-f", name]);
     removed.push(name);
   }

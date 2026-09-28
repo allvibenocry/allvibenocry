@@ -22,6 +22,12 @@ RUN npm ci --no-audit --no-fund && npm cache clean --force \
 COPY --from=scanner /usr/bin/gitleaks /usr/local/bin/gitleaks
 COPY entrypoint.sh /usr/local/bin/agent-entrypoint
 
+# The activity log's hook (D60), in Claude Code's managed settings, which no
+# user or project setting can turn off, so the agent cannot switch it off by
+# editing its project's .claude/settings.json.
+COPY activity-hook.mjs /usr/local/lib/agent/activity-hook.mjs
+COPY managed-settings.json /etc/claude-code/managed-settings.json
+
 # The user the agent runs as is the service user's uid on the host, so that
 # what it writes in the working copy belongs to the same owner as everything
 # else there.
@@ -29,7 +35,8 @@ ARG AGENT_UID=1001
 ARG AGENT_GID=1001
 RUN (getent group "$AGENT_GID" >/dev/null || groupadd -g "$AGENT_GID" agent) \
  && (getent passwd "$AGENT_UID" >/dev/null || useradd -u "$AGENT_UID" -g "$AGENT_GID" -d /home/agent -M -s /bin/bash agent) \
- && chmod 755 /usr/local/bin/agent-entrypoint
+ && chmod 755 /usr/local/bin/agent-entrypoint \
+ && chmod 644 /usr/local/lib/agent/activity-hook.mjs /etc/claude-code/managed-settings.json
 
 # The pinned version stays the version: no updates from inside. Telemetry and
 # error reports are off, so the only traffic is to the model's API.

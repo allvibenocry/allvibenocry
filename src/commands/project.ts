@@ -203,6 +203,7 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
     "their networks, their images and their entries in the proxy",
     `the repository ${repoDir(name)}, with its whole history`,
     "its key vault, with every key in it (backups keep a copy)",
+    "the agent's kept conversations and its activity log (backups keep no copy)",
   ];
   if (!flags.includes("--delete-everything")) {
     process.stdout.write(
@@ -257,7 +258,7 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
         run: () => {
           rmSync(projectDir(name), { recursive: true, force: true });
           lockProject(name);
-          return ok(`${projectDir(name)} removed, with its key vault and the keys in memory`);
+          return ok(`${projectDir(name)} removed, with its key vault, the keys in memory, and the agent's conversations and activity log`);
         },
       },
     ],
