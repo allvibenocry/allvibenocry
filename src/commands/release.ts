@@ -27,7 +27,10 @@
  * version's migration has already changed the data in a way the version before
  * cannot read, when it stops there and names the backup this release took.
  *
- * A rollback goes back to the previous version's code and keeps prod's data.
+ * A rollback goes back to the previous version's code and keeps prod's data,
+ * behind a fresh backup of prod that has passed its restore check, like a
+ * release (D57); the automatic one after a failed release relies on the
+ * backup that release took minutes before.
  * If that version cannot run on today's data, it stops and says so; restoring
  * the backup taken before the release is a separate, explicit choice that says
  * exactly what would be lost and needs --confirm-data-loss (rule 8).
@@ -142,14 +145,36 @@ function schemaStep(project: Project, to: Release, from: string, alsoIn: Array<{
   };
 }
 
-/** Back to an earlier version's code, keeping prod's data. */
-function codeRollbackSteps(project: Project, to: Release, from: string, automatic: boolean, alsoIn: Array<{ version: string; commit: string }> = []): Step[] {
+/** The recovery key is confirmed, so a backup taken now can be restored on another machine (D13). */
+function recoveryStep(): Step {
+  return {
+    name: "the recovery key is confirmed",
+    run: () => {
+      const status = recoveryStatus();
+      if (status.state === "pending" || status.state === "missing") {
+        return fail(
+          "the recovery key has not been confirmed, so a backup could not be restored on another machine (D13)",
+          `copy ${NAMES.recoveryPending} off this machine, then: ${C} recovery-key confirm < your-copy`,
+        );
+      }
+      return ok(`confirmed ${status.confirmedAt?.slice(0, 10)}${status.state === "overdue" ? " (more than 180 days ago: confirm it again soon)" : ""}`);
+    },
+  };
+}
+
+/**
+ * Back to an earlier version's code, keeping prod's data. `safety` runs after
+ * the checks and before anything changes: for a rollback by hand, a fresh
+ * backup of prod and its restore check (D57).
+ */
+function codeRollbackSteps(project: Project, to: Release, from: string, automatic: boolean, alsoIn: Array<{ version: string; commit: string }> = [], safety: Step[] = []): Step[] {
   return [
     {
       name: `the version to go back to: ${to.version}`,
       run: () => ok(`${to.version}, from ${to.commit.slice(0, 12)}; ${ensureImage(project, to)}`),
     },
     schemaStep(project, to, from, alsoIn),
+    ...safety,
     {
       name: "prod's data",
       run: () => ok("kept as it is: nothing is restored, so nothing written since the release is lost (rule 8)"),
@@ -288,19 +313,7 @@ async function release(args: string[]): Promise<number> {
         );
       },
     },
-    {
-      name: "the recovery key is confirmed",
-      run: () => {
-        const status = recoveryStatus();
-        if (status.state === "pending" || status.state === "missing") {
-          return fail(
-            "the recovery key has not been confirmed, so a backup could not be restored on another machine (D13)",
-            `copy ${NAMES.recoveryPending} off this machine, then: ${C} recovery-key confirm < your-copy`,
-          );
-        }
-        return ok(`confirmed ${status.confirmedAt?.slice(0, 10)}${status.state === "overdue" ? " (more than 180 days ago: confirm it again soon)" : ""}`);
-      },
-    },
+    recoveryStep(),
     ...(dryRun
       ? [
           { ...targetStep(config), name: "a fresh backup of prod" },
@@ -429,12 +442,23 @@ async function rollback(args: string[]): Promise<number> {
   }
 
   if (!args.includes("--restore-data")) {
-    const record = await runSteps(codeRollbackSteps(project, to, from.version, false, project.failed ? [{ version: `${project.failed.version}, which failed`, commit: project.failed.commit }] : []), {
-      kind: "rollback",
-      project: name,
-      facts: { from: from.version, to: to.version, restoreData: false },
-    });
-    if (record.ok) process.stdout.write(`\n${name} is back on ${to.version}, with all its data.\n`);
+    // Going back changes the live app, so it is behind a fresh backup that has
+    // passed its restore check, like a release (rule 2, D57).
+    const context = newRestoreContext(project);
+    const out: { backup: Backup | null } = { backup: null };
+    const safety = [recoveryStep(), ...backupSteps(project, config, "rollback", out), ...restoreCheckSteps(project, context, () => out.backup)];
+    let record;
+    try {
+      record = await runSteps(
+        codeRollbackSteps(project, to, from.version, false, project.failed ? [{ version: `${project.failed.version}, which failed`, commit: project.failed.commit }] : [], safety),
+        { kind: "rollback", project: name, facts: { from: from.version, to: to.version, restoreData: false } },
+      );
+    } finally {
+      cleanupRestore(context);
+    }
+    record.facts.backup = out.backup?.manifest.file ?? null;
+    saveRecord(record);
+    if (record.ok) process.stdout.write(`\n${name} is back on ${to.version}, with all its data. The backup taken first: ${out.backup?.file}.\n`);
     return record.ok ? 0 : 1;
   }
 

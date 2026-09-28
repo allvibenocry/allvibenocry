@@ -472,20 +472,6 @@ by side, and pointing at the places where they disagree, lets a person trust
 the work without reading every line, and catch the rare report that says more
 than was done.
 
-## A fresh backup before every change to the live app
-
-**Planned** (D53). From the architect's review of the control panel's demo.
-
-**Going back to an earlier version takes a fresh backup first, and checks that
-it restores**, exactly like a release, and stops at the first failure without
-changing anything. Putting the data back (`--restore-data`) keeps the backup it
-already takes first.
-
-**Why.** Rule 2 says no release without a fresh backup that has passed a
-restore check. Going back is also a change to the live app: it starts other
-code on today's data. Today it takes no backup (D26), because it keeps the
-data; a backup first makes a mistake in going back recoverable too.
-
 ## Doctor every night
 
 **Planned** (D53). From the architect's review of the control panel's demo.
@@ -549,6 +535,22 @@ makes (D36), and today it rests on the agent's instructions alone: the agent is
 asked to stop after each step, and nothing stops a release of a step nobody
 tried. The walls in this suite are the machine's, not rules the AI is asked to
 follow (D39, D41); this makes the plan one of them.
+
+## A fresh backup before every change to the live app
+
+**Built** (the fifth brief, D57). Was: Planned (D53), from the architect's review of the control panel's demo.
+
+`allvibe rollback` confirms the recovery key, takes a fresh backup of prod and restore-checks it before anything changes; the backup is kept with the releases'.
+
+**Going back to an earlier version takes a fresh backup first, and checks that
+it restores**, exactly like a release, and stops at the first failure without
+changing anything. Putting the data back (`--restore-data`) keeps the backup it
+already takes first.
+
+**Why.** Rule 2 says no release without a fresh backup that has passed a
+restore check. Going back is also a change to the live app: it starts other
+code on today's data. Today it takes no backup (D26), because it keeps the
+data; a backup first makes a mistake in going back recoverable too.
 
 ## Rollback past a migration
 

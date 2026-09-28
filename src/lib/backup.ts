@@ -47,7 +47,8 @@ import { listKeys, runtimeFile, secretPath, unlockScope, vaultDir } from "./vaul
 
 const C = NAMES.command;
 
-export type BackupKind = "scheduled" | "manual" | "release";
+/** A release's and a rollback's backups are kept with the releases, and never pruned (D57). */
+export type BackupKind = "scheduled" | "manual" | "release" | "rollback";
 
 export interface BackupManifest {
   format: 1;
@@ -164,7 +165,7 @@ function sha256File(file: string): Promise<string> {
 export async function takeBackup(project: Project, config: HostConfig, kind: BackupKind): Promise<Backup> {
   const target = checkTarget(config.backupTarget);
   if (!target.ok) throw new Error(target.why);
-  const dir = kind === "release" ? releaseBackupDir(config, project.name) : projectBackupDir(config, project.name);
+  const dir = kind === "release" || kind === "rollback" ? releaseBackupDir(config, project.name) : projectBackupDir(config, project.name);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const recipients = { host: readRecipient(NAMES.hostRecipient), recovery: readRecipient(NAMES.recoveryRecipient) };
@@ -256,7 +257,7 @@ export function listBackups(config: HostConfig, project: string): Backup[] {
 export function prune(config: HostConfig, project: string, now = new Date()): string[] {
   const removed: string[] = [];
   const cutoff = now.getTime() - config.backupRetentionDays * 86_400_000;
-  const scheduled = listBackups(config, project).filter((b) => b.manifest.kind !== "release");
+  const scheduled = listBackups(config, project).filter((b) => b.manifest.kind !== "release" && b.manifest.kind !== "rollback");
   for (const backup of scheduled.slice(0, Math.max(0, scheduled.length - 3))) {
     if (new Date(backup.manifest.created).getTime() >= cutoff) continue;
     const pattern = new RegExp(`^${project}-prod-\\d{8}T\\d{6}Z\\.dump\\.age$`);

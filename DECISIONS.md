@@ -648,6 +648,12 @@ prod, images, tags and records unchanged; and a confirmed data rollback, after
 which the entry written since the release was gone from prod and present in the
 backup taken first.
 
+#### Amendment, 2026-09-29 (D57)
+
+A rollback by code now takes a fresh backup of prod and restore-checks it
+first, like a release, and stops at the first failure without changing
+anything (D57).
+
 ## D27. The images the suite uses, pinned
 
 *2026-09-27*
@@ -1943,3 +1949,33 @@ step, and before the release, is released with the plan: the steps were tried,
 but not that last commit. The release records, for each step, the commit it
 was tried at, so the panel can show the difference; refusing it is left for a
 later decision.
+
+## D57. A fresh backup, restore-checked, before going back
+
+*2026-09-29. The fifth brief, item 8. Builds D53's second plan; amends D26.*
+
+**What.** `allvibe rollback <project>`, going back by code (D26), now does
+what a release does before it changes the live app: the recovery key is
+confirmed, a fresh backup of prod is taken, and that backup's restore check
+runs, all five steps of it. Only then are prod's data kept and the older
+version deployed. It stops at the first failure without changing anything. A
+rollback has fourteen steps.
+
+**The backup is kept**, beside the releases', and never pruned: a new backup
+kind, `rollback`, which the manifest names.
+
+**Unchanged:** `--restore-data` keeps its own backup step ("a backup of prod as
+it is now, first"). The automatic rollback after a failed release takes no
+second backup: it goes back to the version before, with the backup and restore
+check that release took minutes earlier, and a second backup at that moment
+could only delay putting prod back while it is down.
+
+**Verified on the test host** (`test/host/rollback-backup.sh`, 14 of 14): a
+rollback as the person runs it took and kept a backup marked as a rollback's
+and passed its restore check before the deploy, went back, and kept prod's
+entries; a rollback whose fresh backup was damaged the moment it was written
+(one byte flipped inside its encrypted data, as a failing disk would; inotify
+on the test host makes the timing certain) stopped at "it is whole, and it
+decrypts", step 8 of 14, with prod on its version, answering, and its entries
+as before. The same probe against the previous bundle said WRONG on every
+check this change is for.
