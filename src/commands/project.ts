@@ -44,6 +44,7 @@ import {
 import { run } from "../lib/run.js";
 import { appliedMigrations, schemaOf } from "../lib/schema.js";
 import { renderProjectDocs } from "../lib/template.js";
+import { lockProject } from "../lib/vault.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
 
 const TEMPLATE = "guestbook";
@@ -189,6 +190,7 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
     `their data, for good: volumes ${volumeName(name, "dev")} and ${volumeName(name, "prod")}`,
     "their networks, their images and their entries in the proxy",
     `the repository ${repoDir(name)}, with its whole history`,
+    "its key vault, with every key in it (backups keep a copy)",
   ];
   if (!flags.includes("--delete-everything")) {
     process.stdout.write(
@@ -235,7 +237,8 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
         name: "the repository and the project's files",
         run: () => {
           rmSync(projectDir(name), { recursive: true, force: true });
-          return ok(`${projectDir(name)} removed`);
+          lockProject(name);
+          return ok(`${projectDir(name)} removed, with its key vault and the keys in memory`);
         },
       },
     ],

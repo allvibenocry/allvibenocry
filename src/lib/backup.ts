@@ -43,6 +43,7 @@ import { readRecipient } from "./keys.js";
 import { readOverrides } from "./overrides.js";
 import { containerName, currentRelease, imageName, POSTGRES_IMAGE, smoke, type Project } from "./project.js";
 import { tryRun } from "./run.js";
+import { listKeys, runtimeFile, secretPath, unlockScope, vaultDir } from "./vault.js";
 
 const C = NAMES.command;
 
@@ -62,6 +63,11 @@ export interface BackupManifest {
   prodCheck: { entries: number | null; version: string | null } | null;
   recipients: { host: string; recovery: string };
   postgresImage: string;
+  /**
+   * The project's key vault, every scope, as it was (D37): a tar of the vault's
+   * files, encrypted again to the same two keys. Absent when it had no keys.
+   */
+  vault?: { file: string; bytes: number; sha256: string; keys: Array<{ scope: string; name: string }> } | null;
 }
 
 /** A manifest and where it is. */
@@ -175,6 +181,28 @@ export async function takeBackup(project: Project, config: HostConfig, kind: Bac
   );
   renameSync(partial, path.join(dir, file));
 
+  // The key vault goes with the data, so a machine restored from the recovery
+  // key gets its keys back too (D37). Its values are already encrypted; the
+  // whole is encrypted again, so the backup disk shows no key's name either.
+  let vault: BackupManifest["vault"] = null;
+  const keys = listKeys(project.name);
+  if (keys.length > 0) {
+    const vaultFile = file.replace(/\.dump\.age$/, ".vault.tar.age");
+    const vaultPartial = path.join(dir, `${vaultFile}.partial`);
+    await pipeToFile(
+      ["tar", ["-C", path.dirname(vaultDir(project.name)), "-cf", "-", "--exclude=*.partial", "--exclude=*.previous", path.basename(vaultDir(project.name))]],
+      ["age", ["--encrypt", "-r", recipients.host, "-r", recipients.recovery]],
+      vaultPartial,
+    );
+    renameSync(vaultPartial, path.join(dir, vaultFile));
+    vault = {
+      file: vaultFile,
+      bytes: statSync(path.join(dir, vaultFile)).size,
+      sha256: await sha256File(path.join(dir, vaultFile)),
+      keys: keys.map((k) => ({ scope: k.scope, name: k.name })),
+    };
+  }
+
   const manifest: BackupManifest = {
     format: 1,
     project: project.name,
@@ -188,6 +216,7 @@ export async function takeBackup(project: Project, config: HostConfig, kind: Bac
     prodCheck: check.ok ? { entries: check.entries, version: check.version } : null,
     recipients,
     postgresImage: POSTGRES_IMAGE,
+    vault,
   };
   writeAtomic(path.join(dir, file.replace(/\.dump\.age$/, ".json")), `${JSON.stringify(manifest, null, 2)}\n`, 0o600);
   return { manifest, dir, file: path.join(dir, file) };
@@ -233,6 +262,9 @@ export function prune(config: HostConfig, project: string, now = new Date()): st
     const pattern = new RegExp(`^${project}-prod-\\d{8}T\\d{6}Z\\.dump\\.age$`);
     if (!pattern.test(backup.manifest.file)) continue;
     rmSync(backup.file);
+    if (backup.manifest.vault?.file === backup.manifest.file.replace(/\.dump\.age$/, ".vault.tar.age")) {
+      rmSync(path.join(backup.dir, backup.manifest.vault.file), { force: true });
+    }
     rmSync(backup.file.replace(/\.dump\.age$/, ".json"));
     removed.push(backup.manifest.file);
   }
@@ -287,6 +319,41 @@ export async function verifyAndDecrypt(context: RestoreCheckContext): Promise<st
   const result = tryRun("age", ["--decrypt", "-i", NAMES.hostKey, "-o", context.decrypted, backup.file]);
   if (result.code !== 0) throw new Error(`age could not decrypt it with this machine's backup key: ${result.stderr.trim()}`);
   return `checksum matches; decrypted with this machine's backup key (${statSync(context.decrypted).size} bytes, not kept)`;
+}
+
+/**
+ * The backup's key vault (D37): whole, decrypted with this machine's key,
+ * unpacked into the private work directory, and every value in it decrypted as
+ * well, into memory, and thrown away. Proves the keys come back with the data.
+ */
+export async function restoreVault(context: RestoreCheckContext): Promise<string> {
+  const backup = context.backup;
+  if (!backup) throw new Error("no backup chosen");
+  const vault = backup.manifest.vault;
+  if (!vault) return "the project had no keys when this backup was taken";
+  const file = path.join(backup.dir, vault.file);
+  if (!existsSync(file)) throw new Error(`${vault.file} is missing: the backup's keys are not there`);
+  if ((await sha256File(file)) !== vault.sha256) throw new Error(`${vault.file} does not match its checksum: it is damaged`);
+  const tar = path.join(context.work, "vault.tar");
+  const into = path.join(context.work, "vault-restored");
+  mkdirSync(into, { recursive: true, mode: 0o700 });
+  const opened = tryRun("age", ["--decrypt", "-i", NAMES.hostKey, "-o", tar, file]);
+  if (opened.code !== 0) throw new Error(`age could not decrypt the backup's key vault with this machine's key: ${opened.stderr.trim()}`);
+  const unpacked = tryRun("tar", ["-C", into, "-xf", tar]);
+  if (unpacked.code !== 0) throw new Error(`the backup's key vault does not unpack: ${unpacked.stderr.trim()}`);
+  const index = JSON.parse(readFileSync(path.join(into, "vault", "index.json"), "utf8")) as { keys: Array<{ scope: string; name: string }> };
+  const restored: string[] = [];
+  for (const k of index.keys) {
+    // Decrypted into memory to prove it can be, never written or shown.
+    const one = tryRun("age", ["--decrypt", "-i", NAMES.hostKey, path.join(into, "vault", k.scope, `${k.name}.age`)]);
+    if (one.code !== 0) throw new Error(`the backup's ${k.scope} ${k.name} does not decrypt with this machine's key`);
+    restored.push(`${k.scope} ${k.name}`);
+  }
+  const expected = vault.keys.map((k) => `${k.scope} ${k.name}`).sort();
+  if (JSON.stringify(expected) !== JSON.stringify([...restored].sort())) {
+    throw new Error(`the backup's key vault holds ${restored.join(", ") || "nothing"}, not what its manifest lists: ${expected.join(", ")}`);
+  }
+  return `${restored.length} key${restored.length === 1 ? "" : "s"} restored, each one decrypted with this machine's key (not shown): ${restored.join(", ")}`;
 }
 
 async function until(test: () => boolean, ms: number): Promise<boolean> {
@@ -359,11 +426,15 @@ export async function smokeScratch(project: Project, context: RestoreCheckContex
   const password = path.join(context.work, "password");
   // The scratch database trusts its network, but the app refuses to start without the file.
   writeFileSync(password, "restore-check", { mode: 0o644 });
+  // An app that reads its keys when it starts gets prod's, as files, the way prod does (D37).
+  // The scratch network has no route out, so they can reach nothing from here.
+  const keys = unlockScope(project.name, "prod").flatMap((key) => ["-v", `${runtimeFile(project.name, "prod", key)}:${secretPath(key)}:ro`, "-e", `${key}_FILE=${secretPath(key)}`]);
   docker([
     "run", "-d", "--name", context.scratchApp, "--network", context.network, ...scratchLabels(project),
     "-e", "APP_ENV=restore-check", "-e", `DATABASE_HOST=${context.scratchDb}`, "-e", "DATABASE_USER=app",
     "-e", "DATABASE_NAME=app", "-e", "DATABASE_PASSWORD_FILE=/run/secrets/db_password",
     "-v", `${password}:/run/secrets/db_password:ro`,
+    ...keys,
     "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
     context.image,
   ]);

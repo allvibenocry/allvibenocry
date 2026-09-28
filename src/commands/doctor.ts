@@ -133,6 +133,17 @@ export function checks(): Check[] {
   /* Backups */
   const projects = projectNames();
   const config = readConfig();
+  // Without it, an app with keys would not start after the next reboot (D37).
+  const keysEnabled = tryRun("systemctl", ["is-enabled", NAMES.keysService]).stdout.trim();
+  const runDirOk = existsSync(NAMES.runDir);
+  add(
+    "keys-at-boot",
+    keysEnabled === "enabled" && runDirOk ? "ok" : "problem",
+    keysEnabled === "enabled" && runDirOk
+      ? `Key vault: its keys go back into memory at every boot, before the apps start (${NAMES.runDir})`
+      : `The key vault's boot unit is ${keysEnabled || "missing"}${runDirOk ? "" : `, and ${NAMES.runDir} does not exist`}: run install.sh again`,
+  );
+
   const enabled = tryRun("systemctl", ["is-enabled", NAMES.backupTimer]).stdout.trim();
   const active = tryRun("systemctl", ["is-active", NAMES.backupTimer]).stdout.trim();
   const next = tryRun("systemctl", ["show", NAMES.backupTimer, "-p", "NextElapseUSecRealtime", "--value"]).stdout.trim();

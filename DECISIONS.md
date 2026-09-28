@@ -963,3 +963,71 @@ deploy dev and try it is also simply how the work flows.
 enforced by the suite: an agent can still do two steps at once. What *is*
 enforced sits where the agent cannot reach it: the release's migration check
 (D35), the key check before every commit (D38), and prod out of reach (rule 1).
+
+## D37. The key vault: encrypted to D13's two keys, files in memory for the apps, and in every backup
+
+*2026-09-28. The second brief, item 3. Builds the roadmap's "key vault".*
+
+`allvibe key set <project> <scope> <NAME>` reads the value from standard input
+(never an argument, and it refuses a terminal: nothing prompts, rule 4);
+`key list` shows names, scopes and when each changed, never values; `key
+remove` deletes one.
+
+**Scopes: dev, prod and agent.** Dev and prod have separate values, and each
+environment's containers get only their own scope's keys, so prod's keys are
+never in anything of dev's. The third scope is the project's coding agent's
+own (D39): its AI key goes to the agent container and to nothing else, not
+even dev's app.
+
+**At rest, encrypted to the two keys D13 already has.** Each value is a file
+in `/var/lib/allvibe/projects/<project>/vault/<scope>/<NAME>.age`, encrypted
+with `age` to the host key and to the recovery key, the same recipients as
+every backup; the value reaches `age` on standard input. The host key lets the
+suite hand values to apps without anyone present; the recovery key lets a
+machine restored from it get its keys back. **No new key exists**, so there is
+nothing new to lose, confirm or keep, and D13's promise (the recovery key and
+nothing else restores a machine) now covers the keys too.
+
+**In use, in memory, as files.** When an environment is deployed, its keys are
+decrypted into `/run/allvibe/keys/<project>/<scope>/`, which is a tmpfs, and
+each is mounted into its app as a Compose file secret at `/run/secrets/<NAME>`,
+exactly as the database password is (D21: the file readable inside its
+container, its directories the service user's alone). The app finds the path,
+never the value, in `<NAME>_FILE`. Nothing puts a value in an environment
+variable, so `docker inspect` shows paths only. A tmpfs is gone at every
+shutdown, so **`allvibe-keys.service`** (install.sh, enabled) decrypts every
+key again at boot, **before Docker** starts the apps; `doctor` reports it. A
+file whose value is unchanged is not rewritten, so a running app keeps reading
+the same file.
+
+**A key reaches its app at once.** `key set` and `key remove` start the
+environment's app again on the image it runs. If it does not come up healthy
+with a new value, the old value is put back (or a new key removed) and the app
+started on that, so a key change never leaves an app down.
+
+**In every backup.** A backup is now the database dump and, when the project
+has keys, the vault beside it: a tar of the vault's files, encrypted again to
+the same two keys, so the backup disk does not even show which keys there are.
+The manifest lists them. The restore check gains a step: the vault's file is
+whole, decrypts with the host key, unpacks, and every value in it decrypts,
+into memory, never shown; the names must be the manifest's. The scratch app of
+a restore check gets prod's keys as files, as prod does, on its network with
+no route out.
+
+**Verified on the test host:** set, list and remove, and the refusals (a value
+as an argument, a terminal on standard input, a bad name, a bad scope); three
+random values, counted in every command output and run record, the journal,
+the install log, `docker inspect` and the logs of every container, every
+process's arguments and environment, the project's repository and its whole
+history, the vault's files and the backup target: 0 each, while the copies in
+memory, counted the same way, were found; from inside dev's app, dev's value
+and not prod's or the agent's, and no mount of prod's keys; a restore check
+restoring all three; the backup's vault opened with the recovery key alone,
+each value the one that was set; and a restart of the test host, after which
+the unit had run before Docker and both apps came back healthy with their
+keys.
+
+**Instead.** Environment variables (visible in `docker inspect`, D21). A
+plaintext copy on disk for Compose, as the database password has: it would not
+be encrypted at rest. A key of the vault's own: one more thing to lose, and a
+restored machine would need it as well as the recovery key.

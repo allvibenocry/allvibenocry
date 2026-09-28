@@ -7,6 +7,7 @@ import { BRAND } from "./lib/brand.js";
 import { backupCommands } from "./commands/backup.js";
 import { dev } from "./commands/dev.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
+import { key, keysUnlock } from "./commands/key.js";
 import { project } from "./commands/project.js";
 import { releaseCommands } from "./commands/release.js";
 import { runs } from "./commands/runs.js";
@@ -33,6 +34,9 @@ const HELP = `${BRAND.product}: ${C} <command>
   backup <project>             an encrypted backup of prod, now
   backups <project>            the backups of a project
   restore-check <project>      restore the latest backup into a scratch copy and check it
+  key set <project> <dev|prod|agent> <NAME> < file   a key for the apps or the agent, from standard input
+  key list <project>           the vault's keys: names, scopes and when each changed, never values
+  key remove <project> <scope> <NAME>   a key out of the vault
   recovery-key status          whether the recovery key has been confirmed
   recovery-key confirm < file  confirm your copy of the recovery key
   runs [project] [--limit N]   what has been done, and whether it worked
@@ -41,6 +45,7 @@ const HELP = `${BRAND.product}: ${C} <command>
 Used by the installer and the timer:
   setup                        make the suite's own state what it should be
   scheduled-backup             the daily backup and restore test
+  keys-unlock                  every key back in memory, at boot, before the apps start
 `;
 
 type Handler = (args: string[]) => number | Promise<number>;
@@ -52,6 +57,8 @@ const COMMANDS: Record<string, Handler> = {
   ...backupCommands,
   ...releaseCommands,
   dev: (args) => dev(args),
+  key: (args) => key(args),
+  "keys-unlock": () => keysUnlock(),
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);
     return 0;

@@ -25,6 +25,9 @@ OVERRIDES=$ETC_DIR/test-overrides
 WRAPPER=/usr/local/bin/$CMD
 UNIT_SERVICE=/etc/systemd/system/$CMD-backup.service
 UNIT_TIMER=/etc/systemd/system/$CMD-backup.timer
+UNIT_KEYS=/etc/systemd/system/$CMD-keys.service
+TMPFILES=/etc/tmpfiles.d/$CMD.conf
+RUN_DIR=/run/$CMD
 LOG=/var/log/$CMD-install.log
 
 # Docker's apt signing key, as published in Docker's installation guide.
@@ -38,7 +41,7 @@ POOLS=(172.20.0.0/14 10.201.0.0/16)
 
 export DEBIAN_FRONTEND=noninteractive
 
-STEPS=11
+STEPS=12
 N=0
 STEP=""
 NEED=""
@@ -419,6 +422,56 @@ if [ "$(systemctl is-enabled "$timer" 2>/dev/null || true)" != enabled ] || ! sy
   changed "$timer enabled and started"
 else
   unchanged "$timer enabled and active"
+fi
+
+# ---------------------------------------------------------------------------
+step "The key vault's keys, in memory at boot" "systemd accepts the unit, and $RUN_DIR can be created"
+
+# The vault's keys are encrypted on disk; while apps run, each is decrypted
+# into this directory, which is in memory and gone at every shutdown (D37).
+tmpfiles_content="# $PRODUCT_NAME: memory-only room for the key vault's keys while apps run (D37).
+d $RUN_DIR 0750 $SERVICE_USER $SERVICE_USER -"
+if [ "$(cat "$TMPFILES" 2>/dev/null || true)" != "$tmpfiles_content" ]; then
+  printf '%s\n' "$tmpfiles_content" >"$TMPFILES"
+  changed "$TMPFILES"
+else
+  unchanged "$TMPFILES"
+fi
+if [ "$(stat -c '%U:%G %a' "$RUN_DIR" 2>/dev/null || true)" != "$SERVICE_USER:$SERVICE_USER 750" ]; then
+  quiet systemd-tmpfiles --create "$TMPFILES"
+  changed "$RUN_DIR, in memory"
+else
+  unchanged "$RUN_DIR, in memory"
+fi
+
+# At boot, before Docker starts the apps again, every key goes back into memory.
+keys_content="[Unit]
+Description=$PRODUCT_NAME: the key vault's keys, into memory, before Docker starts the apps
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=$SERVICE_USER
+Group=$SERVICE_USER
+Environment=HOME=$STATE_DIR
+ExecStart=/usr/bin/node $INSTALL_DIR/current/dist/cli.js keys-unlock
+
+[Install]
+WantedBy=multi-user.target"
+if [ "$(cat "$UNIT_KEYS" 2>/dev/null || true)" != "$keys_content" ]; then
+  printf '%s\n' "$keys_content" >"$UNIT_KEYS"
+  systemctl daemon-reload
+  changed "$(basename "$UNIT_KEYS")"
+else
+  unchanged "$(basename "$UNIT_KEYS")"
+fi
+if [ "$(systemctl is-enabled "$(basename "$UNIT_KEYS")" 2>/dev/null || true)" != enabled ]; then
+  quiet systemctl enable "$(basename "$UNIT_KEYS")"
+  changed "$(basename "$UNIT_KEYS") enabled: it runs at every boot, before Docker"
+else
+  unchanged "$(basename "$UNIT_KEYS") enabled"
 fi
 
 # ---------------------------------------------------------------------------

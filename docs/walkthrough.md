@@ -70,7 +70,7 @@ node test/host/host.mjs push bundle/allvibe-0.1.0 /root/
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
-You should see eleven steps, `[1/11] This machine` to `[11/11] How the host
+You should see twelve steps, `[1/12] This machine` to `[12/12] How the host
 is`, each with `changed:` lines, then `allvibe doctor` with only `✓` lines (and
 one `i` line saying the test overrides are active, on the test host), `All
 green.`, and last:
@@ -249,7 +249,7 @@ entry when it was taken`. The restore check puts that backup into a scratch
 copy, starts the app against it, and ends:
 
 ```
-ok   4/4 the app's own health check passes against the copy
+ok   5/5 the app's own health check passes against the copy
        allvibe-guestbook:v1 against the restored copy: {"ok":true,"entries":1,"environment":"restore-check","version":"v1"}
        guestbook entries in the restored copy: 1 (prod had 1 when the backup was taken)
      the scratch copy, its network and the decrypted file are removed; prod was not touched
@@ -312,7 +312,7 @@ Host:
 allvibe release guestbook
 ```
 
-Fourteen steps: dev runs the commit, its migrations only add, the recovery key is confirmed, a fresh
+Fifteen steps: dev runs the commit, its migrations only add, the recovery key is confirmed, a fresh
 backup, a restore check of it, prod built and deployed on v2, prod answers, the
 tag. It ends:
 
@@ -342,7 +342,7 @@ Dev takes it without complaint. The release gets as far as deploying v3, and
 then:
 
 ```
-FAIL 12/14 prod deployed on v3
+FAIL 13/15 prod deployed on v3
        prod's app did not come up healthy on v3: …
        it said: error: could not create unique index "entries_name_unique"
 
@@ -401,9 +401,9 @@ allvibe project status guestbook
 The release stops at the backup:
 
 ```
-FAIL 4/14 the backup target is off this machine and writable
+FAIL 4/15 the backup target is off this machine and writable
        /mnt/allvibe-backup is on this machine's own root filesystem, which is not off the machine
-stopped at step 4/14. Nothing after it was attempted.
+stopped at step 4/15. Nothing after it was attempted.
 ```
 
 (An unplugged disk leaves only its empty mount point, which is on the machine's

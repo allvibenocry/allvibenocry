@@ -22,10 +22,11 @@ import { chmodSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { posix as path } from "node:path";
 import { NAMES } from "./brand.js";
 import type { HostConfig } from "./config.js";
-import { docker, tryDocker, waitHealthy, type ContainerState } from "./docker.js";
+import { containerState, docker, tryDocker, waitHealthy, type ContainerState } from "./docker.js";
 import { ensureFile, readJson, writeAtomic } from "./files.js";
 import { reloadProxy, writeServerConf } from "./proxy.js";
 import { run, tryRun } from "./run.js";
+import { runtimeFile, secretPath, unlockScope } from "./vault.js";
 
 export const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -209,10 +210,17 @@ export function ensureSecret(name: string, env: Env): boolean {
 
 /* ------------------------------------------------------------ compose -- */
 
-export function composeFor(project: Project, env: Env, imageTag: string): string {
+/**
+ * The compose file for one environment. `keys` are the names of the vault's
+ * keys for it (D37): each is mounted as a file at /run/secrets/<NAME>, from its
+ * decrypted copy in memory, and the app finds the path, never the value, in
+ * <NAME>_FILE.
+ */
+export function composeFor(project: Project, env: Env, imageTag: string, keys: string[] = []): string {
   const name = project.name;
   const labels = (role: string) => ({ [`${C}.project`]: name, [`${C}.env`]: env, [`${C}.role`]: role });
   const appPort = env === "prod" ? project.ports.prodApp : project.ports.devApp;
+  const keySecret = (key: string) => `key_${key}`;
   const compose = {
     name: composeProject(name, env),
     services: {
@@ -238,8 +246,9 @@ export function composeFor(project: Project, env: Env, imageTag: string): string
           DATABASE_USER: "app",
           DATABASE_NAME: "app",
           DATABASE_PASSWORD_FILE: "/run/secrets/db_password",
+          ...Object.fromEntries(keys.map((key) => [`${key}_FILE`, secretPath(key)])),
         },
-        secrets: ["db_password"],
+        secrets: ["db_password", ...keys.map((key) => ({ source: keySecret(key), target: key }))],
         depends_on: { db: { condition: "service_healthy" } },
         // The host's loopback only: the proxy reaches it, nothing else can.
         ports: [`127.0.0.1:${appPort}:3000`],
@@ -263,17 +272,32 @@ export function composeFor(project: Project, env: Env, imageTag: string): string
       edge: { name: networkName(name, env, "edge"), labels: labels("network") },
     },
     volumes: { db: { name: volumeName(name, env), labels: labels("data") } },
-    secrets: { db_password: { file: secretFile(name, env) } },
+    secrets: {
+      db_password: { file: secretFile(name, env) },
+      ...Object.fromEntries(keys.map((key) => [keySecret(key), { file: runtimeFile(name, env, key) }])),
+    },
   };
   return `${JSON.stringify(compose, null, 2)}\n`;
 }
 
-/** Bring one environment up on an image, and wait until its app is healthy. */
-export async function deployEnv(project: Project, env: Env, imageTag: string): Promise<ContainerState> {
+/**
+ * Bring one environment up on an image, and wait until its app is healthy. Its
+ * keys are decrypted first. `recreateApp` starts the app afresh even when
+ * nothing in its compose file changed: a new value of a key it already had.
+ */
+export async function deployEnv(project: Project, env: Env, imageTag: string, options: { recreateApp?: boolean } = {}): Promise<ContainerState> {
   const file = path.join(envDir(project.name, env), "compose.json");
-  ensureFile(file, composeFor(project, env, imageTag), 0o640);
+  const keys = unlockScope(project.name, env);
+  ensureFile(file, composeFor(project, env, imageTag, keys), 0o640);
   docker(["compose", "-p", composeProject(project.name, env), "-f", file, "up", "-d", "--remove-orphans", "--pull", "missing"]);
+  if (options.recreateApp) docker(["compose", "-p", composeProject(project.name, env), "-f", file, "up", "-d", "--no-deps", "--force-recreate", "app"]);
   return waitHealthy(containerName(project.name, env, "app"), 180_000);
+}
+
+/** The image an environment's app runs now, by its tag. */
+export function runningTag(project: Project, env: Env): string | null {
+  const image = containerState(containerName(project.name, env, "app")).image;
+  return image.startsWith(`${imageName(project.name, "")}`) ? image.slice(imageName(project.name, "").length) : null;
 }
 
 /* ------------------------------------------------------------- images -- */

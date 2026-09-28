@@ -49,8 +49,13 @@ export function namesFor(command: string) {
     projectsDir: `${state}/projects`,
     runsDir: `${state}/runs`,
     proxyDir: `${state}/proxy`,
+    toolsDir: `${state}/tools`,
+    /** Memory only (a tmpfs): the vault's keys, decrypted, while apps run (D37). */
+    runDir: `/run/${command}`,
+    keysRunDir: `/run/${command}/keys`,
     backupService: `${command}-backup.service`,
     backupTimer: `${command}-backup.timer`,
+    keysService: `${command}-keys.service`,
     proxyProject: `${command}-proxy`,
     proxyContainer: `${command}-proxy`,
     /** The prefix of every Docker label the suite sets. */

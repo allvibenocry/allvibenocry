@@ -15,6 +15,7 @@ import {
   newRestoreContext,
   prune,
   restoreIntoScratch,
+  restoreVault,
   smokeScratch,
   takeBackup,
   verifyAndDecrypt,
@@ -62,7 +63,8 @@ export function backupSteps(project: Project, config: HostConfig, kind: BackupKi
         return ok(
           `${out.backup.file} (${humanBytes(m.bytes)}, sha256 ${m.sha256.slice(0, 12)}…)\n` +
             `encrypted to this machine's backup key and to the recovery key; prod ${m.release?.version ?? "?"}` +
-            `${m.prodCheck?.entries !== undefined && m.prodCheck?.entries !== null ? `, ${entries(m.prodCheck.entries)} when it was taken` : ""}`,
+            `${m.prodCheck?.entries !== undefined && m.prodCheck?.entries !== null ? `, ${entries(m.prodCheck.entries)} when it was taken` : ""}` +
+            `${m.vault ? `\nand the key vault beside it: ${m.vault.file} (${m.vault.keys.length} key${m.vault.keys.length === 1 ? "" : "s"}, encrypted to the same two keys)` : ""}`,
         );
       },
     },
@@ -81,6 +83,7 @@ export function restoreCheckSteps(project: Project, context: RestoreCheckContext
       },
     },
     { name: "it is whole, and it decrypts", run: async () => ok(await verifyAndDecrypt(context)) },
+    { name: "its key vault restores", run: async () => ok(await restoreVault(context)) },
     { name: "it restores into a scratch copy", run: async () => ok(await restoreIntoScratch(project, context)) },
     { name: "the app's own health check passes against the copy", run: async () => ok(await smokeScratch(project, context)) },
   ];
