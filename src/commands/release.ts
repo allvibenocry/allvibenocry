@@ -51,6 +51,7 @@ import {
   type Release,
 } from "../lib/project.js";
 import { run, tryRun } from "../lib/run.js";
+import { appliedMigrations, describeUnknown, releaseMigrations, restoreDataCommand, rollbackSchema, schemaOf } from "../lib/schema.js";
 import { fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
 import { backupSteps, restoreCheckSteps, targetStep } from "./backup.js";
 import { git } from "./project.js";
@@ -98,13 +99,44 @@ function ensureImage(project: Project, release: Release): string {
   return `${release.image} rebuilt from ${release.commit.slice(0, 12)}`;
 }
 
+/**
+ * Whether the code being gone back to was written for the schema prod's
+ * database has now (D35). Asked of the database, before anything is deployed:
+ * a rollback never runs old code on a schema it does not understand and calls
+ * that success.
+ */
+function schemaStep(project: Project, to: Release, from: string, alsoIn: Array<{ version: string; commit: string }>): Step {
+  return {
+    name: `prod's database is one ${to.version} can run on`,
+    run: () => {
+      const { unknown } = rollbackSchema(project, to, alsoIn);
+      if (unknown.length === 0) return ok(`it has no migration that ${to.version} does not know`);
+      const breaking = unknown.filter((u) => u.kind === "breaking");
+      if (breaking.length > 0) {
+        return fail(
+          `${to.version} was not written for the database as it is now. Since ${to.version}, ` +
+            `${breaking.length === 1 ? "this migration has" : "these migrations have"} changed it in a way ${to.version} cannot run on:\n` +
+            breaking.map((u) => `  ${describeUnknown(u)}`).join("\n") +
+            `\nGoing back to ${to.version}'s code alone would run it on data it does not understand, so this rollback stops here and nothing is changed.`,
+          `going back means putting the data back as well, as it was before ${from}. First see what that would lose: ${restoreDataCommand(project)}`,
+        );
+      }
+      return ok(
+        `${unknown.length === 1 ? "one migration" : `${unknown.length} migrations`} since ${to.version}, and ${unknown.length === 1 ? "it only adds" : "they only add"}, so ${to.version} runs on it unchanged:\n` +
+          unknown.map((u) => describeUnknown(u)).join("\n"),
+      );
+    },
+  };
+}
+
 /** Back to an earlier version's code, keeping prod's data. */
-function codeRollbackSteps(project: Project, to: Release, from: string, automatic: boolean): Step[] {
+function codeRollbackSteps(project: Project, to: Release, from: string, automatic: boolean, alsoIn: Array<{ version: string; commit: string }> = []): Step[] {
   return [
     {
       name: `the version to go back to: ${to.version}`,
       run: () => ok(`${to.version}, from ${to.commit.slice(0, 12)}; ${ensureImage(project, to)}`),
     },
+    schemaStep(project, to, from, alsoIn),
     {
       name: "prod's data",
       run: () => ok("kept as it is: nothing is restored, so nothing written since the release is lost (rule 8)"),
@@ -123,6 +155,7 @@ function codeRollbackSteps(project: Project, to: Release, from: string, automati
           );
         }
         project.current = to.version;
+        delete project.failed;
         saveProject(project);
         return ok(`prod answers on ${to.version}: ${check.said}`);
       },
@@ -146,6 +179,7 @@ async function release(args: string[]): Promise<number> {
   const context = newRestoreContext(project);
   const out: { backup: Backup | null } = { backup: null };
   let commit = "";
+  let breaking: string[] = [];
 
   const steps: Step[] = [
     {
@@ -166,6 +200,22 @@ async function release(args: string[]): Promise<number> {
         const check = await smoke(project, "dev");
         if (!check.ok) return fail(`dev does not answer its smoke check: ${check.said}`, `dev works before it is released: ${C} project status ${name}`);
         return ok(`dev runs ${commit.slice(0, 12)}, nothing uncommitted, and answers: ${check.said}`);
+      },
+    },
+    {
+      name: `the migrations since ${from?.version ?? "the start"} only add, or are marked breaking`,
+      run: () => {
+        const { added, problems } = releaseMigrations(project, from?.commit ?? null, commit);
+        if (problems.length > 0) return fail(problems.join("\n"), "nothing has been changed; fix the migrations in dev, commit, and release again");
+        breaking = added.filter((a) => a.verdict.kind === "breaking").map((a) => a.file);
+        if (added.length === 0) return ok("no new migrations");
+        return ok(
+          added
+            .map((a) => a.verdict.kind === "additive"
+              ? `migrations/${a.file}: only adds`
+              : `migrations/${a.file}: breaking, and marked so (${a.verdict.mark}); going back past ${version} will mean putting the data back too`)
+            .join("\n"),
+        );
       },
     },
     {
@@ -226,11 +276,16 @@ async function release(args: string[]): Promise<number> {
           return fail(`the tag ${version} already exists`);
         }
         if (dryRun) return ok(`would tag ${commit.slice(0, 12)} as ${version}`);
+        const schema = schemaOf(appliedMigrations(project, "prod"));
         git(name, "tag", "-a", version, "-m", `${version}, released ${new Date().toISOString().slice(0, 16)} UTC`, commit);
-        project.releases.push({ version, commit, image: imageName(name, version), at: new Date().toISOString(), backup: out.backup?.manifest.file ?? null, from: from?.version ?? null });
+        project.releases.push({
+          version, commit, image: imageName(name, version), at: new Date().toISOString(), backup: out.backup?.manifest.file ?? null, from: from?.version ?? null,
+          schema, ...(breaking.length ? { breaking } : {}),
+        });
         project.current = version;
+        delete project.failed;
         saveProject(project);
-        return ok(`${commit.slice(0, 12)} tagged ${version}; prod runs ${version}`);
+        return ok(`${commit.slice(0, 12)} tagged ${version}; prod runs ${version}, its database at ${schema?.version ?? "no migrations"}`);
       },
     },
   ];
@@ -257,15 +312,24 @@ async function release(args: string[]): Promise<number> {
   const deployFailed = record.failedStep === `prod deployed on ${version}` || record.failedStep === "prod answers its smoke check";
   if (!dryRun && deployFailed && from) {
     process.stdout.write(`\nprod did not come up on ${version}. Going back to ${from.version} automatically, keeping prod's data.\n\n`);
-    const back = await runSteps(codeRollbackSteps(project, from, version, true), {
+    const back = await runSteps(codeRollbackSteps(project, from, version, true, [{ version: `${version}, which failed`, commit }]), {
       kind: "rollback",
       project: name,
       facts: { automatic: true, from: version, to: from.version },
     });
+    const schemaRefused = back.failedStep === `prod's database is one ${from.version} can run on`;
+    if (schemaRefused) {
+      // Prod stays on the failed version: a rollback goes back from it, with this release's backup.
+      project.failed = { version, commit, image: imageName(name, version), at: new Date().toISOString(), backup: out.backup?.manifest.file ?? null, from: from.version, ...(breaking.length ? { breaking } : {}) };
+      saveProject(project);
+    }
     process.stdout.write(
       back.ok
         ? `\n${name} is back on ${from.version}, with its data. ${version} was not released; its image and backup are kept for a look.\n`
-        : `\nTHE AUTOMATIC ROLLBACK FAILED TOO. prod is not answering; the steps above say why.\n`,
+        : schemaRefused
+          ? `\nprod is not answering on ${version}, and ${from.version}'s code alone cannot run on the database ${version}'s migration left. ` +
+            `Nothing more was changed. The backup this release took holds the data as it was: ${restoreDataCommand(project)}\n`
+          : `\nTHE AUTOMATIC ROLLBACK FAILED TOO. prod is not answering; the steps above say why.\n`,
     );
     record.facts.automaticRollback = back.ok ? "succeeded" : "failed";
     saveRecord(record);
@@ -283,15 +347,17 @@ async function rollback(args: string[]): Promise<number> {
   }
   const project = readProject(name);
   const config = readConfig();
-  const from = currentRelease(project);
-  const to = previousRelease(project);
+  // After a release that failed past its breaking migration, prod is on that
+  // release, not on the one recorded as current: go back from it (D35).
+  const from = project.failed ?? currentRelease(project);
+  const to = project.failed ? currentRelease(project) : previousRelease(project);
   if (!from || !to) {
     process.stderr.write(`prod runs ${from?.version ?? "nothing"}, the first version: there is nothing earlier to go back to.\n`);
     return 1;
   }
 
   if (!args.includes("--restore-data")) {
-    const record = await runSteps(codeRollbackSteps(project, to, from.version, false), {
+    const record = await runSteps(codeRollbackSteps(project, to, from.version, false, project.failed ? [{ version: `${project.failed.version}, which failed`, commit: project.failed.commit }] : []), {
       kind: "rollback",
       project: name,
       facts: { from: from.version, to: to.version, restoreData: false },
@@ -337,7 +403,7 @@ async function rollback(args: string[]): Promise<number> {
           },
         },
         { name: "prod's data replaced by the backup", run: async () => ok(await replaceProdData(project, context)) },
-        ...codeRollbackSteps(project, to, from.version, false).filter((step) => step.name !== "prod's data"),
+        ...codeRollbackSteps(project, to, from.version, false, project.failed ? [{ version: `${project.failed.version}, which failed`, commit: project.failed.commit }] : []).filter((step) => step.name !== "prod's data"),
       ],
       { kind: "rollback", project: name, facts: { from: from.version, to: to.version, restoreData: true, lost } },
     );

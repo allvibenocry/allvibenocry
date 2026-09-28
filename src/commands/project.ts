@@ -42,6 +42,7 @@ import {
   type Project,
 } from "../lib/project.js";
 import { run } from "../lib/run.js";
+import { appliedMigrations, schemaOf } from "../lib/schema.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
 
 const TEMPLATE = "guestbook";
@@ -127,7 +128,7 @@ async function create(name: string | undefined): Promise<number> {
           if (state.health !== "healthy") {
             return fail(`prod's app is ${state.status}/${state.health}`, `docker logs ${containerName(name, "prod", "app")} says why`);
           }
-          p.releases.push({ version: "v1", commit, image: imageName(name, "v1"), at: new Date().toISOString(), backup: null });
+          p.releases.push({ version: "v1", commit, image: imageName(name, "v1"), at: new Date().toISOString(), backup: null, schema: schemaOf(appliedMigrations(p, "prod")) });
           saveProject(p);
           git(name, "tag", "-a", "v1", "-m", "v1: the template, deployed when the project was created", commit);
           return ok(`${containerName(name, "prod", "app")} healthy on v1, data in volume ${volumeName(name, "prod")}; tagged v1`);
@@ -285,11 +286,25 @@ async function status(name: string | undefined): Promise<number> {
     }
     out(`    app       ${describe(app)}  (${app.image || "-"})`);
     out(`    database  ${describe(db)}, data in volume ${volumeName(name, env)}`);
+    if (db.status === "running") {
+      let schema: string;
+      try {
+        const applied = appliedMigrations(p, env);
+        schema = applied.length ? `${applied.at(-1)} (${applied.length} migration${applied.length === 1 ? "" : "s"} applied)` : "no migrations applied yet";
+      } catch (error) {
+        schema = `could not be read: ${(error as Error).message}`;
+      }
+      out(`    schema    ${schema}`);
+    }
     out(`    check     ${check.ok ? `answers: ${check.entries} ${check.entries === 1 ? "entry" : "entries"}, version ${check.version}` : `NOT answering: ${check.said}`}`);
   }
   if (p.releases.length > 1) {
     out("");
-    out(`  releases    ${p.releases.map((r) => r.version).join(", ")}`);
+    out(`  releases    ${p.releases.map((r) => `${r.version}${r.breaking?.length ? " (breaking)" : ""}`).join(", ")}`);
+  }
+  if (p.failed) {
+    out("");
+    out(`  NOTE        ${p.failed.version} failed after its breaking migration had run, and prod is still on it: ${NAMES.command} rollback ${name} --restore-data`);
   }
   return 0;
 }

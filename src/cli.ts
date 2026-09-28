@@ -27,6 +27,7 @@ const HELP = `${BRAND.product}: ${C} <command>
   release <project>            dev's commit to prod, after a backup and a restore check
   release <project> --dry-run  every check, and nothing changed
   rollback <project>           prod back to its previous version, keeping its data
+  rollback <project> --restore-data   the data back too, as before the release: says what is lost first
   backup-target set <dir>      where backups go: a directory on a separate disk
   backup-target show           where they go, and whether it is usable
   backup <project>             an encrypted backup of prod, now

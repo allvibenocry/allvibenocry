@@ -42,6 +42,14 @@ export interface Release {
   backup: string | null;
   /** The version prod ran when this one replaced it: what a rollback goes back to. */
   from?: string | null;
+  /**
+   * The schema prod's database had once this version was running: the
+   * migrations it has applied, read from the database (D35). Missing on
+   * releases recorded before the schema was.
+   */
+  schema?: { version: string | null; migrations: string[] };
+  /** The breaking migrations this release brought, each marked so in its file (D35). */
+  breaking?: string[];
 }
 
 export interface Project {
@@ -54,6 +62,13 @@ export interface Project {
   releases: Release[];
   /** The version prod runs now: the last release, or an earlier one after a rollback. */
   current?: string;
+  /**
+   * A release that failed after its breaking migration had changed prod's
+   * database, so that its automatic rollback could not go back by code alone
+   * (D35). Prod is still on it, not on `current`; a rollback goes back from it,
+   * with the backup it took. Cleared by the next rollback or release that works.
+   */
+  failed?: Release;
 }
 
 /* ------------------------------------------------------------- names -- */

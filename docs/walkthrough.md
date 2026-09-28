@@ -312,7 +312,7 @@ Host:
 allvibe release guestbook
 ```
 
-Thirteen steps: dev runs the commit, the recovery key is confirmed, a fresh
+Fourteen steps: dev runs the commit, its migrations only add, the recovery key is confirmed, a fresh
 backup, a restore check of it, prod built and deployed on v2, prod answers, the
 tag. It ends:
 
@@ -327,10 +327,11 @@ Reload **prod**: "Sign our guestbook", and your entry is still there.
 In your browser, sign the **prod** guestbook twice with **the same name**, say
 "Fredrik". Now make a change that works in dev and not in prod: a migration
 that allows each name only once. Dev has one entry per name; prod now has two
-with the same name. Host:
+with the same name. A new constraint is a breaking change (D35), so the file
+says it is agreed, on a line of its own. Host:
 
 ```sh
-printf -- '-- One entry per name.\nalter table entries add constraint entries_name_unique unique (name);\n' | runuser -u allvibe -- tee /var/lib/allvibe/projects/guestbook/repo/migrations/002_unique_names.sql
+printf -- '-- One entry per name.\n-- breaking: one entry per name, which older entries may not meet\nalter table entries add constraint entries_name_unique unique (name);\n' | runuser -u allvibe -- tee /var/lib/allvibe/projects/guestbook/repo/migrations/002_unique_names.sql
 allvibe dev deploy guestbook
 allvibe dev commit guestbook "One entry per name"
 allvibe dev deploy guestbook
@@ -341,7 +342,7 @@ Dev takes it without complaint. The release gets as far as deploying v3, and
 then:
 
 ```
-FAIL 11/13 prod deployed on v3
+FAIL 12/14 prod deployed on v3
        prod's app did not come up healthy on v3: …
        it said: error: could not create unique index "entries_name_unique"
 
@@ -400,9 +401,9 @@ allvibe project status guestbook
 The release stops at the backup:
 
 ```
-FAIL 3/13 the backup target is off this machine and writable
+FAIL 4/14 the backup target is off this machine and writable
        /mnt/allvibe-backup is on this machine's own root filesystem, which is not off the machine
-stopped at step 3/13. Nothing after it was attempted.
+stopped at step 4/14. Nothing after it was attempted.
 ```
 
 (An unplugged disk leaves only its empty mount point, which is on the machine's

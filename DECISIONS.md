@@ -843,3 +843,81 @@ README says who makes the project:
 here or a correction on the website. The rule about AI accounts is written as a
 rule because it is what a user has to be able to trust about software that runs
 their coding agent: their account and their bill stay theirs.
+
+## D35. Releases know their schema, and a rollback never crosses a breaking migration by code alone
+
+*2026-09-28. The second brief, item 1. Closes the gap recorded in D31.*
+
+**The schema is a list of file names.** A project's migrations are the numbered
+SQL files in `migrations/`, each applied once, in name order, and recorded by
+file name in the database's `schema_migrations` table (D19). So the schema a
+database *has* is read from that table, and the schema a version of the code
+*knows* is the list of files in its commit, read from git. Every release now
+records the schema prod ran with once it was up (`schema` in `project.json`:
+the newest migration and the whole list, asked of the database), and v1 records
+its own at creation. `project status` shows each database's.
+
+**Every migration is additive or breaking** (`src/lib/migrations.ts`):
+
+- *Additive*: new tables, indexes that are not unique, new columns that are
+  nullable or have a default and no constraint, new views, sequences, types,
+  functions, comments, and inserted rows. The code before it runs on the
+  schema after it, because nothing it reads or writes has changed.
+- *Breaking*: anything that drops, renames, changes a type, adds a constraint
+  the rows already there may violate (a unique index, `add constraint`, a
+  `not null` column without a default), rewrites or deletes rows, replaces
+  something that exists, or runs code (`do`). **And anything the classifier
+  does not recognise**: a statement it cannot read with certainty is breaking,
+  never additive.
+
+The file is split into statements the way Postgres reads it (quotes, dollar
+quotes and nested comments included), so a keyword inside a string decides
+nothing.
+
+**A breaking migration is released only when its file says so**, on a line of
+its own: `-- breaking: <what it changes>`. That line is the user's agreement,
+written where the change is and kept in the history. The release checks, as
+its second step and before anything changes:
+
+- every migration prod's version had is still there, unchanged (a migration
+  that has run is never edited or removed: a change is a new file);
+- every new migration is additive, or breaking and marked.
+
+Otherwise it stops, names the file and the statement, and says how to mark it
+if the change is agreed.
+
+**A rollback asks prod's database** which migrations it has that the version
+being gone back to does not know, and reads each from the release that first
+brought it:
+
+- none, or only additive ones: the old code runs on the newer schema, and the
+  rollback goes ahead, saying which migrations it runs past;
+- any breaking one: it **stops before deploying anything**, names the
+  migration and why it is breaking, and points to `--restore-data`, which says
+  what would be lost and needs `--confirm-data-loss` as before (D26). A
+  migration whose file cannot be found in any release counts as breaking.
+
+So a rollback never reports success while old code runs on a schema it was not
+written for. The smoke check after a rollback stays, as the last word.
+
+**A release that fails after its breaking migration has run** cannot be undone
+by code alone either. Its automatic rollback stops at the same check, and prod
+stays on the failed version, not answering. That is recorded in the project
+(`failed`), so that `allvibe rollback --restore-data` goes back from that
+release with **the backup it took**, not the one before, and `project status`
+says so. Putting the data back is never automatic, even here (rule 8): prod
+took writes during the release's restore check.
+
+**Verified on the test host**, on one project: an additive migration released
+and rolled back, with every entry and the new column's data still there; a
+rename without the mark refused at step 2 with the host's state unchanged; the
+same rename marked, released, its code rollback refused with the explanation,
+and `--restore-data --confirm-data-loss` working as before; and a marked
+breaking release whose app then failed in prod, its automatic rollback
+refused, and a data rollback that restored that release's own backup.
+
+**Instead.** Running the old code and trusting its smoke check, which is what
+D31 found wanting: a health check that passes says nothing about the queries it
+did not run. Asking the database for a schema diff: it would say what changed,
+not whether the old code can live with it, and it would need a database of the
+old version to compare against.
