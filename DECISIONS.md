@@ -852,6 +852,15 @@ network egress filter that only lets an encrypted connection through to a
 vendor's host, cannot read it, and handles no credentials, as the agent's
 egress gate does (D39), is not a proxy in this sense. D42 draws the line.
 
+#### Amendment, 2026-09-28 (D46, D47, D48)
+
+Signing in with a Claude subscription no longer waits for Anthropic's written
+confirmation: the architect decided it on Anthropic's published text, with
+conditions the suite enforces (D46), and revisits it if Anthropic answers or
+the text changes. The rule above stands unchanged: the suite still never
+collects, reads, stores or proxies the login, which stays in the agent's
+memory, and never runs Claude Code on the person's behalf (D48).
+
 ## D35. Releases know their schema, and a rollback never crosses a breaking migration by code alone
 
 *2026-09-28. The second brief, item 1. Closes the gap recorded in D31.*
@@ -1177,6 +1186,14 @@ must stay on. The known limit above did not stand: D41 closes it, for every
 project container, not only the agent; since D41, prod's door is refused to
 the agent by the firewall before nginx answers 403.
 
+#### Amendment, 2026-09-28 (D46, D47, D48)
+
+"Subscription sign-in is not built" no longer holds: `--sign-in account` runs
+the same container for the person to sign in to their own Claude account, and
+the gate then passes the two sign-in hosts as well (D46). The permission mode
+is now set explicitly to auto in both ways of signing in (D47), and the
+container may use no swap.
+
 ## D40. The control panel will run in a container on a pinned official Node 24 image
 
 *2026-09-28. The second brief, item 6. A decision made now, for the brief that
@@ -1344,6 +1361,13 @@ and a vendor.
 sign-in hosts to the gate's allow list and pass them in the same way: the
 suite would still handle no credential. Likewise for later adapters' hosts.
 
+#### Amendment, 2026-09-28 (D46)
+
+Subscription sign-in is now built, on the architect's decision rather than
+Anthropic's confirmation (D46): with an account, the gate passes
+`claude.ai` and `platform.claude.com` besides the API, in exactly the way
+above, and handles no credential.
+
 ## D43. A finding: buying API credits asked a private person for a VAT number
 
 *2026-09-28. The third brief, item 3. A finding, recorded so that later
@@ -1369,6 +1393,12 @@ people. Then two paths matter far more than they did:
 **The live agent test** (the second brief's item 7) waits for either API credits
 or a confirmed subscription path. Until then no real key is used, and Claude
 Code has not talked to the model through the suite.
+
+#### Amendment, 2026-09-28 (D46)
+
+The subscription path is now decided on Anthropic's published text (D46), so
+the live agent test can be the owner signing in to their own Claude account in
+the agent (walkthrough step 23), without API credits.
 
 ## D44. The MCP bridge is the second adapter, ahead of Codex
 
@@ -1438,3 +1468,237 @@ built by them.*
 brief, and each rests on what the suite already has: the panel's runtime (D40),
 dev and prod kept apart (rule 1), the guided plan (D36), and the agent in dev
 (D39). Writing them down makes them plans rather than promises.
+
+## D46. The agent may sign in with the person's own Claude account
+
+*2026-09-28. The fourth brief, item 1. The architect's decision, on what the
+owner found by hand and on Anthropic's published text. It changes D34's
+condition for subscription sign-in; D34, D39 and D42 carry a note pointing
+here.*
+
+**What the owner found by hand.** The official, unmodified Claude Code 2.1.283,
+in a plain Node 24 container, signed in with the owner's own Claude
+subscription through Claude Code's own flow: a web address opened in the
+owner's own browser, and a code pasted back. It worked on Claude Max.
+
+**Anthropic's published text.** Read on 2026-09-28 at
+https://code.claude.com/docs/en/legal-and-compliance ("Legal and compliance";
+the page shows no date of its own). Quoted exactly; the links in the original
+are left out, their words kept.
+
+From "Usage policy", "Authentication and credential use":
+
+> **Developers** building products or services that interact with Claude's
+> capabilities, including those using the Agent SDK, should use API key
+> authentication through Claude Console or a supported cloud provider.
+> Anthropic does not permit third-party developers to offer Claude.ai login
+> into their own applications, or to route requests through Free, Pro, or Max
+> plan credentials on behalf of their users. Moreover, developers may not
+> collect, store, or intermediate Claude.ai credentials or session tokens —
+> sign-in to a Claude account must complete through Anthropic's own flow.
+>
+> This does not restrict how customers provision and manage their own API keys
+> or third-party inference provider credentials — for example, configuring an
+> API key in a development environment, secrets manager, or machine image for
+> use by the customer's own authorized users — provided the resulting usage is
+> billed to the key owner under their agreement with Anthropic (or the
+> applicable provider) and is not resold or intermediated as described above.
+> Nor does it prevent an end user from signing in to the unmodified Claude Code
+> binary with their own Claude subscription, including where a platform hosts
+> Claude Code as described under *Can customers offer Claude Code in their
+> products?* above.
+>
+> Anthropic reserves the right to take measures to enforce these restrictions
+> and may do so without prior notice.
+
+From "Legal agreements", "Can customers offer Claude Code in their products?":
+
+> Unless we've mutually agreed otherwise, preinstalling or running Claude Code
+> in your products or services (e.g. in hosted sandboxes or other agent
+> infrastructure) requires agreeing to our Commercial Terms of Service and
+> complying with the conditions below:
+>
+> - **The Claude Code binary must not be modified.** Claude Code must be
+>   installed and run as published by Anthropic, and customers may not remove,
+>   disable, or restrict any authentication method built into it (including
+>   methods that permit signing in with a Claude account or the user's own API
+>   key).
+> - **Customers may not pay for, resell, or intermediate Claude usage on their
+>   end users' behalf.** Each end user must authenticate with their own
+>   Anthropic API key, Claude subscription plan credentials, or 3P inference
+>   provider credential (Amazon Bedrock, Google Cloud's Agent Platform,
+>   Microsoft Foundry). That usage is billed directly to the end user under
+>   their own agreement with Anthropic or, for third-party inference
+>   providers, with the applicable provider.
+
+**The decision.** The agent may run with the person's own Claude account
+instead of an API key: `allvibe agent start <project> --sign-in account`. It
+is decided now, on the published text, and revisited if Anthropic answers the
+question asked on 2026-09-28 (D34) or the text changes. Every condition is
+enforced by the suite, not asked of anyone:
+
+1. **Claude Code stays official, unmodified and pinned, with all its sign-in
+   methods.** The same image as D39, built from the lock file. Its settings
+   set nothing about signing in: no `forceLoginMethod`, no
+   `forceLoginOrgUUID`, no key helper. Seen on the test host: its sign-in
+   choice offers all three of its methods (a Claude account, a Console
+   account, a third-party platform).
+2. **The person signs in themselves, through Claude Code's own flow**: `/login`
+   (or its first start) in `allvibe agent shell`, the address opened in their
+   own browser, the code pasted back into the same terminal.
+3. **The login lives only in the agent container's memory.** Claude Code keeps
+   a login on Linux in `~/.claude/.credentials.json` (its Authentication page);
+   the agent's home is a tmpfs, with no volume or bind mount, and the container
+   may use no swap (its swap limit equals its memory limit, so nothing in
+   memory is written out to the machine's swap; Docker has no tmpfs option for
+   that). The suite never reads, copies, logs or backs up the agent's home:
+   backups hold prod's data and the key vault only (D13, D37). Removing the
+   container removes the login from the machine.
+4. **Nothing typed into the agent's terminal is recorded or logged by the
+   suite.** `allvibe agent shell` hands the terminal to `docker exec` as it
+   is and writes no run record; Docker logs only the container's main
+   process, which is `sleep`.
+5. **The egress gate lets through only the hosts Claude Code's own
+   documentation lists for signing in and for its traffic**, still `CONNECT`
+   to port 443 only, to public addresses only, reading nothing (D42). The list
+   is "Network access requirements" on
+   https://code.claude.com/docs/en/network-config, read on 2026-09-28. With an
+   account the gate passes three hosts; with a key, still one:
+   - `api.anthropic.com`: "Claude API requests"; both ways of signing in.
+   - `claude.ai`: "claude.ai account authentication".
+   - `platform.claude.com`: "OAuth token exchange, refresh, and revocation also
+     go to this host for claude.ai accounts, so both Console and claude.ai
+     sign-ins require it".
+
+   Every other host on that list stays refused, each for its reason:
+   `claude.com` is opened in the person's own browser, not by the agent (its
+   other use is documentation lookups); `mcp-proxy.anthropic.com` carries
+   claude.ai connectors, which would reach the person's other connected
+   services, so they are also turned off in the agent's settings
+   (`disableClaudeAiConnectors`); `downloads.claude.ai` and
+   `storage.googleapis.com` are for the native installer, the auto-updater
+   and plugins, and the agent's Claude Code is installed from npm, pinned,
+   with updates off; `registry.npmjs.org` is for plugins, MCP servers started
+   with npx, and installing Claude Code, which is done when the image is built;
+   `bridge.claudeusercontent.com` is Claude in Chrome;
+   `*.frame.claudeusercontent.com` is artifacts; `github.com` is plugin
+   marketplaces; `raw.githubusercontent.com` is the changelog feed;
+   `*-review.googlesource.com` is only for Claude Desktop; the two Datadog
+   hosts are telemetry and error reports, which are off
+   (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, D39); `formulae.brew.sh` is
+   Homebrew; `code.claude.com` is documentation lookups.
+6. **The suite never starts Claude Code on the person's behalf** in this mode
+   (D48).
+7. **The website keeps saying "your own API key"** until the owner has tried
+   this mode and the architect decides to say more.
+
+**Stopping is not signing out.** `allvibe agent stop` removes the login from
+this machine, and the next start asks the person to sign in again. It does not
+sign out at Anthropic; `/logout` in the session, before stopping, signs out
+the way Claude Code does it.
+
+**Verified on a fresh test host (built, not tried by a person).** Both ways of
+signing in start. The isolation probe passes in both, 74 of 74 with an
+account and 75 of 75 with a key: with an account the gate passes the three
+hosts and refuses the fifteen others it was asked for (every other host on
+that list, with an example for each of its two wildcard entries, and one on no
+list), the key file and the key helper are absent, the home is a tmpfs with no mount or volume, and swap is
+0; with a key, `claude.ai` and `platform.claude.com` are refused. A second
+probe (`test/host/agent-leftovers.sh`) puts a stand-in login into the agent's
+`~/.claude` and types a marker through `allvibe agent shell` in a terminal: both
+are there inside the agent, on no file on the machine's disk while it runs,
+and nowhere at all after `allvibe agent stop` (every file but `/proc`, `/sys`
+and `/dev`, the journal, Docker's containers and volumes), 12 of 12 in both
+ways of signing in, with a control the agent writes to disk found first.
+`allvibe agent shell` opened Claude Code with an account: after its theme, its
+sign-in choice, where the test stopped, because the sign-in is the owner's.
+On its first start Claude Code reached `api.anthropic.com` and
+`platform.claude.com` through the gate, and nothing was refused.
+
+**Open questions, for the owner and the architect, not decided here:**
+
+- **The Commercial Terms.** The second quote says that preinstalling or running
+  Claude Code in "your products or services (e.g. in hosted sandboxes or other
+  agent infrastructure)" requires agreeing to Anthropic's Commercial Terms of
+  Service, unless agreed otherwise. The suite builds Claude Code into a
+  container on the person's own machine, in both ways of signing in (D39
+  too). Whether that makes the suite such a product, and what it would then
+  have to agree to, is not decided by this text.
+- **Ordinary use.** The same page says OAuth sign-in "is designed to support
+  ordinary use of Claude Code", and that the plans' limits "assume ordinary,
+  individual usage". A person working in their own agent's session fits that;
+  anything the suite ran by itself would not, which is D48.
+
+**Known limits.** When the terminal of `allvibe agent shell` closes, Claude
+Code keeps running in the container until `allvibe agent stop`. The sign-in
+itself, and Claude Code working with an account through the gate, have not
+been tried through the suite: that is the owner's test (walkthrough step 23).
+If the sign-in needs a host the documentation does not list, the gate's log
+names it, and adding it is a change to this decision, not a quiet fix.
+
+## D47. The agent's permission mode is auto, set explicitly
+
+*2026-09-28. The fourth brief, item 1. The architect's decision.*
+
+**What.** The agent's start writes Claude Code's user settings with
+`"permissions": { "defaultMode": "auto" }`, in both ways of signing in
+(`agent/entrypoint.sh`). The mode is never left to Claude Code's default.
+
+**Auto mode**, as Claude Code documents it ("Choose a permission mode",
+https://code.claude.com/docs/en/permission-modes, read 2026-09-28): "A
+separate classifier model reviews actions before they run, blocking anything
+that escalates beyond your request, targets unrecognized infrastructure, or
+appears driven by hostile content Claude read." With 2.1.283, auto mode is
+also Claude Code's own starting mode for interactive terminal sessions, which
+Claude Code announces.
+
+**Why auto.** The walls are the real boundary: whatever the agent is allowed
+to try, it cannot reach prod, the machine, the home network or any key that
+is not its own (D39, D41). Inside those walls, auto keeps a check on every
+action without asking the person about each one: Manual mode asks before
+almost everything, which teaches a beginner to say yes to everything, and
+bypassing permissions checks nothing. Claude Code's own warning stands, and
+is why the walls come first: "Auto mode reduces permission prompts but does
+not guarantee safety."
+
+**Why explicitly.** A default can change with a version. Set in the settings,
+the mode is the suite's decision, reviewed, and not a side effect of an update.
+
+**Why in the user settings.** Claude Code takes `auto`, and `bypassPermissions`,
+only from the user's or managed settings, never from a project's own
+`.claude/settings.json` (the same page). The agent can write its project's
+files, so a project file could at most choose a stricter mode, never a looser
+one. When auto mode is not available to a session (an unsupported model, or
+Anthropic turning it off), Claude Code starts in Manual instead: the safe side.
+
+**Reviewed with every change of the pinned version.** `PERMISSION_MODE_REVIEWED_WITH`
+in `src/lib/agent.ts` names the version this was last reviewed for, and a unit
+test fails when it is not the pinned `CLAUDE_CODE_VERSION`: changing the
+version means reading the permission modes page again and recording what
+changed here.
+
+## D48. With an account, the suite never runs Claude Code itself
+
+*2026-09-28. The fourth brief, item 1. The architect's decision.*
+
+**What.** When the agent signs in with the person's own Claude account (D46),
+every session of Claude Code is one the person opens and drives, in a
+terminal. The suite runs no `claude` command of its own:
+
+- `allvibe agent start --sign-in account` reads Claude Code's version from its
+  own package file instead of running `claude --version`;
+- `allvibe agent shell` refuses `claude -p` or `--print`, and refuses to start
+  Claude Code without a terminal;
+- the probes do not run it either.
+
+**Why.** Anthropic's text draws the line between "an end user ... signing in to
+the unmodified Claude Code binary with their own Claude subscription", which it
+allows, and routing "requests through Free, Pro, or Max plan credentials on
+behalf of their users", which it does not (D46). A session the suite started
+by itself, with the person's login, would be the suite using the person's
+subscription. And because the control panel will call the CLI (rule 5),
+refusing it in the CLI means the panel cannot do it either.
+
+**What it does not stop.** A person in the agent's shell can run whatever they
+like, `claude -p` included: that is their own use, not the suite's. With a key
+(D39) nothing changes.

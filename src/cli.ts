@@ -27,6 +27,7 @@ const HELP = `${BRAND.product}: ${C} <command>
   dev deploy <project>         rebuild dev from its working tree, and check it
   dev commit <project> <msg>   commit dev's changes: a release is a commit
   agent start <project>        the coding agent (Claude Code) in dev, with its key from the vault
+  agent start <project> --sign-in account   the same, for you to sign in to your own Claude account in it
   agent shell <project>        its own session, in this terminal; -- <command> runs a command instead
   agent stop <project>         the agent gone
   release <project>            dev's commit to prod, after a backup and a restore check

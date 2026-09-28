@@ -1,6 +1,7 @@
 #!/bin/sh
-# The agent container and its egress gate (D39, D41, rules 1 and 12), probed
-# from inside them, on the host.
+# The agent container and its egress gate (D39, D41, D46, rules 1 and 12),
+# probed from inside them, on the host, in either way of signing in: the one it
+# was started with, read from its label.
 #
 #   sh agent-isolation.sh <command> <project> <file: prod's key value> <file: dev's key value> [<file: the agent's key value>] [<device address> <device port>]
 #
@@ -9,11 +10,15 @@
 # the router, another device on the home network and a link-local address
 # refused or unreachable; the Docker socket, both backup keys, the backup target
 # and prod's keys absent; the internet only through the gate, and only to the
-# model's API. From inside the gate: the same machine's ports, router, device
-# and link-local address refused, and the model's API reached. What must keep
-# working: the agent reaches its dev app, its dev database and the gate. Values
-# are compared by hash and never printed. Every line ends with the verdict; the
-# last line counts the ones that are not as they must be.
+# hosts of its sign-in: the model's API with a key, and with an account also the
+# two hosts of the account's sign-in, while every other host Claude Code's
+# documentation lists stays refused. Its settings: auto mode, set explicitly,
+# and the key helper only with a key. Its home, where a login lives: in memory,
+# with no mount or volume. From inside the gate: the same machine's ports,
+# router, device and link-local address refused, and the model's API reached.
+# What must keep working: the agent reaches its dev app, its dev database and
+# the gate. Values are compared by hash and never printed. Every line ends with
+# the verdict; the last line counts the ones that are not as they must be.
 set -u
 C=${1:?usage: agent-isolation.sh <command> <project> <prod value file> <dev value file> [agent value file] [device address] [device port]}
 P=${2:?project}
@@ -26,6 +31,14 @@ OTHER_PORT=${OTHER_PORT:-9999}
 A=$C-$P-agent
 G=$C-$P-agent-egress
 API=api.anthropic.com
+# The hosts each way of signing in lets through (src/lib/agent.ts, ALLOWED_HOSTS).
+SIGN_IN_HOSTS="claude.ai platform.claude.com"
+# Every other host on Claude Code's list of what it may reach ("Network access
+# requirements", code.claude.com/docs/en/network-config, read 2026-09-28; its two
+# wildcard entries by an example each), and one that is on no list.
+OTHER_HOSTS="claude.com mcp-proxy.anthropic.com downloads.claude.ai storage.googleapis.com registry.npmjs.org bridge.claudeusercontent.com a.frame.claudeusercontent.com github.com raw.githubusercontent.com chromium-review.googlesource.com http-intake.logs.us5.datadoghq.com browser-intake-us5-datadoghq.com formulae.brew.sh code.claude.com example.com"
+MODE=$(docker inspect -f "{{index .Config.Labels \"$C.sign-in\"}}" "$A")
+[ "$MODE" = account ] || MODE=key
 prod_db_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$C-$P-prod-db" | awk '{print $1}')
 prod_app_ips=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$C-$P-prod-app")
 lan=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')
@@ -52,8 +65,14 @@ file() { docker exec "$A" sh -c "[ -e '$1' ] && echo present || echo absent"; }
 gateways() { for n in $(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$1"); do docker network inspect -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' "$n"; done; }
 value_hash() { printf '%s' "$(cat "$1")" | sha256sum | cut -c1-64; }
 api_over_tls() { in_c "$1" "const t=require('tls').connect({host:'$API',port:443,servername:'$API',timeout:8000},()=>t.write('GET / HTTP/1.1\r\nHost: $API\r\nConnection: close\r\n\r\n'));let b='';t.on('data',d=>b+=d);t.on('end',()=>console.log(b.split('\r\n')[0]));t.on('timeout',()=>{console.log('timed out');t.destroy()});t.on('error',e=>console.log(e.code))"; }
+in_settings() { docker exec "$A" sh -c "grep -c '$1' \"\$HOME/.claude/settings.json\" || true"; }
 
-echo "Claude Code in $A: $(docker exec "$A" claude --version)"
+if [ "$MODE" = account ]; then
+  # With an account, nothing here runs Claude Code (D48): its version is read from its own package.
+  echo "Claude Code in $A: $(docker exec "$A" node -p "require('/opt/claude-code/node_modules/@anthropic-ai/claude-code/package.json').version"), signing in with your own Claude account"
+else
+  echo "Claude Code in $A: $(docker exec "$A" claude --version), signing in with its key"
+fi
 
 echo "from inside the agent, $A:"
 verdict "resolve $C-$P-prod-app" "$(resolve "$A" "$C-$P-prod-app")" blocked
@@ -76,20 +95,36 @@ verdict "through the gate: this machine, 443" "$(gate "$lan" 443)" blocked
 verdict "through the gate: the router, 443" "$(gate "$router" 443)" blocked
 verdict "through the gate: the device, 443" "$(gate "$DEVICE" 443)" blocked
 verdict "$API directly, by name" "$(resolve "$A" "$API")" blocked
-verdict "another internet host, through the gate" "$(gate example.com 443)" blocked
 verdict "$API, through the gate" "$(gate "$API" 443)" reached
+for h in $SIGN_IN_HOSTS; do
+  if [ "$MODE" = account ]; then v_want=reached; else v_want=blocked; fi
+  verdict "$h (sign-in), through the gate" "$(gate "$h" 443)" "$v_want"
+done
+for h in $OTHER_HOSTS; do verdict "$h, through the gate" "$(gate "$h" 443)" blocked; done
+verdict "$API on port 80, through the gate" "$(gate "$API" 80)" blocked
 for f in /var/run/docker.sock /run/docker.sock "/etc/$C" "/etc/$C/backup-host.key" "/etc/$C/recovery-key-UNCONFIRMED.txt" "/mnt/$C-backup" "/var/lib/$C" "/run/$C"; do
   verdict "$f" "$(file "$f")" blocked
 done
 # The whole shape of an age private key: the scanner's binary holds the prefix, as its rule.
 verdict "files holding an age private key" "$(docker exec "$A" sh -c 'grep -rlsE "AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}" / --exclude-dir=proc --exclude-dir=sys 2>/dev/null | wc -l')" blocked
-hashes=$(docker exec "$A" sh -c 'for f in /run/secrets/*; do sha256sum "$f"; done' | cut -c1-64)
+hashes=$(docker exec "$A" sh -c 'for f in /run/secrets/*; do [ -f "$f" ] && sha256sum "$f"; done' | cut -c1-64)
 verdict "a secret holding prod's value" "$(echo "$hashes" | grep -c "$(value_hash "$PROD_VALUE")")" blocked
 verdict "a secret holding dev's value" "$(echo "$hashes" | grep -c "$(value_hash "$DEV_VALUE")")" blocked
-if [ -n "$AGENT_VALUE" ]; then
+if [ "$MODE" = account ]; then
+  verdict "an API key file, /run/secrets/ANTHROPIC_API_KEY" "$(file /run/secrets/ANTHROPIC_API_KEY)" blocked
+  verdict "an API key helper in its settings" "$(in_settings apiKeyHelper)" blocked
+elif [ -n "$AGENT_VALUE" ]; then
   verdict "its own key, in its secrets" "$(echo "$hashes" | grep -c "$(value_hash "$AGENT_VALUE")")" reached
   verdict "its key's value in docker inspect" "$(docker inspect "$A" | grep -c -F -f "$AGENT_VALUE" || true)" blocked
+  verdict "the key helper in its settings" "$(in_settings '"apiKeyHelper": "cat /run/secrets/ANTHROPIC_API_KEY"')" reached
 fi
+verdict "auto mode, set in its settings" "$(in_settings '"defaultMode": "auto"')" reached
+verdict "claude.ai connectors off, in its settings" "$(in_settings '"disableClaudeAiConnectors": true')" reached
+verdict "a way of signing in taken away, in its settings" "$(in_settings 'forceLogin')" blocked
+verdict "its home, /home/agent, in memory (tmpfs)" "$(docker exec "$A" awk '$2 == "/home/agent" && $3 == "tmpfs" { print "present" }' /proc/mounts)" reached
+verdict "a mount or volume for its home" "$(docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$A" | tr ' ' '\n' | grep -c '^/home' || true)" blocked
+verdict "swap it may use, where memory would be written out" "$(docker exec "$A" cat /sys/fs/cgroup/memory.swap.max)" blocked
+verdict "a volume of its own" "$(docker inspect -f '{{range .Mounts}}{{.Type}} {{end}}' "$A" | tr ' ' '\n' | grep -c '^volume$' || true)" blocked
 verdict "its dev app, $C-$P-dev-app:3000" "$(http "$A" "$C-$P-dev-app" 3000 /healthz)" reached
 verdict "its dev database, $C-$P-dev-db:5432" "$(tcp "$A" "$C-$P-dev-db" 5432)" reached
 verdict "the gate, $G:3128" "$(tcp "$A" "$G" 3128)" reached
@@ -107,9 +142,10 @@ verdict "link-local, 169.254.169.254:80" "$(tcp "$G" 169.254.169.254 80)" blocke
 verdict "$API, its one way out, over TLS" "$(api_over_tls "$G")" reached
 
 echo "what docker inspect says of the agent:"
-docker inspect -f '  user {{.Config.User}}; privileged {{.HostConfig.Privileged}}; read-only root {{.HostConfig.ReadonlyRootfs}}; capabilities dropped {{.HostConfig.CapDrop}}; memory {{.HostConfig.Memory}}; pids {{.HostConfig.PidsLimit}}' "$A"
+docker inspect -f '  user {{.Config.User}}; privileged {{.HostConfig.Privileged}}; read-only root {{.HostConfig.ReadonlyRootfs}}; capabilities dropped {{.HostConfig.CapDrop}}; memory {{.HostConfig.Memory}}, with swap {{.HostConfig.MemorySwap}}; pids {{.HostConfig.PidsLimit}}' "$A"
 echo "  networks: $(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$A")"
-echo "  mounts:   $(docker inspect -f '{{range .Mounts}}{{.Source}}->{{.Destination}}({{if .RW}}rw{{else}}ro{{end}}) {{end}}' "$A")"
+echo "  mounts:   $(docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}}->{{.Destination}}({{if .RW}}rw{{else}}ro{{end}}) {{end}}' "$A")"
+echo "  in memory: $(docker inspect -f '{{range $k, $v := .HostConfig.Tmpfs}}{{$k}} ({{$v}}) {{end}}' "$A")"
 
 echo "its commits go through the key check (D38), made inside it with git:"
 KEY=$(mktemp)   # a fake key, made at random in an Anthropic key's shape, assembled so this file never has it

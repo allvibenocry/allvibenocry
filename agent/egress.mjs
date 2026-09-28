@@ -1,7 +1,8 @@
-// The agent's only way out (D39): an HTTPS tunnel to its model's API, and to
-// nothing else. The agent's container has no route anywhere but its dev
-// network; this runs beside it, on that network and on one that reaches the
-// internet, and passes on a connection only when:
+// The agent's only way out (D39): an HTTPS tunnel to its model's API and, when
+// the person signs in with their own Claude account, to the two hosts of that
+// sign-in (D46), and to nothing else. The agent's container has no route
+// anywhere but its dev network; this runs beside it, on that network and on
+// one that reaches the internet, and passes on a connection only when:
 //
 //   - it is a CONNECT, so what passes is TLS between the agent and the API,
 //     which this cannot read;
@@ -31,9 +32,9 @@ function isPrivate(ip) {
 const log = (line) => process.stdout.write(`${new Date().toISOString()} ${line}\n`);
 
 const server = http.createServer((request, response) => {
-  log(`refused ${request.method} ${String(request.url).slice(0, 80)}: only HTTPS tunnels to the model's API`);
+  log(`refused ${request.method} ${String(request.url).slice(0, 80)}: only HTTPS tunnels to the hosts on its list`);
   response.writeHead(403, { "Content-Type": "text/plain" });
-  response.end("Refused: the agent reaches only its model's API, over HTTPS.\n");
+  response.end("Refused: the agent reaches only the hosts on its list, over HTTPS.\n");
 });
 
 server.on("connect", async (request, client, head) => {
@@ -45,7 +46,7 @@ server.on("connect", async (request, client, head) => {
   };
   client.on("error", () => {});
   if (port !== "443") return refuse("only port 443");
-  if (!ALLOW.has(host.toLowerCase())) return refuse(`${host} is not the model's API`);
+  if (!ALLOW.has(host.toLowerCase())) return refuse(`${host} is not on the list`);
   let addresses;
   try {
     addresses = await dns.lookup(host, { all: true, family: 4 });

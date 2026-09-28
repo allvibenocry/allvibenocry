@@ -46,7 +46,7 @@ import { appliedMigrations, schemaOf } from "../lib/schema.js";
 import { renderProjectDocs } from "../lib/template.js";
 import { lockProject } from "../lib/vault.js";
 import { ensureHook } from "../lib/keycheck.js";
-import { agentState, stopAgent } from "../lib/agent.js";
+import { agentContainer, agentState, signInOf, stopAgent } from "../lib/agent.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
 
 const TEMPLATE = "guestbook";
@@ -324,7 +324,8 @@ async function status(name: string | undefined): Promise<number> {
   }
   const agent = agentState(name);
   out("");
-  out(`  agent       ${agent.exists ? `${agent.status} (${agent.image})` : `not running: ${NAMES.command} agent start ${name}`}`);
+  const signIn = agent.exists ? (signInOf(agentContainer(name)) === "account" ? ", your own Claude account" : ", its key") : "";
+  out(`  agent       ${agent.exists ? `${agent.status} (${agent.image}${signIn})` : `not running: ${NAMES.command} agent start ${name}`}`);
   if (p.releases.length > 1) {
     out("");
     out(`  releases    ${p.releases.map((r) => `${r.version}${r.breaking?.length ? " (breaking)" : ""}`).join(", ")}`);
