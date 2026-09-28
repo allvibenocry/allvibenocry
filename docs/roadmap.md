@@ -472,20 +472,6 @@ by side, and pointing at the places where they disagree, lets a person trust
 the work without reading every line, and catch the rare report that says more
 than was done.
 
-## Mains and battery
-
-**Planned** (D53). From the architect's review of the control panel's demo.
-
-**Whether the machine runs on mains or on battery, the battery's charge, and,
-where the machine reports it, how long it would last.** Doctor says so in plain
-words, and warns when the machine runs on battery. A machine without a battery
-says so, without failing.
-
-**Why.** An old laptop is the suite's home, and its battery is a small
-uninterruptible power supply: it keeps the apps running through a short power
-cut. Knowing it is on battery, and for how long, is the warning a person needs
-before the machine switches itself off in the middle of a backup.
-
 ## Also planned, and recorded elsewhere
 
 These were named when their decisions were made, and are not repeated here:
@@ -553,6 +539,22 @@ check that fails shows in the result in plain words.
 night beside the backup, it finds what went wrong while nobody was looking
 (a disk filling up, a firewall rule gone, the backup disk unplugged), and the
 panel can say so the next time the person opens it.
+
+## Mains and battery
+
+**Built** (the fifth brief, D59). Was: Planned (D53), from the architect's review of the control panel's demo.
+
+doctor reads the kernel's power supplies and says, in one line, on mains or on battery, the charge and the time left; tried on the test host through stand-ins, not yet on a real laptop.
+
+**Whether the machine runs on mains or on battery, the battery's charge, and,
+where the machine reports it, how long it would last.** Doctor says so in plain
+words, and warns when the machine runs on battery. A machine without a battery
+says so, without failing.
+
+**Why.** An old laptop is the suite's home, and its battery is a small
+uninterruptible power supply: it keeps the apps running through a short power
+cut. Knowing it is on battery, and for how long, is the warning a person needs
+before the machine switches itself off in the middle of a backup.
 
 ## Rollback past a migration
 

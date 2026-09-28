@@ -5,7 +5,8 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 
-export const KNOWN_OVERRIDES = ["memory-mb", "system-disk", "external-backup-mount"] as const;
+/** power-supply-dir: a stand-in for /sys/class/power_supply, for the tests of mains and battery (D59). */
+export const KNOWN_OVERRIDES = ["memory-mb", "system-disk", "external-backup-mount", "power-supply-dir"] as const;
 export type OverrideKey = (typeof KNOWN_OVERRIDES)[number];
 
 export interface Overrides {

@@ -254,6 +254,11 @@ closes these. Each names the test override or stand-in used in the container.
   <project>` there.
 - **The agent's image on the laptop.** Built in about a minute on the
   workstation; it downloads Debian's git and Claude Code.
+- **Mains and battery on a real laptop** (D59). On the test host, which has
+  no battery, doctor read stand-ins for `/sys/class/power_supply`. On the
+  laptop: `allvibe doctor` on mains, then with the charger pulled (a warning,
+  with the time left if the laptop reports it), then near empty (a problem);
+  and whether its battery reports `energy_now`, `charge_now` or neither.
 - **Signing in over SSH.** On the test host the agent's shell was opened in a
   terminal on the host itself. On the laptop it will be opened over SSH, and
   the sign-in's web address has to be copied out of that terminal and its code

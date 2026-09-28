@@ -21,6 +21,7 @@ import { containerState, engineInfo, tryDocker } from "../lib/docker.js";
 import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../lib/hostfacts.js";
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
 import { readOverrides } from "../lib/overrides.js";
+import { POWER_SUPPLY_DIR, powerCheck, readPower } from "../lib/power.js";
 import { tryRun } from "../lib/run.js";
 import { writeAtomic } from "../lib/files.js";
 import { entries, lastRecord } from "../lib/steps.js";
@@ -170,6 +171,11 @@ export function checks(): Check[] {
         ? `System disk: SSD${disk.declared ? " (declared by the test host)" : ""}`
         : `System disk: its type could not be determined (${disk.device})`,
   );
+
+  // Mains and battery (D59); a test host declares a stand-in for the kernel's files.
+  const powerDir = overrides.active ? overrides.values.get("power-supply-dir") : undefined;
+  const power = powerCheck(readPower(powerDir ?? POWER_SUPPLY_DIR));
+  add("power", power.status, `${power.text}${powerDir ? " (declared by the test host)" : ""}`, "data");
 
   /* Docker */
   const engine = engineInfo();

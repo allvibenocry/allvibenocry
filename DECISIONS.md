@@ -2004,3 +2004,37 @@ check, owned by the service user; with the reverse proxy stopped, the service
 still succeeding, and the kept result and `doctor --last` naming "Reverse
 proxy: exited" with exit 1; the proxy back, all well again. Against the
 previous bundle, WRONG on every check this is for.
+
+## D59. Mains and battery, in doctor
+
+*2026-09-29. The fifth brief, item 10. Builds D53's fourth plan.*
+
+**What.** doctor reads the kernel's power supplies (`/sys/class/power_supply`):
+whether a mains supply is online; each battery's status and charge; and, where
+the machine reports it, how long it would last: `time_to_empty_now`, or
+`energy_now` over `power_now`, or `charge_now` over `current_now`, only while
+it is discharging. It says, in one line (scope "data", so it never fails an
+installation):
+
+- on mains, with a battery: "Power: on mains; the battery is at 80%, charging,
+  ready to carry the machine through a power cut" (ok);
+- on battery: "Power: ON BATTERY, at 60%, about 1 hour and 40 minutes left. The
+  apps keep running; plug the machine in" (a warning);
+- on battery at 20% or less: "... and it is low ... The machine will switch
+  itself off soon; plug it in now" (a problem);
+- no battery: "Power: no battery, so a power cut stops the machine at once (a
+  battery or a small UPS would carry it through a short one)" (information,
+  never a failure).
+
+**The test host has no battery.** Its test overrides (D14), honoured only
+inside a container, take `power-supply-dir`, a stand-in for the kernel's
+directory; doctor then adds "(declared by the test host)". Nothing else can
+point doctor elsewhere.
+
+**Verified**: unit tests with stand-ins for every case, including a battery
+reported absent and the machine's own time estimate; on the test host
+(`test/host/power-fixtures.sh`, 12 of 12), doctor's words and status for mains,
+battery, low battery and no battery through stand-ins, and, without the
+override, the kernel's own, which has no battery there. Against the previous
+bundle, 1 of 12. **Not verified on a real laptop**: see STATE.md, "To verify
+on real hardware".
