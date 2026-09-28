@@ -921,3 +921,45 @@ D31 found wanting: a health check that passes says nothing about the queries it
 did not run. Asking the database for a schema diff: it would say what changed,
 not whether the old code can live with it, and it would need a database of the
 old version to compare against.
+
+## D36. Every new project starts with AGENTS.md, and the guided plan is in it
+
+*2026-09-28. The second brief, item 2. Builds the roadmap's "guided plan" as
+instructions.*
+
+`allvibe project create` gives every new project four documents of its own,
+from the template, with the project's name, the command and the date filled in:
+
+- **`AGENTS.md`**: the instructions for any coding agent, in the cross-tool
+  standard's file (D34). In plain words: turn the user's idea into a short
+  numbered plan in which every step has a check the user can try themselves;
+  build one step at a time; after each step commit, give the check, ask the
+  user to deploy dev and try it, and stop until they say it works; keep
+  `STATE.md` and `DECISIONS.md` current; write only additive migrations, and a
+  breaking one only when the user agrees, marked in the file (D35); never put a
+  secret in code, and read keys from the files the key vault provides (D37);
+  explain everything to a beginner without jargon. It also says where the
+  agent works (dev, by the names of its app and database) and that prod is out
+  of its reach, and that `/healthz` must keep answering.
+- **`CLAUDE.md`**: says the instructions are in `AGENTS.md`, and imports it
+  (`@AGENTS.md`, Claude Code's own syntax), so Claude Code reads them without
+  a second copy that could drift.
+- **`STATE.md`** (what the app does, the plan, done, next, waiting for you) and
+  **`DECISIONS.md`** (append-only, starting with D1: the guestbook), the
+  project's own, in the same shape as this repository's.
+
+A placeholder with no value stops the creation instead of being left in a
+file. **Existing projects are not changed**: the documents are written only
+when a project is created.
+
+**Why.** The guided plan is rule 6 of this repository applied to the apps
+people build: a step is done when a person has tried it. The agent is the
+vendor's unmodified tool (D34), so the suite shapes how it works the way any
+project would, through the instructions file it reads. The agent cannot deploy
+(it has no Docker, D39), so stopping after each step and asking the user to
+deploy dev and try it is also simply how the work flows.
+
+**What it cannot guarantee.** Instructions are followed by the agent, not
+enforced by the suite: an agent can still do two steps at once. What *is*
+enforced sits where the agent cannot reach it: the release's migration check
+(D35), the key check before every commit (D38), and prod out of reach (rule 1).

@@ -43,6 +43,7 @@ import {
 } from "../lib/project.js";
 import { run } from "../lib/run.js";
 import { appliedMigrations, schemaOf } from "../lib/schema.js";
+import { renderProjectDocs } from "../lib/template.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
 
 const TEMPLATE = "guestbook";
@@ -86,6 +87,7 @@ async function create(name: string | undefined): Promise<number> {
           const p = project as Project;
           mkdirSync(projectDir(name), { recursive: true, mode: 0o750 });
           cpSync(path.join(INSTALL_ROOT, "templates", TEMPLATE), repoDir(name), { recursive: true });
+          const docs = renderProjectDocs(repoDir(name), { PROJECT: name, COMMAND: NAMES.command, DATE: new Date().toISOString().slice(0, 10) });
           run("git", ["init", "-q", "-b", "main", repoDir(name)]);
           git(name, "config", "user.name", BRAND.product);
           git(name, "config", "user.email", `${NAMES.command}@localhost`);
@@ -93,7 +95,7 @@ async function create(name: string | undefined): Promise<number> {
           git(name, "commit", "-q", "-m", `Start ${name} from the ${TEMPLATE} template`);
           commit = gitHead(name);
           saveProject(p);
-          return ok(`${repoDir(name)}, first commit ${commit.slice(0, 12)}`);
+          return ok(`${repoDir(name)}, first commit ${commit.slice(0, 12)}\nwith ${docs.join(", ")}: the agent's instructions, and the project's own state and decisions`);
         },
       },
       {
