@@ -39,7 +39,9 @@ sh /root/<script> allvibe <project> …`.
 | `rule1-isolation.sh <command> <project>` | From inside dev's app, prod cannot be reached (rule 1, D18). |
 | `vault-check.sh <command> <project> <dev value file> <prod value file> [<agent value file>]` | Each key's value appears nowhere it must not, and dev never holds prod's (D37). |
 | `key-check.sh <command> <project>` | A fake key, made at random, is stopped by the key check, from `dev commit` and from plain git; a clean commit passes; a missing scanner stops the commit (D38). |
-| `agent-isolation.sh <command> <project> <prod value file> <dev value file> [<agent value file>]` | From inside the agent container: prod, the host, the home network and the machine's secrets refused; dev and the model's API answering; its commits key-checked (D39). |
+| `agent-isolation.sh <command> <project> <prod value file> <dev value file> [<agent value file>] [<device address> <port>]` | From inside the agent and its egress gate: prod, the machine's own ports, the router, a device on the home network, link-local and the machine's secrets refused; dev and the model's API answering; its commits key-checked (D39, D41). Counts what is not as it must be, and exits 1 if anything is. |
+| `app-isolation.sh <command> <project> [<device address> <port>]` | From inside dev's and prod's apps and databases: the machine's own ports, the router, a device on the home network and link-local refused; the public internet reached; each app reading its database; the doors answering the machine and the device (D41). The targets are tried from the machine first, where they must answer. Counts, and exits 1 if anything is wrong. |
+| `lan-fixtures.sh` | **Test host only.** Stand-ins for what a real machine has around it: an SSH server, a service on port 9999, and another device on the home network (a network namespace at 10.99.0.2, port 8080). Each is a unit, so it comes back after a restart. |
 
 ## What it is
 

@@ -28,6 +28,11 @@ UNIT_TIMER=/etc/systemd/system/$CMD-backup.timer
 UNIT_KEYS=/etc/systemd/system/$CMD-keys.service
 TMPFILES=/etc/tmpfiles.d/$CMD.conf
 RUN_DIR=/run/$CMD
+FIREWALL=/usr/local/sbin/$CMD-firewall
+FIREWALL_CONF=$ETC_DIR/firewall.conf
+UNIT_FIREWALL=/etc/systemd/system/$CMD-firewall.service
+UNIT_FIREWALL_CHECK=/etc/systemd/system/$CMD-firewall-check.service
+UNIT_FIREWALL_TIMER=/etc/systemd/system/$CMD-firewall-check.timer
 LOG=/var/log/$CMD-install.log
 
 # Docker's apt signing key, as published in Docker's installation guide.
@@ -41,7 +46,7 @@ POOLS=(172.20.0.0/14 10.201.0.0/16)
 
 export DEBIAN_FRONTEND=noninteractive
 
-STEPS=12
+STEPS=13
 N=0
 STEP=""
 NEED=""
@@ -291,6 +296,8 @@ case "$daemon_result" in
   unchanged*) unchanged "/etc/docker/daemon.json (address pool ${daemon_result#unchanged })" ;;
   *) fail "could not read or write /etc/docker/daemon.json ($daemon_result)" ;;
 esac
+# The pools every project container takes its address from: what the firewall keys on (D41).
+ADDRESS_POOLS=$(printf '%s' "${daemon_result#* }" | tr ',' ' ')
 
 # ---------------------------------------------------------------------------
 step "The service user" "useradd and usermod work"
@@ -472,6 +479,100 @@ if [ "$(systemctl is-enabled "$(basename "$UNIT_KEYS")" 2>/dev/null || true)" !=
   changed "$(basename "$UNIT_KEYS") enabled: it runs at every boot, before Docker"
 else
   unchanged "$(basename "$UNIT_KEYS") enabled"
+fi
+
+# ---------------------------------------------------------------------------
+step "Project containers kept off this machine and the home network" "iptables accepts the rules, and $FIREWALL check finds them in place"
+
+# The CLI runs as the service user and cannot change the firewall, so the rules
+# are put in place here, as root, and by a unit at every boot and every Docker
+# restart (D41). They key on the suite's own address pools.
+firewall_conf="# $PRODUCT_NAME: the firewall for project containers (D41). Written by install.sh.
+COMMAND=$CMD
+POOLS=\"$ADDRESS_POOLS\"
+STATUS=$RUN_DIR/firewall.json"
+if [ "$(cat "$FIREWALL_CONF" 2>/dev/null || true)" != "$firewall_conf" ]; then
+  printf '%s\n' "$firewall_conf" >"$FIREWALL_CONF"
+  chmod 644 "$FIREWALL_CONF"
+  changed "$FIREWALL_CONF: containers from $ADDRESS_POOLS"
+else
+  unchanged "$FIREWALL_CONF"
+fi
+if ! cmp -s "$HERE/firewall.sh" "$FIREWALL"; then
+  install -m 755 -o root -g root "$HERE/firewall.sh" "$FIREWALL"
+  changed "$FIREWALL"
+else
+  unchanged "$FIREWALL"
+fi
+
+# Before Docker at boot, so no container ever runs without the rules; again
+# whenever Docker is restarted (PartOf); and checked as soon as Docker is up and
+# every five minutes, which puts back anything missing and tells doctor, which
+# cannot read the firewall.
+firewall_content="[Unit]
+Description=$PRODUCT_NAME: project containers kept off this machine and the home network
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=$FIREWALL apply
+
+[Install]
+WantedBy=multi-user.target docker.service"
+check_content="[Unit]
+Description=$PRODUCT_NAME: check the firewall for project containers, and put back what is missing
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$FIREWALL check --repair
+
+[Install]
+WantedBy=docker.service"
+check_timer_content="[Unit]
+Description=$PRODUCT_NAME: check the firewall for project containers every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target"
+units_changed=0
+write_unit() { # file content
+  if [ "$(cat "$1" 2>/dev/null || true)" != "$2" ]; then
+    printf '%s\n' "$2" >"$1"
+    units_changed=1
+  fi
+}
+write_unit "$UNIT_FIREWALL" "$firewall_content"
+write_unit "$UNIT_FIREWALL_CHECK" "$check_content"
+write_unit "$UNIT_FIREWALL_TIMER" "$check_timer_content"
+if [ $units_changed = 1 ]; then
+  systemctl daemon-reload
+  changed "$(basename "$UNIT_FIREWALL"), $(basename "$UNIT_FIREWALL_CHECK"), $(basename "$UNIT_FIREWALL_TIMER")"
+else
+  unchanged "$(basename "$UNIT_FIREWALL"), $(basename "$UNIT_FIREWALL_CHECK"), $(basename "$UNIT_FIREWALL_TIMER")"
+fi
+for unit in "$(basename "$UNIT_FIREWALL")" "$(basename "$UNIT_FIREWALL_CHECK")" "$(basename "$UNIT_FIREWALL_TIMER")"; do
+  if [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" != enabled ]; then
+    quiet systemctl enable "$unit"
+    changed "$unit enabled"
+  fi
+done
+if ! systemctl is-active --quiet "$(basename "$UNIT_FIREWALL_TIMER")"; then
+  quiet systemctl start "$(basename "$UNIT_FIREWALL_TIMER")"
+  changed "$(basename "$UNIT_FIREWALL_TIMER") started"
+fi
+if "$FIREWALL" check >/dev/null 2>&1; then
+  unchanged "the rules are in place"
+else
+  quiet systemctl restart "$(basename "$UNIT_FIREWALL")"
+  "$FIREWALL" check >/dev/null 2>&1 || fail "the firewall rules are not in place after applying them" "iptables works, and Docker is running with its DOCKER-USER chain"
+  changed "the rules are in place: containers from $ADDRESS_POOLS cannot reach this machine or any private, link-local, shared or multicast range"
 fi
 
 # ---------------------------------------------------------------------------

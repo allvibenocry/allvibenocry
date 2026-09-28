@@ -4,7 +4,7 @@
  *
  *   npm run bundle      # builds first
  *
- * It holds install.sh, brand.conf, the compiled CLI, the templates, the agent's
+ * It holds install.sh, firewall.sh, brand.conf, the compiled CLI, the templates, the agent's
  * image files (agent/), the licence,
  * a package.json that marks the code as ES modules, and VERSION: the package
  * version and the exact commit, with "-dirty" when the working tree had
@@ -22,7 +22,7 @@ const command = readFileSync(path.join(ROOT, "brand.conf"), "utf8").match(/^COMM
 
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 const commit = git("rev-parse", "--short=12", "HEAD");
-const dirty = git("status", "--porcelain", "--", "src", "install.sh", "brand.conf", "templates", "agent", "package.json") !== "";
+const dirty = git("status", "--porcelain", "--", "src", "install.sh", "firewall.sh", "brand.conf", "templates", "agent", "package.json") !== "";
 const version = `${pkg.version}+${commit}${dirty ? "-dirty" : ""}`;
 
 const out = path.join(ROOT, "bundle", `${command}-${pkg.version}`);
@@ -46,6 +46,7 @@ function copyTree(from, to) {
 }
 
 copyText(path.join(ROOT, "install.sh"), path.join(out, "install.sh"));
+copyText(path.join(ROOT, "firewall.sh"), path.join(out, "firewall.sh"));
 copyText(path.join(ROOT, "brand.conf"), path.join(out, "brand.conf"));
 copyText(path.join(ROOT, "LICENSE"), path.join(out, "LICENSE"));
 copyTree(path.join(ROOT, "dist"), path.join(out, "dist"));

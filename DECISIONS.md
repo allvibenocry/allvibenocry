@@ -1195,3 +1195,97 @@ for anything that listens. NodeSource's repository for a newer Node.js on the
 host (D15 rejected it: another repository and signing key to trust, on its
 schedule rather than Debian's), which would also change the CLI's runtime for
 no gain to it.
+
+## D41. Project containers are kept off the machine's own ports and the home network
+
+*2026-09-28. The third brief, item 1. Closes the limit D39 recorded, and more:
+the architect's review found it wider than D39 said.*
+
+**The gap.** Through its network's gateway, any project container could open a
+connection to any port the host itself listens on, and, through the host's
+routing, to the router and every other device on the home network. Not only the
+agent: dev's app runs code the agent wrote, and even a database on an internal
+network reached the host through that network's gateway. Measured on the test
+host before this change, with an SSH server, one other service and a stand-in
+device on the home network: 24 of the probe's 59 checks were reachable that
+must not be, from dev's and prod's apps and databases alike.
+
+**The rules.** `firewall.sh`, installed as `/usr/local/sbin/allvibe-firewall` and
+run as root, keys on the suite's own address pools (D16), from which every
+project container, and nothing else on the machine, takes its address:
+
+- **`ALLVIBE-FWD`, the first rule of Docker's `DOCKER-USER` chain**, for traffic
+  the machine routes. Between two addresses of the pools it returns to Docker's
+  own rules (a container reaches its own network's containers, and no others:
+  rule 1 stays Docker's to enforce, as before). From the pools to any private
+  range (10/8, 172.16/12, 192.168/16), link-local (169.254/16), the shared
+  range carriers and VPNs use (100.64/10) and multicast, it is refused. The
+  public internet stays reachable.
+- **`ALLVIBE-IN`, the first rule of `INPUT`**, for traffic to the machine
+  itself: every new connection from the pools is refused, whatever the port and
+  whichever of the machine's addresses. Replies to the machine's own
+  connections pass (the proxy reaching an app, the CLI's checks), and nothing
+  from anywhere else is touched, so other machines on the home network reach
+  the proxy's doors exactly as before.
+- **Refused, not dropped**: a connection fails at once (`ECONNREFUSED`,
+  `EHOSTUNREACH`) instead of hanging, which is kinder to an app and makes every
+  probe fast.
+
+**DNS needs no exception.** Docker's embedded DNS asks the machine's resolver
+from the machine's own network namespace, not the container's: on the test
+host, with every rule in place, names asked for the first time resolved while
+the rules' reject counters stayed at 0. If a later Docker changed that, apps
+would fail to resolve names (it fails closed), and the probes' check of the
+public internet would say so.
+
+**Kept in place**, since the CLI, as the service user, cannot touch the
+firewall (D15, D39):
+
+- `allvibe-firewall.service` applies them **before Docker at every boot**, so no
+  container ever starts without them; it is **part of Docker**, so it applies
+  them again whenever Docker is restarted; and Docker itself wants it.
+- `allvibe-firewall-check.service` checks them, and **puts back** anything
+  missing, as soon as Docker is up and every five minutes (a timer). Each
+  check writes what it found to `/run/allvibe/firewall.json`.
+- **`doctor`** reads that and says, in plain words, that project containers
+  cannot reach this machine's own ports or the home network, when that was last
+  checked, and whether anything had to be put back; or that they are NOT in
+  place, what is missing, and the one command that puts them back. It is an
+  installation problem, so install.sh fails on it.
+- install.sh (a thirteenth step) writes the pool into
+  `/etc/allvibe/firewall.conf`, installs the script and the units, and applies
+  the rules; a second run changes nothing.
+
+prod's front door still denies every Docker range (D18) as a second line; a
+container is now refused by the firewall before nginx is asked.
+
+**Verified on the test host**, with an SSH server, a service on another port
+and a stand-in device on the home network (`test/host/lan-fixtures.sh`):
+`test/host/app-isolation.sh` (dev's and prod's apps and databases) 59 of 59
+as they must be, and `test/host/agent-isolation.sh` (the agent and its egress
+gate) 50 of 50: the machine's SSH and other service by its address and by
+every gateway, prod's door, the apps' loopback ports, the router, the device
+and a link-local address all refused; the public internet reached from the
+apps, and the API from the gate; each app reading its own database, the
+agent reaching its dev app, database and gate, and the doors answering the
+machine and the device. The same after the test host restarted, and after
+Docker restarted. And the check put back a rule removed by hand, with doctor
+saying so first.
+
+**An app that genuinely needs a device on the home network** (a printer, a
+smart plug) would need, later, an explicit opt-in per app, not built now: the
+owner names the app, its environment and the one address and port, the suite
+adds a rule for that app's network to that one destination ahead of the
+refusals, prod's needs a confirmation, and the panel shows it on its map of
+what can reach what. The machine itself stays refused to every container,
+opt-in or not.
+
+**Not covered.** IPv6: the suite's networks have none, so there is nothing to
+filter. A container on a network the suite did not make (Docker's default
+bridge, which image builds use) is not a project container and is not
+covered; nothing the suite runs for a project is on it.
+
+**Instead.** A rule per container or per network, which would have to follow
+every create and remove; the pools are fixed at install and never change
+(D16). The CLI managing the firewall: it runs as the service user. Dropping
+instead of refusing: slower failures, and no difference in what gets through.

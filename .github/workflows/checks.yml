@@ -63,5 +63,5 @@ jobs:
           node --version
           npm ci --no-audit --no-fund
           npm test
-      - name: shellcheck install.sh
-        run: shellcheck -x install.sh
+      - name: shellcheck install.sh and firewall.sh
+        run: shellcheck -x install.sh firewall.sh

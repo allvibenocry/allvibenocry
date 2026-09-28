@@ -49,6 +49,18 @@ const ALLOWED_ADDRESSES = new Map([
   // [address, why it is here]
   ["172.20.0.0/14", "the pool Docker hands project networks from (D16): a design value, nobody's network"],
   ["10.201.0.0/16", "the fallback pool (D16), used when the first overlaps the machine's own networks"],
+  // The private ranges themselves, whole, which the firewall for project
+  // containers refuses (D41): definitions from RFC 1918 and RFC 6598, not addresses.
+  ["10.0.0.0/8", "a private range (RFC 1918), refused to project containers by firewall.sh (D41)"],
+  ["172.16.0.0/12", "a private range (RFC 1918), refused to project containers by firewall.sh (D41)"],
+  ["192.168.0.0/16", "a private range (RFC 1918), refused to project containers by firewall.sh (D41)"],
+  ["100.64.0.0/10", "the shared range (RFC 6598), refused to project containers by firewall.sh (D41)"],
+  // The test host's stand-in for another device on the home network
+  // (test/host/lan-fixtures.sh): made inside a disposable test host, nobody's network.
+  ["10.99.0.1/24", "the test host's end of the stand-in home network (test/host/lan-fixtures.sh)"],
+  ["10.99.0.2/24", "the stand-in device on the test host's home network (test/host/lan-fixtures.sh)"],
+  ["10.99.0.2", "the stand-in device on the test host's home network (test/host/lan-fixtures.sh)"],
+  ["10.99.0.1", "the test host's end of the stand-in home network (test/host/lan-fixtures.sh)"],
 ]);
 
 const PRIVATE_V4 =

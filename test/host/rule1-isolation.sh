@@ -3,7 +3,9 @@
 #
 #   sh rule1-isolation.sh <command> <project>     e.g. sh rule1-isolation.sh allvibe guestbook
 #
-# Every probe of prod must fail; dev's own front door must answer. Secrets are
+# Every probe of prod must fail. Since D41 the firewall refuses any container at
+# the machine's own doors, dev's included, before nginx is asked; app-isolation.sh
+# checks that, and the rest of the machine and the home network. Secrets are
 # compared by hash and never printed.
 set -u
 C=${1:?usage: rule1-isolation.sh <command> <project>}

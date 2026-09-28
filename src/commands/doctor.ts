@@ -57,6 +57,35 @@ function uidOf(user: string): number | null {
   return result.code === 0 ? Number(result.stdout.trim()) : null;
 }
 
+/** Minutes after which the firewall's last check counts as not checked at all. */
+const FIREWALL_STALE_MINUTES = 15;
+
+/** What the firewall's own check last found (D41), in plain words, with its status. */
+export function firewallCheck(now = new Date(), file = NAMES.firewallStatus): [Status, string] {
+  let status: { checked?: string; ok?: boolean; repaired?: boolean; problems?: string[] } | null = null;
+  try {
+    status = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    status = null;
+  }
+  const restart = `as root: systemctl restart ${NAMES.firewallService}`;
+  if (!status?.checked) {
+    return ["problem", `The firewall that keeps project containers off this machine and the home network has not been checked since the machine started: run install.sh again, or ${restart}`];
+  }
+  const minutes = Math.floor((now.getTime() - new Date(status.checked).getTime()) / 60_000);
+  if (!status.ok) {
+    return ["problem", `The firewall that keeps project containers off this machine and the home network is NOT in place (${(status.problems ?? []).join("; ")}): ${restart}`];
+  }
+  if (minutes > FIREWALL_STALE_MINUTES) {
+    return ["problem", `The firewall for project containers was last checked ${minutes} minutes ago; its check, ${NAMES.firewallTimer}, should run every five: ${restart}`];
+  }
+  return [
+    "ok",
+    `Firewall: project containers cannot reach this machine's own ports or the home network (checked ${minutes < 1 ? "less than a minute" : `${minutes} minute${minutes === 1 ? "" : "s"}`} ago)` +
+      `${status.repaired ? `; it was not in place, and was put back` : ""}`,
+  ];
+}
+
 export function checks(): Check[] {
   const list: Check[] = [];
   const add = (id: string, status: Status, text: string, scope: Scope = "install") => list.push({ id, status, text, scope });
@@ -133,6 +162,11 @@ export function checks(): Check[] {
   /* Backups */
   const projects = projectNames();
   const config = readConfig();
+  // D41: the rules that keep project containers off this machine and the home
+  // network. doctor runs as the service user, which cannot read the firewall, so
+  // it reads what the root-owned check (every five minutes) found.
+  add("firewall", ...firewallCheck());
+
   // Without it, an app with keys would not start after the next reboot (D37).
   const keysEnabled = tryRun("systemctl", ["is-enabled", NAMES.keysService]).stdout.trim();
   const runDirOk = existsSync(NAMES.runDir);

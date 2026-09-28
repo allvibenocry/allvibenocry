@@ -56,6 +56,10 @@ export function namesFor(command: string) {
     backupService: `${command}-backup.service`,
     backupTimer: `${command}-backup.timer`,
     keysService: `${command}-keys.service`,
+    /** Written by the root-owned firewall check, read by doctor (D41). */
+    firewallStatus: `/run/${command}/firewall.json`,
+    firewallService: `${command}-firewall.service`,
+    firewallTimer: `${command}-firewall-check.timer`,
     proxyProject: `${command}-proxy`,
     proxyContainer: `${command}-proxy`,
     /** The prefix of every Docker label the suite sets. */
