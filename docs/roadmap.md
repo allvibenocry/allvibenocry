@@ -273,6 +273,10 @@ no AI credentials at all.
 - **The method goes with it**: AGENTS.md and the guided plan as MCP resources
   and prompts; and what matters most, dev only, the key check and additive
   migrations, enforced by the tools, not only by instructions.
+- **Connecting a client**: the person adds the machine to their AI app with
+  the address the machine shows them, and a one-time connection code, shown
+  once. The details (the address's form, how long a code lasts) are for the
+  brief that builds it (D53).
 - **Local clients first**, on the home network: Claude Code, Claude Desktop
   through a small local bridge, VS Code, Cursor. **Cloud connectors** that call
   in from outside need the machine reachable from the internet, which rule 3

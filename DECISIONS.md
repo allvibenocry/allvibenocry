@@ -1840,3 +1840,7 @@ would later go through the same sign-in as apps.
 **Corrected in the demo, not planned**: the gate's container name (the
 product's is `allvibe-<project>-agent-egress`), and the MCP bridge's command,
 address and connection code, which are not decided (D44 decides none of them).
+The demo now says only that the person adds the machine with the address the
+machine shows them and a one-time connection code, shown once, and the MCP
+bridge's roadmap entry says the same, leaving the details to the brief that
+builds it.
