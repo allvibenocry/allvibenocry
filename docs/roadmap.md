@@ -364,6 +364,9 @@ changed by the builder.
   automatically.
 - **Networks of their own, outside the apps' safety net**, and **the builder
   never touches them**.
+- **Reachable only from the home network** by default, and never directly from
+  the internet (D53). Reaching one from outside would later go through the
+  same sign-in as apps (see "Sign-in and invitations").
 - **Its data in the nightly backup**, with a warning when it makes the backup
   much larger.
 - **Pi-hole's dependency, made plain.** When the home network uses it for its
@@ -382,6 +385,65 @@ compose file from a forum) skips everything this suite is for: knowing what a
 thing can reach, a backup before a change, and a way back. Recipes the suite
 has tried keep those, and keeping services apart from the apps keeps the
 builder out of the home's infrastructure.
+
+## A release only after every step is tried
+
+**Planned** (D53). From the architect's review of the control panel's demo.
+
+**A release refuses unless every step of the current plan is confirmed as tried
+by the person.** The plan becomes something the suite can read: its steps, the
+check the person can try at each, and whether the builder has finished it. The
+agent keeps the plan; **only the person can mark a step as tried**, never the
+agent. The refusal names the untried steps in plain words. Work done outside
+any plan needs an explicit choice, with a reason, which the release's record
+keeps.
+
+**Why.** "You try every step before it ships" is the promise the guided plan
+makes (D36), and today it rests on the agent's instructions alone: the agent is
+asked to stop after each step, and nothing stops a release of a step nobody
+tried. The walls in this suite are the machine's, not rules the AI is asked to
+follow (D39, D41); this makes the plan one of them.
+
+## A fresh backup before every change to the live app
+
+**Planned** (D53). From the architect's review of the control panel's demo.
+
+**Going back to an earlier version takes a fresh backup first, and checks that
+it restores**, exactly like a release, and stops at the first failure without
+changing anything. Putting the data back (`--restore-data`) keeps the backup it
+already takes first.
+
+**Why.** Rule 2 says no release without a fresh backup that has passed a
+restore check. Going back is also a change to the live app: it starts other
+code on today's data. Today it takes no backup (D26), because it keeps the
+data; a backup first makes a mistake in going back recoverable too.
+
+## Doctor every night
+
+**Planned** (D53). From the architect's review of the control panel's demo.
+
+**`allvibe doctor` runs with the nightly backup**, and its full result is kept on
+the machine, with a short history, in a form the control panel can read. A
+check that fails shows in the result in plain words.
+
+**Why.** Doctor answers when asked, and a beginner does not ask. Run every
+night beside the backup, it finds what went wrong while nobody was looking
+(a disk filling up, a firewall rule gone, the backup disk unplugged), and the
+panel can say so the next time the person opens it.
+
+## Mains and battery
+
+**Planned** (D53). From the architect's review of the control panel's demo.
+
+**Whether the machine runs on mains or on battery, the battery's charge, and,
+where the machine reports it, how long it would last.** Doctor says so in plain
+words, and warns when the machine runs on battery. A machine without a battery
+says so, without failing.
+
+**Why.** An old laptop is the suite's home, and its battery is a small
+uninterruptible power supply: it keeps the apps running through a short power
+cut. Knowing it is on battery, and for how long, is the warning a person needs
+before the machine switches itself off in the middle of a backup.
 
 ## Also planned, and recorded elsewhere
 

@@ -2,19 +2,29 @@
  * `allvibe release <project> [--dry-run]` and `allvibe rollback <project>`
  * (rules 2, 7 and 8; D25, D26).
  *
- * A release is, in order, stopping at the first failure:
+ * A release is fifteen steps, in order, stopping at the first failure; these
+ * are the lines it prints:
  *
- *   dev runs the commit being released and answers its smoke check
- *   the recovery key is confirmed, so a backup can be restored off the machine
- *   a fresh backup of prod, kept apart from rotation
- *   a restore check of that backup (four steps)
- *   prod built from dev's commit
- *   prod deployed on the new version
- *   prod answers its smoke check
- *   the version tag
+ *    1  dev runs the commit being released, and answers its smoke check
+ *    2  the migrations since the last release only add, or are marked breaking (D35)
+ *    3  the recovery key is confirmed, so a backup can be restored off the machine
+ *    4  the backup target is off this machine and writable
+ *    5  prod's database is running
+ *    6  an encrypted backup of prod, on the target, kept apart from rotation
+ *    7  the backup to check                                     (7 to 11: the
+ *    8  it is whole, and it decrypts                             restore check
+ *    9  its key vault restores (D37)                             of that very
+ *   10  it restores into a scratch copy                          backup)
+ *   11  the app's own health check passes against the copy
+ *   12  prod built from dev's commit
+ *   13  prod deployed on the new version
+ *   14  prod answers its smoke check
+ *   15  the release is tagged with its version
  *
- * If the deploy or prod's smoke check fails, prod goes back to the version it
- * ran before, automatically, keeping its data.
+ * If the deploy or prod's smoke check fails (13 or 14), prod goes back to the
+ * version it ran before, automatically, keeping its data; unless the failed
+ * version's migration has already changed the data in a way the version before
+ * cannot read, when it stops there and names the backup this release took.
  *
  * A rollback goes back to the previous version's code and keeps prod's data.
  * If that version cannot run on today's data, it stops and says so; restoring

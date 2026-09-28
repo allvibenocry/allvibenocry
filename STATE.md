@@ -79,6 +79,16 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   unit tests, and CI on every push: a secret scan (gitleaks), the guard for
   rules 9 and 10, the unit tests, and shellcheck of install.sh and firewall.sh.
 
+## Gates
+
+**Before any version of the suite that installs or runs Claude Code is offered
+to other people** (D52): the question of Anthropic's Commercial Terms is
+resolved, in one of three ways: the owner accepts them (which may need a
+registered business), Anthropic confirms otherwise in writing, or a design in
+which the suite does not install or run Claude Code itself. It does not stop
+development, and it does not touch the MCP bridge (D44). Until then the website
+says "your own API key", and nothing about signing in with a Claude account.
+
 ## The fourth brief
 
 **Tried by the owner:** the sign-in test, walkthrough step 23 (the brief's
@@ -97,11 +107,8 @@ other items of all four briefs (rule 6).
 minutes for its check; not filtering IPv6 is accepted only while it stays true,
 now checked by doctor (D49); D42 is accepted.
 
-**Open questions, for the owner and the architect** (D46): whether building
-Claude Code into the agent's container makes the suite a product that
-"preinstalls or runs Claude Code" in the sense of Anthropic's legal page, which
-asks such products to agree to its Commercial Terms of Service; this applies
-with a key too.
+**The question about Anthropic's Commercial Terms** (D46) is now a release
+gate (D52): see "Gates" above.
 
 ## The third brief
 

@@ -1643,6 +1643,12 @@ been tried through the suite: that is the owner's test (walkthrough step 23).
 If the sign-in needs a host the documentation does not list, the gate's log
 names it, and adding it is a change to this decision, not a quiet fix.
 
+#### Amendment, 2026-09-29 (D52)
+
+The open question about Anthropic's Commercial Terms is now a gate for releasing
+the product to other people, not a stop for developing it (D52). The owner has
+tried this mode: walkthrough step 23 worked as written (2026-09-28).
+
 ## D47. The agent's permission mode is auto, set explicitly
 
 *2026-09-28. The fourth brief, item 1. The architect's decision.*
@@ -1774,3 +1780,63 @@ for every pointer action).
 
 **What the demo is not.** It is a mock-up: nothing it shows is built unless
 the roadmap says so.
+
+## D52. The Commercial Terms question is a release gate, not a stop
+
+*2026-09-29. The fifth brief, item 2. The architect's review of the fourth
+brief, and the owner's decision. D46 carries a note pointing here.*
+
+**The architect accepted the fourth brief** (D46 to D51). The two limits seen
+there, Claude Code running on after the terminal of `allvibe agent shell`
+closes, and stopping the agent not being a sign-out at Anthropic, are accepted
+for now and noted for the control panel.
+
+**The question** (D46): Anthropic's legal page says that preinstalling or
+running Claude Code "in your products or services (e.g. in hosted sandboxes or
+other agent infrastructure) requires agreeing to our Commercial Terms of
+Service", unless agreed otherwise. The suite builds Claude Code into a
+container on the person's own machine, with a key (D39) and with an account
+(D46).
+
+**Decided: it stays open, and it is a gate for releasing the product, not for
+developing it.** Before any version of the suite that installs or runs Claude
+Code is offered to other people, the question must be resolved in one of three
+ways:
+
+- the owner accepts Anthropic's Commercial Terms, which may need a registered
+  business;
+- Anthropic confirms otherwise, in writing;
+- or a design in which the suite does not install or run Claude Code itself.
+
+**Not affected: the MCP bridge** (D44). There the person runs their own AI app,
+signed in their own way, and the suite installs and runs no vendor's agent.
+
+**Until it is resolved, the website** keeps saying "your own API key", and says
+nothing about signing in with a Claude account. STATE.md carries the gate.
+
+## D53. Four things the demo showed become plans, and your own services stay at home
+
+*2026-09-29. The fifth brief, item 2. The architect's review of the demo's
+claims: four of the seven things it showed without a source in this
+repository become plans; the other three are corrected in the demo.*
+
+Each is an entry in [docs/roadmap.md](docs/roadmap.md), Planned, with its
+reasons there, and this brief's items 7 to 10 build them:
+
+- **A release only after every step is tried**: a release refuses unless every
+  step of the current plan is confirmed as tried by the person. Today the plan
+  is prose the agent keeps, and the agent's instructions ask it to stop after
+  each step (D36); nothing checks it.
+- **A fresh backup before every change to the live app**, going back to an
+  earlier version included: today a code rollback takes none (D26).
+- **Doctor every night**, with the backup, its result kept for the panel.
+- **Mains and battery**: whether the machine runs on mains or on battery, and
+  for how long it would last.
+
+**Your own services** (D50) are reachable only from the home network by
+default, and never directly from the internet; reaching them from outside
+would later go through the same sign-in as apps.
+
+**Corrected in the demo, not planned**: the gate's container name (the
+product's is `allvibe-<project>-agent-egress`), and the MCP bridge's command,
+address and connection code, which are not decided (D44 decides none of them).
