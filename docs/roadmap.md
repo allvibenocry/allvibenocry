@@ -1,12 +1,17 @@
 # Roadmap
 
-What is planned, and not built. **Every item on this page is Planned**: none of
-it exists in the code yet, and none of it has been tried anywhere. What is built
+What is planned, and what has been built from the plan. **Every entry under
+Planned is Planned**: none of it exists in the code yet, and none of it has
+been tried anywhere. When a brief builds an entry, it moves to **Built, from
+this roadmap** at the end, under the same heading, with the decision that
+records how. Built means built and run on the test host by the implementer:
+not yet tried by the owner (rule 6), and not yet on real hardware. What works
 is in [STATE.md](../STATE.md); why things are the way they are is in
-[DECISIONS.md](../DECISIONS.md). An item leaves this page when a brief builds
-it, and its decision goes into DECISIONS.md then.
+[DECISIONS.md](../DECISIONS.md).
 
 ---
+
+# Planned
 
 ## Off-site backups
 
@@ -73,38 +78,6 @@ When it is lost, the plan is:
   backup already records the public half of the key it was encrypted to, in its
   manifest (D23), so the suite can say exactly which backups the lost key was
   needed for.
-
-## Rollback past a migration
-
-**Planned.** The known gap in D26, from the architect's review (D31).
-
-Rolling back past a release whose migration succeeded runs old code against a
-newer schema. Today, if the old code still answers its health check, the
-rollback is reported as done. The plan:
-
-- **Releases record their schema version**, beside the commit and the backup
-  they already record.
-- **Rollback explains, and offers `--restore-data`, when the database is newer
-  than the version it goes back to.**
-- **The project template gets a rule: within one release, migrations only add,
-  never drop or rename.**
-
-## A key vault
-
-**Planned.** One of the website's promises, made a plan by the architect's
-review of the website (D33).
-
-API keys, the keys an app needs for services outside the machine, are **stored
-encrypted on the machine and handed to apps at run time**: never in code, never
-in the repository, never pasted into a chat.
-
-**Why.** A key written into code ends up in git history, and from there on
-GitHub once the GitHub integration exists; the key check before push (CLAUDE.md)
-catches that mistake, and the vault is the place that makes it unnecessary.
-Handing a secret to an app at run time is how a project's database password
-already works (D21: a file mounted into the one container that needs it, never
-an environment variable). A vault extends that to the keys a user brings, and
-keeps dev from ever holding prod's (rule 1).
 
 ## The control panel at allvibe.local
 
@@ -190,24 +163,12 @@ system disk is set up. To decide when it is built: how the machine unlocks at
 boot without somebody typing a passphrase, since it is meant to come back on its
 own after a power cut.
 
-## The control panel's runtime
-
-**Planned: a decision to make before the control panel is built.** From the
-architect's review of the website (D33).
-
-**Which Node.js the panel runs on.**
-
-**Why.** The CLI runs on Debian 13's own Node.js 20 (D15), and that is
-deliberate (D32): it listens on no port. On 2026-09-27 Debian's security tracker
-listed six 2026 CVEs still open for Node.js 20 in Debian 13, fixed only in newer
-Debian releases. That is acceptable for a command-line tool; it is not for a
-web server. The panel could, for example, run in a container on the official
-Node.js 24 image, pinned by digest like every image the suite uses (D27), and
-updated through the monthly check-up.
-
 ## Agent adapters
 
-**Planned.** From the architect's review of the website (D34).
+**Planned, and begun.** From the architect's review of the website (D34).
+**Built** (the second brief, D39): Claude Code, with the user's own API key
+from the key vault, in the agent container. **Still planned**: everything else
+below, from signing in with a Claude subscription on.
 
 **The coding agent in dev is an official, unmodified vendor tool**, installed
 in the dev container, signed in through the vendor's own flow, and shown to the
@@ -232,19 +193,6 @@ keeps the user inside the vendor's terms, and keeps the suite out of their
 credentials and their bill. Dev is where rule 1 already puts the agent: nothing
 in a dev environment reaches prod. One instructions file that every tool reads
 means a project does not have to be rewritten for each agent.
-
-## A guided plan
-
-**Planned.** From the architect's review of the website (D34).
-
-**Each project gets instructions for the agent** (in its `AGENTS.md`, above) so
-that an idea becomes a short numbered plan in which **every step has a check the
-user can try**, and **the agent stops after each step** for the user to try it.
-
-**Why.** It is rule 6 of this repository, applied to the apps people build: a
-step counts as done when a person has tried it, not when the agent says so.
-Small steps with a check each also keep every change in dev small enough to try
-before it is released.
 
 ## Sign-in and invitations
 
@@ -285,7 +233,61 @@ the rule above: the suite never pays for, resells or intermediates AI usage.
 
 These were named when their decisions were made, and are not repeated here:
 
-- In [CLAUDE.md](../CLAUDE.md): the web UI, the agent container, internet
-  publishing, tunnels, the GitHub integration, and the key check before push.
+- In [CLAUDE.md](../CLAUDE.md): the web UI, internet publishing, tunnels, the
+  GitHub integration, and the key check before push. (The agent container is
+  built, D39, and so is a key check before every commit, D38.)
 - In D28: a lock between operations, and pruning old release images and release
   backups.
+
+---
+
+# Built, from this roadmap
+
+Each moved here when a brief built it; its heading is the one it had above.
+Built, run on the test host, and not yet tried by the owner (rule 6).
+
+## Rollback past a migration
+
+**Built** (the second brief, D35). Was: the known gap in D26, from the
+architect's review (D31).
+
+- **Every release records the schema it ran with**, asked of the database,
+  beside the commit and the backup.
+- **Migrations are additive or breaking**, and a release refuses a breaking
+  one unless its file says so (`-- breaking: <what it changes>`), and refuses
+  an edited or removed one, before anything changes.
+- **A rollback across additive migrations goes ahead**, and says so; **across
+  a breaking one it stops before deploying**, names the migration, and offers
+  `--restore-data` with its confirmation.
+- **The project template's rule** is in its AGENTS.md (D36): only add, unless
+  the user agrees.
+
+## A key vault
+
+**Built** (the second brief, D37). Was: one of the website's promises (D33).
+
+`allvibe key set|list|remove`. Values from standard input, encrypted to the
+host key and the recovery key, handed to apps at run time as files
+(`/run/secrets/<NAME>`, the path in `<NAME>_FILE`), never an environment
+variable; separate for dev, prod and the agent, so prod's keys are never in
+dev; in every backup, and restored by the restore check.
+
+## A guided plan
+
+**Built, as instructions** (the second brief, D36). Was: from the architect's
+review of the website (D34).
+
+Every new project's `AGENTS.md` tells the agent to turn an idea into a short
+numbered plan with a check the user can try at every step, to build one step
+at a time, and to stop after each for the user to try it. It is followed by
+the agent, not enforced by the suite.
+
+## The control panel's runtime
+
+**Decided** (the second brief, D40), for the brief that builds the panel; not
+built. Was: a decision to make, from the architect's review of the website
+(D33).
+
+The panel runs in a container on the official Node.js 24 image, pinned by
+digest (D27), not on the host's Node.js 20: acceptable for a command-line tool
+that listens on no port (D32), not for a web server.

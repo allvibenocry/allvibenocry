@@ -28,10 +28,13 @@ The long-term shape:
   a restore test, and that roll back on their own when the new version does not
   answer.
 
-The first brief builds the operational core as command-line tools: the host
+The first brief built the operational core as command-line tools: the host
 installer, projects with dev and prod, backups with restore tests, and releases
-with rollback. The web UI, the agent container, internet publishing, tunnels,
-the GitHub integration and the key check before push come later.
+with rollback. The second built the foundations for the agent: rollback that
+knows the schema, the project template with the guided plan, the key vault,
+the key check before every commit, and the agent container itself. The web UI,
+sign-in in front of apps, internet publishing, tunnels, the GitHub integration
+and the key check before push come later.
 
 The product name and the command name are each defined once, in
 [brand.conf](brand.conf). The command is `allvibe`, and the service user and
@@ -203,3 +206,32 @@ From the first brief, here:
     ranges in a test tripped the rule 10 guard. *Here:* examples use the
     documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`), and the guard's
     allowlist holds only the address pools the product itself sets (D16).
+
+From the second brief, here:
+
+23. **"The rest of the line" must not reach the next one.** `\s*` matches a
+    newline: an empty `-- breaking:` mark took the next line, the SQL itself,
+    as its reason, and would have let an unexplained breaking migration
+    through (D35). *Here:* `[ \t]*` inside a line, and a test that an empty
+    mark is no mark.
+24. **A search for a secret's prefix finds the scanner's rule for it.** Looking
+    for `AGE-SECRET-KEY-1` inside the agent container found one file: the
+    gitleaks binary, which holds that prefix as a detection rule. *Here:* search
+    for the whole shape of the secret, and look at what matched before counting
+    it.
+25. **A substring is not a flag.** A test that forbade `--pid` failed on
+    `--pids-limit`. *Here:* compare arguments whole, or as `flag=`.
+26. **A stopped commit has still written what was staged.** git stores a
+    staged file in its object store at `git add`, before any hook runs, so a key
+    stopped by the pre-commit check sits in `.git/objects`, unreferenced, until
+    it is pruned (D38). *Here:* say so, unstage after a block, and search the
+    object store, not only the history.
+27. **"The backup from before the release" depends on which release prod is
+    on.** After a release that failed past its breaking migration, prod runs the
+    failed version, not the recorded current one; restoring the current one's
+    backup would have gone back two releases. *Here:* record what prod actually
+    runs, and go back from that (D35). Mistake 18 again, in a third place.
+28. **A probe must show the same thing when it runs twice.** The agent probe's
+    clean commit wrote the line its last run had written, so the second run had
+    nothing to commit and printed nothing. *Here:* what a probe changes is
+    unique to each run.

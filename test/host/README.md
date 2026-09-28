@@ -27,6 +27,20 @@ the test host as `C:/Program Files/Git/root/x.sh`. PowerShell does not do this.
 | `node test/host/host.mjs remove` | Removes the container, its volumes and its image. Nothing is left. |
 | `node test/host/host.mjs resources snapshot <file>` / `compare <file>` | Every container, image, volume and network on this workstation's Docker, as ids, and what was added or removed since the snapshot. |
 
+## Probes
+
+Scripts that run **on the host**, as root, and print verdicts, counts and error
+codes, never a secret. Push one with `node test/host/host.mjs push
+test/host/<script> /root/`, then run it with `node test/host/host.mjs exec --
+sh /root/<script> allvibe <project> …`.
+
+| Script | What it proves |
+|---|---|
+| `rule1-isolation.sh <command> <project>` | From inside dev's app, prod cannot be reached (rule 1, D18). |
+| `vault-check.sh <command> <project> <dev value file> <prod value file> [<agent value file>]` | Each key's value appears nowhere it must not, and dev never holds prod's (D37). |
+| `key-check.sh <command> <project>` | A fake key, made at random, is stopped by the key check, from `dev commit` and from plain git; a clean commit passes; a missing scanner stops the commit (D38). |
+| `agent-isolation.sh <command> <project> <prod value file> <dev value file> [<agent value file>]` | From inside the agent container: prod, the host, the home network and the machine's secrets refused; dev and the model's API answering; its commits key-checked (D39). |
+
 ## What it is
 
 - **A privileged Debian 13 container with systemd as init**, made from the

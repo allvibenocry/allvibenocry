@@ -1,7 +1,7 @@
 #!/bin/sh
 # The agent container (D39, rules 1 and 12), probed from inside it, on the host.
 #
-#   sh agent-isolation.sh <command> <project> <file: prod's key value> <file: dev's key value>
+#   sh agent-isolation.sh <command> <project> <file: prod's key value> <file: dev's key value> [<file: the agent's key value>]
 #
 # Every probe of prod, the host, the home network and the machine's secrets
 # must be refused; its own dev app and dev database, and the model's API
@@ -12,6 +12,7 @@ C=${1:?usage: agent-isolation.sh <command> <project> <prod value file> <dev valu
 P=${2:?project}
 PROD_VALUE=${3:?prod value file}
 DEV_VALUE=${4:?dev value file}
+AGENT_VALUE=${5:-}
 A=$C-$P-agent
 GATE=$C-$P-agent-egress
 API=api.anthropic.com
@@ -74,7 +75,7 @@ echo "what docker inspect says of it:"
 docker inspect -f '  user {{.Config.User}}; privileged {{.HostConfig.Privileged}}; read-only root {{.HostConfig.ReadonlyRootfs}}; capabilities dropped {{.HostConfig.CapDrop}}; memory {{.HostConfig.Memory}}; pids {{.HostConfig.PidsLimit}}' "$A"
 echo "  networks: $(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$A")"
 echo "  mounts:   $(docker inspect -f '{{range .Mounts}}{{.Source}}->{{.Destination}}({{if .RW}}rw{{else}}ro{{end}}) {{end}}' "$A")"
-echo "  the agent's key value in docker inspect: $(docker inspect "$A" | grep -c -F -f /root/value-agent || true)"
+[ -n "$AGENT_VALUE" ] && echo "  the agent's key value in docker inspect: $(docker inspect "$A" | grep -c -F -f "$AGENT_VALUE" || true)"
 echo "its commits go through the key check (D38), made inside it with git:"
 KEY=$(mktemp)   # a fake key, made at random in an Anthropic key's shape, assembled so this file never has it
 printf '%s-%s-%s%s' sk-ant api03 "$(head -c 300 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 93)" AA > "$KEY"
@@ -88,7 +89,7 @@ docker exec "$A" rm -f /workspace/agent-config.js
 docker exec "$A" git -C /workspace prune --expire=now
 echo "  the fake key in any commit or object:    $(runuser -u "$C" -- git -C "/var/lib/$C/projects/$P/repo" cat-file --batch-all-objects --batch | grep -a -c -F -f "$KEY" || true)"
 rm -f "$KEY"
-printf 'export const greeting = "Hello from the agent";\n' | docker exec -i "$A" sh -c 'cat > /workspace/agent-config.js'
+printf 'export const greeting = "Hello from the agent, %s";\n' "$(date -u +%FT%TZ)" | docker exec -i "$A" sh -c 'cat > /workspace/agent-config.js'
 docker exec "$A" git -C /workspace add agent-config.js
 docker exec "$A" git -C /workspace commit -q -m "A greeting, from the agent" && echo "  a clean commit: made, by $(docker exec "$A" git -C /workspace log -1 --format='%an')"
 echo "the egress gate's log:"
