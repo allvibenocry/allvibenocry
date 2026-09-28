@@ -472,24 +472,6 @@ by side, and pointing at the places where they disagree, lets a person trust
 the work without reading every line, and catch the rare report that says more
 than was done.
 
-## A release only after every step is tried
-
-**Planned** (D53). From the architect's review of the control panel's demo.
-
-**A release refuses unless every step of the current plan is confirmed as tried
-by the person.** The plan becomes something the suite can read: its steps, the
-check the person can try at each, and whether the builder has finished it. The
-agent keeps the plan; **only the person can mark a step as tried**, never the
-agent. The refusal names the untried steps in plain words. Work done outside
-any plan needs an explicit choice, with a reason, which the release's record
-keeps.
-
-**Why.** "You try every step before it ships" is the promise the guided plan
-makes (D36), and today it rests on the agent's instructions alone: the agent is
-asked to stop after each step, and nothing stops a release of a step nobody
-tried. The walls in this suite are the machine's, not rules the AI is asked to
-follow (D39, D41); this makes the plan one of them.
-
 ## A fresh backup before every change to the live app
 
 **Planned** (D53). From the architect's review of the control panel's demo.
@@ -547,6 +529,26 @@ These were named when their decisions were made, and are not repeated here:
 
 Each moved here when a brief built it; its heading is the one it had above.
 Built, run on the test host, and not yet tried by the owner (rule 6).
+
+## A release only after every step is tried
+
+**Built** (the fifth brief, D56). Was: Planned (D53), from the architect's review of the control panel's demo.
+
+`plan.json` in the working copy, kept by the agent; `allvibe plan tried <project> <step>` for the person, whose marks the agent cannot reach; the release's second step, and `--outside-plan "reason"` for work outside any plan.
+
+**A release refuses unless every step of the current plan is confirmed as tried
+by the person.** The plan becomes something the suite can read: its steps, the
+check the person can try at each, and whether the builder has finished it. The
+agent keeps the plan; **only the person can mark a step as tried**, never the
+agent. The refusal names the untried steps in plain words. Work done outside
+any plan needs an explicit choice, with a reason, which the release's record
+keeps.
+
+**Why.** "You try every step before it ships" is the promise the guided plan
+makes (D36), and today it rests on the agent's instructions alone: the agent is
+asked to stop after each step, and nothing stops a release of a step nobody
+tried. The walls in this suite are the machine's, not rules the AI is asked to
+follow (D39, D41); this makes the plan one of them.
 
 ## Rollback past a migration
 

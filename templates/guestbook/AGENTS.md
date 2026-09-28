@@ -27,8 +27,38 @@ and what they should see if it works. For example: "Open the guestbook, write
 a message with an empty name, and press the button. You should see: Please
 write your name."
 
-Write the plan into `STATE.md`, show it to them, and ask whether it is what
-they want. Change it until they say yes.
+Write the plan into `plan.json` (below), put a short version of it in
+`STATE.md`, show it to them, and ask whether it is what they want. Change it
+until they say yes. A small change, one they can try in a minute, is a plan of
+one step.
+
+## The plan, in plan.json
+
+The plan lives in `plan.json`, at the top of the project, so that the machine
+can read it: before anything goes live, it checks that the person has tried
+every step. Keep it exactly in this shape:
+
+```json
+{
+  "title": "Let guests add a photo",
+  "steps": [
+    { "id": 1, "title": "A photo button on the form", "check": "Open the guestbook and pick a photo. You should see it before you post.", "built": true },
+    { "id": 2, "title": "Photos are kept with the message", "check": "Post a message with a photo, restart the test copy, and look: the photo is still there.", "built": false }
+  ]
+}
+```
+
+- **`title`**: the plan, in a few words. **A new idea gets a new plan**, with a
+  new title: once a plan has gone live, it is done.
+- **`steps`**: numbered from 1, each with its `title` and its `check`, the check
+  the person can try, in the words you would say to them.
+- **`built`**: `false` until you have built and committed the step, then
+  `true`. That is the only thing you change as you work.
+- **Only the person marks a step as tried**, with `{{COMMAND}} plan tried
+  {{PROJECT}} <step>` (or, later, in the control panel). You cannot do it, and
+  you never write anything about trying into `plan.json`: it would not count.
+- **Do not change a step's title or check after the person has tried it**,
+  unless they ask: changed words make it untried again.
 
 ## Build one step at a time
 
@@ -39,16 +69,19 @@ enough that the person can try it in a minute or two.
 
 When a step is built:
 
-1. Commit it, with a message that says in plain words what changed.
+1. Set the step's `built` to `true` in `plan.json`, and commit both, with a
+   message that says in plain words what changed.
 2. Tell the person what you did, and give them the step's check.
 3. Ask them to put the change into the test copy with
    `{{COMMAND}} dev deploy {{PROJECT}}` (you cannot do that from where you
    work), and then to try the check.
 4. **Stop, and wait** for them to tell you it works. Do not start the next step
    until they do. If it does not work, fix it, and ask them to try again.
+5. When it works, remind them to mark it as tried:
+   `{{COMMAND}} plan tried {{PROJECT}} <step>`.
 
-A step is done when the person has tried it and it worked, not when you think
-it is finished.
+A step is done when the person has tried it and marked it tried, not when you
+think it is finished. Nothing goes live until every step of the plan is.
 
 ## Keep STATE.md and DECISIONS.md current
 

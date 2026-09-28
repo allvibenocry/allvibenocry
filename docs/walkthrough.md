@@ -300,11 +300,13 @@ allvibe dev deploy guestbook
 Host:
 
 ```sh
-allvibe release guestbook --dry-run
+allvibe release guestbook --dry-run --outside-plan "the heading, changed by hand"
 ```
 
-Every step says `ok`; the ones that would change something say `would …`. It
-ends:
+The change was made by hand, not as the steps of a plan the agent keeps, so a
+release needs your reason for putting it live outside any plan, and its record
+keeps it (D56; step 25 shows a plan). Every step says `ok`; the ones that would
+change something say `would …`. It ends:
 
 ```
 Every check passed. Nothing was changed: prod still runs v1.
@@ -315,10 +317,11 @@ Every check passed. Nothing was changed: prod still runs v1.
 Host:
 
 ```sh
-allvibe release guestbook
+allvibe release guestbook --outside-plan "the heading, changed by hand and tried in dev"
 ```
 
-Fifteen steps: dev runs the commit, its migrations only add, the recovery key is confirmed, a fresh
+Sixteen steps: dev runs the commit, the plan (here, outside any plan, with your
+reason), its migrations only add, the recovery key is confirmed, a fresh
 backup, a restore check of it, prod built and deployed on v2, prod answers, the
 tag. It ends:
 
@@ -341,14 +344,14 @@ printf -- '-- One entry per name.\n-- breaking: one entry per name, which older 
 allvibe dev deploy guestbook
 allvibe dev commit guestbook "One entry per name"
 allvibe dev deploy guestbook
-allvibe release guestbook
+allvibe release guestbook --outside-plan "one entry per name, by hand"
 ```
 
 Dev takes it without complaint. The release gets as far as deploying v3, and
 then:
 
 ```
-FAIL 13/15 prod deployed on v3
+FAIL 14/16 prod deployed on v3
        prod's app did not come up healthy on v3: …
        it said: error: could not create unique index "entries_name_unique"
 
@@ -403,16 +406,16 @@ Take the backup disk away. **Test host**, host: `umount /mnt/allvibe-backup`.
 
 ```sh
 allvibe project status guestbook
-allvibe release guestbook
+allvibe release guestbook --outside-plan "a release with the backup disk gone, on purpose"
 allvibe project status guestbook
 ```
 
 The release stops at the backup:
 
 ```
-FAIL 4/15 the backup target is off this machine and writable
+FAIL 5/16 the backup target is off this machine and writable
        /mnt/allvibe-backup is on this machine's own root filesystem, which is not off the machine
-stopped at step 4/15. Nothing after it was attempted.
+stopped at step 5/16. Nothing after it was attempted.
 ```
 
 (An unplugged disk leaves only its empty mount point, which is on the machine's
@@ -464,13 +467,13 @@ runuser -u allvibe -- sed -i "s|insert into entries (name, message) values (\$1,
 allvibe dev deploy moods
 allvibe dev commit moods "Remember the mood"
 allvibe dev deploy moods
-allvibe release moods
+allvibe release moods --outside-plan "remember the mood, by hand"
 ```
 
 The release's second step reads the new migration:
 
 ```
-ok   2/15 the migrations since v1 only add, or are marked breaking
+ok   3/16 the migrations since v1 only add, or are marked breaking
        migrations/002_add_mood.sql: only adds
 ```
 
@@ -506,14 +509,14 @@ runuser -u allvibe -- sed -i -e 's|insert into entries (name, message, mood)|ins
 allvibe dev deploy moods
 allvibe dev commit moods "The writer is the author"
 allvibe dev deploy moods
-allvibe release moods
+allvibe release moods --outside-plan "the writer is the author, by hand"
 ```
 
 Dev takes it. The release refuses at its second step, before anything
 changes:
 
 ```
-FAIL 2/15 the migrations since v1 only add, or are marked breaking
+FAIL 3/16 the migrations since v1 only add, or are marked breaking
        migrations/003_name_to_author.sql is a breaking change: "alter table entries rename column name to author": it changes the table in a way older code may not expect (rename column name).
        The version before it could not run on the database after it, so going back would mean losing data.
        If that is agreed, say so in the file, on a line of its own: -- breaking: <what it changes>
@@ -526,7 +529,7 @@ tag. Agree to it, in the file, and release:
 printf -- '-- The writer is the author.\n-- breaking: renames name to author, and versions before it still read name\nalter table entries rename column name to author;\n' | runuser -u allvibe -- tee $R/migrations/003_name_to_author.sql
 allvibe dev commit moods "Agree that renaming the writer is breaking"
 allvibe dev deploy moods
-allvibe release moods
+allvibe release moods --outside-plan "the writer is the author, marked breaking"
 curl -s -o /dev/null -d "name=Di&message=on v3" http://127.0.0.1:8102/entries
 ```
 

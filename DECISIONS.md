@@ -1894,3 +1894,52 @@ plan mode, not a mechanism of the suite's own.
 
 **Words**: the tab is "Live" and its button "Put vN live"; "publish" is kept for
 making an app reachable from the internet; "deploy" is never used in the panel.
+
+## D56. A release only after every step of its plan is tried by the person
+
+*2026-09-29. The fifth brief, item 7. Builds D53's first plan.*
+
+**The plan becomes something the suite can read.** Each project's working copy
+holds `plan.json`: the plan's title, and its steps, each with a number, a
+title, the check the person can try, and `built`, whether the builder has
+finished it. The agent keeps it, as the project's AGENTS.md now asks (a new
+section, "The plan, in plan.json"); STATE.md keeps a short version for people.
+
+**Only the person marks a step as tried**: `allvibe plan tried <project>
+<step>`, which the control panel will call (rule 5). The marks are in
+`tried.json` beside the project, outside the working copy, which the agent's
+container does not have (D39); anything the agent writes about trying into
+`plan.json`, or a `tried.json` of its own in the working copy, is ignored. A
+mark belongs to the words of the step it was made for (the plan's title, the
+step's number, title and check): if the agent changes them after the person
+tried the step, it is untried again. A step the builder has not finished
+cannot be marked. `allvibe plan <project>` shows the plan dev runs, and where
+each step stands.
+
+**The release's second step**, "every step of the plan is tried by you",
+reads `plan.json` from the commit being released and refuses, before anything
+changes, naming each untried step in plain words. A plan is put live once: a
+release records it (its title, a key of its words, and when each step was
+tried, at which commit), and a later release of the same plan counts as
+outside any plan. **Work outside any plan** (no plan.json, an empty plan, or a
+plan already put live) needs `--outside-plan "reason"`: refused without a
+reason, and the reason kept in the release's record and in the run's. It does
+not stand in for trying: a commit with a plan whose steps are untried is
+refused with or without it. A release now has sixteen steps.
+
+**Verified on a fresh test host** (`test/host/plan-gate.sh`, 31 of 31): the
+agent's plan committed from inside its container; a release with untried steps
+refused at step 2, with the releases, tags, prod's version and the backups as
+before; from inside the agent, no `allvibe` command and no marks file, and its
+own `"tried": true` and `tried.json` committed and ignored; step 1 marked, a
+release still refused; step 2 marked, the release through, with the plan in
+its record; the same plan refused the second time; `--outside-plan` refused
+without a reason or with a blank one, nothing changed, and put live with one,
+the reason in both records. The same probe against the previous bundle, which
+has no gate, said WRONG on every check the gate is for.
+
+**Known limit.** A change the agent commits after the person tried the last
+step, and before the release, is released with the plan: the steps were tried,
+but not that last commit. The release records, for each step, the commit it
+was tried at, so the panel can show the difference; refusing it is left for a
+later decision.

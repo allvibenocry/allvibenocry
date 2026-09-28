@@ -2,26 +2,27 @@
  * `allvibe release <project> [--dry-run]` and `allvibe rollback <project>`
  * (rules 2, 7 and 8; D25, D26).
  *
- * A release is fifteen steps, in order, stopping at the first failure; these
+ * A release is sixteen steps, in order, stopping at the first failure; these
  * are the lines it prints:
  *
  *    1  dev runs the commit being released, and answers its smoke check
- *    2  the migrations since the last release only add, or are marked breaking (D35)
- *    3  the recovery key is confirmed, so a backup can be restored off the machine
- *    4  the backup target is off this machine and writable
- *    5  prod's database is running
- *    6  an encrypted backup of prod, on the target, kept apart from rotation
- *    7  the backup to check                                     (7 to 11: the
- *    8  it is whole, and it decrypts                             restore check
- *    9  its key vault restores (D37)                             of that very
- *   10  it restores into a scratch copy                          backup)
- *   11  the app's own health check passes against the copy
- *   12  prod built from dev's commit
- *   13  prod deployed on the new version
- *   14  prod answers its smoke check
- *   15  the release is tagged with its version
+ *    2  every step of the plan is tried by you (D56), or --outside-plan "reason"
+ *    3  the migrations since the last release only add, or are marked breaking (D35)
+ *    4  the recovery key is confirmed, so a backup can be restored off the machine
+ *    5  the backup target is off this machine and writable
+ *    6  prod's database is running
+ *    7  an encrypted backup of prod, on the target, kept apart from rotation
+ *    8  the backup to check                                     (8 to 12: the
+ *    9  it is whole, and it decrypts                             restore check
+ *   10  its key vault restores (D37)                             of that very
+ *   11  it restores into a scratch copy                          backup)
+ *   12  the app's own health check passes against the copy
+ *   13  prod built from dev's commit
+ *   14  prod deployed on the new version
+ *   15  prod answers its smoke check
+ *   16  the release is tagged with its version
  *
- * If the deploy or prod's smoke check fails (13 or 14), prod goes back to the
+ * If the deploy or prod's smoke check fails (14 or 15), prod goes back to the
  * version it ran before, automatically, keeping its data; unless the failed
  * version's migration has already changed the data in a way the version before
  * cannot read, when it stops there and names the backup this release took.
@@ -63,7 +64,9 @@ import {
 import { run, tryRun } from "../lib/run.js";
 import { appliedMigrations, describeUnknown, releaseMigrations, restoreDataCommand, rollbackSchema, schemaOf } from "../lib/schema.js";
 import { fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
+import { gate, planKey, readMarks, stepName } from "../lib/plan.js";
 import { backupSteps, restoreCheckSteps, targetStep } from "./backup.js";
+import { planAt } from "./plan.js";
 import { git } from "./project.js";
 
 const C = NAMES.command;
@@ -175,13 +178,38 @@ function codeRollbackSteps(project: Project, to: Release, from: string, automati
 
 /* ------------------------------------------------------------ release -- */
 
+/** `release`'s arguments: the project, --dry-run, and --outside-plan with its reason (D56). */
+export function releaseArgs(args: string[]): { name: string; dryRun: boolean; outsidePlan: string | null } | { error: string } {
+  const usage = `usage: ${C} release <project> [--dry-run] [--outside-plan "why this goes live outside any plan"]`;
+  let name: string | null = null;
+  let dryRun = false;
+  let outsidePlan: string | null = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === "--dry-run") dryRun = true;
+    else if (a === "--outside-plan" || a.startsWith("--outside-plan=")) {
+      const reason = a === "--outside-plan" ? args[(i += 1)] : a.slice("--outside-plan=".length);
+      if (reason === undefined || reason.startsWith("--") || reason.trim().length < 3) {
+        return {
+          error:
+            `Putting work live outside any plan needs a reason, in your own words, which the release's record keeps:\n` +
+            `  ${C} release <project> --outside-plan "why this goes live without a plan"\nNothing was changed.`,
+        };
+      }
+      outsidePlan = reason.trim();
+    } else if (a.startsWith("--") || name !== null) return { error: usage };
+    else name = a;
+  }
+  return name === null ? { error: usage } : { name, dryRun, outsidePlan };
+}
+
 async function release(args: string[]): Promise<number> {
-  const name = args.find((a) => !a.startsWith("--"));
-  const dryRun = args.includes("--dry-run");
-  if (!name) {
-    process.stderr.write(`usage: ${C} release <project> [--dry-run]\n`);
+  const parsed = releaseArgs(args);
+  if ("error" in parsed) {
+    process.stderr.write(`${parsed.error}\n`);
     return 2;
   }
+  const { name, dryRun, outsidePlan } = parsed;
   const project = readProject(name);
   const config = readConfig();
   const from = currentRelease(project);
@@ -190,6 +218,7 @@ async function release(args: string[]): Promise<number> {
   const out: { backup: Backup | null } = { backup: null };
   let commit = "";
   let breaking: string[] = [];
+  const planned: { value: NonNullable<Release["plan"]> | null } = { value: null };
 
   const steps: Step[] = [
     {
@@ -210,6 +239,37 @@ async function release(args: string[]): Promise<number> {
         const check = await smoke(project, "dev");
         if (!check.ok) return fail(`dev does not answer its smoke check: ${check.said}`, `dev works before it is released: ${C} project status ${name}`);
         return ok(`dev runs ${commit.slice(0, 12)}, nothing uncommitted, and answers: ${check.said}`);
+      },
+    },
+    {
+      name: "every step of the plan is tried by you",
+      run: () => {
+        const result = gate(planAt(name, commit), readMarks(name), project.releases);
+        const outside = (why: string) =>
+          outsidePlan
+            ? ok(`outside any plan, by your choice: "${outsidePlan}". ${why}; the release's record keeps your reason.`)
+            : fail(
+                `${why}, so nobody has tried this commit's changes as steps of a plan.`,
+                `have the agent write the change as a plan in plan.json, try its steps in dev, and mark each: ${C} plan tried ${name} <step>. ` +
+                  `Or, for work outside any plan: ${C} release ${name} --outside-plan "your reason"`,
+              );
+        if (result.state === "invalid") return fail(`plan.json in ${commit.slice(0, 12)} cannot be read: ${result.problem}`, "ask the agent to fix plan.json, then deploy dev and try again");
+        if (result.state === "none") return outside(`${commit.slice(0, 12)} has no plan`);
+        if (result.state === "spent") return outside(`the plan "${result.plan.title}" was already put live in ${result.releasedIn}`);
+        if (result.state === "untried") {
+          return fail(
+            `the plan "${result.plan.title}" has steps you have not tried: ${result.untried.map(stepName).join("; ")}` +
+              (outsidePlan ? `. --outside-plan is for work outside any plan, and this commit has one` : ""),
+            `try each in dev (the test copy), then mark it: ${C} plan tried ${name} <step>`,
+          );
+        }
+        planned.value = {
+          title: result.plan.title,
+          key: planKey(result.plan),
+          steps: result.plan.steps.map((s, i) => ({ id: s.id, title: s.title, tried: result.marks[i].at, commit: result.marks[i].commit })),
+        };
+        if (outsidePlan) return fail(`this commit has a plan, "${result.plan.title}", every step tried: --outside-plan is not needed`, `${C} release ${name}`);
+        return ok(`"${result.plan.title}": all ${result.plan.steps.length} steps tried by you, the last ${result.marks.map((m) => m.at).sort().at(-1)?.slice(0, 16).replace("T", " ")} UTC`);
       },
     },
     {
@@ -291,6 +351,7 @@ async function release(args: string[]): Promise<number> {
         project.releases.push({
           version, commit, image: imageName(name, version), at: new Date().toISOString(), backup: out.backup?.manifest.file ?? null, from: from?.version ?? null,
           schema, ...(breaking.length ? { breaking } : {}),
+          ...(planned.value ? { plan: planned.value } : {}), ...(outsidePlan ? { outsidePlan } : {}),
         });
         project.current = version;
         delete project.failed;
@@ -303,11 +364,12 @@ async function release(args: string[]): Promise<number> {
   if (dryRun) process.stdout.write(`dry run of releasing ${name} ${version}: every check, and nothing changed\n\n`);
   let record;
   try {
-    record = await runSteps(steps, { kind: "release", project: name, dryRun, facts: { version, from: from?.version ?? null } });
+    record = await runSteps(steps, { kind: "release", project: name, dryRun, facts: { version, from: from?.version ?? null, ...(outsidePlan ? { outsidePlan } : {}) } });
   } finally {
     cleanupRestore(context);
   }
   record.facts.backup = out.backup?.manifest.file ?? null;
+  if (planned.value) record.facts.plan = planned.value.title;
   saveRecord(record);
 
   if (record.ok) {

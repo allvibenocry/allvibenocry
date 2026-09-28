@@ -42,6 +42,7 @@ test("AGENTS.md says what the brief asks, in its own sections", () => {
     assert.deepEqual(headings, [
       "Who you are working for",
       "Start with a plan",
+      "The plan, in plan.json",
       "Build one step at a time",
       "Stop after each step",
       "Keep STATE.md and DECISIONS.md current",
@@ -54,6 +55,9 @@ test("AGENTS.md says what the brief asks, in its own sections", () => {
     assert.match(section("Start with a plan"), /short numbered plan/);
     assert.match(section("Start with a plan"), /check they can try themselves/);
     assert.match(section("Stop after each step"), /Stop, and wait/);
+    assert.match(section("Stop after each step"), /allvibe plan tried recipes <step>/);
+    assert.match(section("The plan, in plan.json"), /Only the person marks a step as tried/);
+    assert.match(section("The plan, in plan.json"), /"built": false/);
     assert.match(section("Stop after each step"), /allvibe dev deploy recipes/);
     assert.match(section("Changing the database"), /Only add/);
     assert.match(section("Changing the database"), /-- breaking: <what it changes>/);

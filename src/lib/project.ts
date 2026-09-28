@@ -51,6 +51,10 @@ export interface Release {
   schema?: { version: string | null; migrations: string[] };
   /** The breaking migrations this release brought, each marked so in its file (D35). */
   breaking?: string[];
+  /** The plan this release put live, every step tried by the person (D56). */
+  plan?: { title: string; key: string; steps: Array<{ id: number; title: string; tried: string; commit: string }> };
+  /** Work put live outside any plan: the person's reason, given with --outside-plan (D56). */
+  outsidePlan?: string;
 }
 
 export interface Project {

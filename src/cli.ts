@@ -9,6 +9,7 @@ import { backupCommands } from "./commands/backup.js";
 import { dev } from "./commands/dev.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
 import { key, keysUnlock } from "./commands/key.js";
+import { plan } from "./commands/plan.js";
 import { project } from "./commands/project.js";
 import { releaseCommands } from "./commands/release.js";
 import { runs } from "./commands/runs.js";
@@ -30,7 +31,10 @@ const HELP = `${BRAND.product}: ${C} <command>
   agent start <project> --sign-in account   the same, for you to sign in to your own Claude account in it
   agent shell <project>        its own session, in this terminal; -- <command> runs a command instead
   agent stop <project>         the agent gone
-  release <project>            dev's commit to prod, after a backup and a restore check
+  plan <project>               the plan dev runs, and where each step stands
+  plan tried <project> <step>  you tried this step in dev, and it works (only you can mark it)
+  release <project>            dev's commit to prod, after a backup and a restore check; every step of its plan tried
+  release <project> --outside-plan "reason"   work outside any plan, with your reason, which the record keeps
   release <project> --dry-run  every check, and nothing changed
   rollback <project>           prod back to its previous version, keeping its data
   rollback <project> --restore-data   the data back too, as before the release: says what is lost first
@@ -64,6 +68,7 @@ const COMMANDS: Record<string, Handler> = {
   dev: (args) => dev(args),
   key: (args) => key(args),
   agent: (args) => agent(args),
+  plan: (args) => plan(args),
   "keys-unlock": () => keysUnlock(),
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);
