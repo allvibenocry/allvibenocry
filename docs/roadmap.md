@@ -183,9 +183,10 @@ user as an interactive session in the web interface.
   usage**, now or in any paid version.
 - **Shared instructions live in `AGENTS.md`**, the cross-tool standard, with
   `CLAUDE.md` pointing to it.
-- **Later adapters, in this order:** OpenAI's Codex CLI, GitHub's Copilot CLI,
-  then Google's agent once its move from Gemini CLI to Antigravity CLI has
-  settled. **Each vendor's terms are confirmed before its adapter ships.**
+- **Later adapters, in this order:** the MCP bridge (below, D44), then OpenAI's
+  Codex CLI, GitHub's Copilot CLI, and Google's agent once its move from Gemini
+  CLI to Antigravity CLI has settled. **Each vendor's terms are confirmed
+  before its adapter ships.**
 
 **Why.** The agent is the vendor's product, and the user's relationship with
 the vendor is the user's: an unmodified tool, signed in the vendor's own way,
@@ -193,6 +194,12 @@ keeps the user inside the vendor's terms, and keeps the suite out of their
 credentials and their bill. Dev is where rule 1 already puts the agent: nothing
 in a dev environment reaches prod. One instructions file that every tool reads
 means a project does not have to be rewritten for each agent.
+
+**Why the order changed** (D43): buying API credits asked the owner, a private
+person, for a VAT number. If that holds for private people in the EU, the own
+API key is out of reach for much of the audience, and the paths that use a
+subscription the user already has, signing in with it and the MCP bridge,
+matter far more. The live agent test waits for either.
 
 ## Sign-in and invitations
 
@@ -228,6 +235,94 @@ run, what they reach and who gets in. It comes after version 1, so it does not
 contradict "several users per machine" being outside version 1 (CLAUDE.md).
 The AI keys are the organisation's own, bought by the organisation, which keeps
 the rule above: the suite never pays for, resells or intermediates AI usage.
+
+## The MCP bridge
+
+**Planned.** The second adapter, ahead of Codex (D44). From the architect's
+review of the second brief.
+
+**The machine runs an MCP server, and the user works with the AI client they
+already pay for**, signed in through its vendor's own flow. The suite handles
+no AI credentials at all.
+
+- **Its tools reach dev only**: read and write files in dev's working copy,
+  deploy to dev, run the checks, read dev's logs, and commit through the key
+  check (D38).
+- **Never a release**: the bridge can only propose one, and the person releases
+  it in the panel, behind the backup and the restore check.
+- **Every tool call is logged** and visible to the person.
+- **The method goes with it**: AGENTS.md and the guided plan as MCP resources
+  and prompts; and what matters most, dev only, the key check and additive
+  migrations, enforced by the tools, not only by instructions.
+- **Local clients first**, on the home network: Claude Code, Claude Desktop
+  through a small local bridge, VS Code, Cursor. **Cloud connectors** that call
+  in from outside need the machine reachable from the internet, which rule 3
+  forbids for the panel: later, if ever, and only behind strong sign-in.
+- The user's chat client can take the architect's role (below) and a coding
+  client the builder's.
+
+**Why.** It is the one path that needs no API credits and no sign-in the suite
+would have to be trusted with: the user keeps the client and the subscription
+they have (D43), and the suite keeps what it is for, the safety net around dev
+and prod.
+
+## Two modes in the control panel
+
+**Planned** (D45). From the architect's review of the second brief.
+
+**A simple mode for beginners, and "Show what's under the hood"** for people who
+want details and finer control: a deeper layer of the same panel, which can
+never bypass the safety net silently.
+
+- **Insight that only shows:** containers, logs, resources, files and code, the
+  diff of each step, migrations with their class (D35), release logs, backup
+  details, the agent's sessions, and a live map of which containers can reach
+  what (D41).
+- **Control inside the safety net:** templates, resource limits, the backup
+  schedule and extra targets, the choice of agent, a terminal into dev but never
+  into prod, and a read-only view of prod's database.
+- **Ideas to keep:** "Load safe defaults", ready-made profiles, an "Explain this"
+  button that asks the AI to explain a detail in plain words, a preview of what
+  every advanced action will change before it runs, a resource budget per app,
+  and exporting an app.
+
+**Why.** A beginner must never need the details (rule 5), and someone who wants
+them should not have to leave the panel for a terminal to get them. One panel
+with a deeper layer keeps both on the same safety net, instead of an "expert"
+path around it.
+
+## A bug report builder
+
+**Planned** (D45). From the architect's review of the second brief.
+
+**A report button inside the test copy only, never in prod:** area screenshots
+with marks, guided questions (what did you do, what did you expect, what
+happened instead), and context gathered by itself (the browser console's
+errors, failed requests, dev's server log for the same time, the version and
+the plan's step), bundled into one report file with its images, in the project.
+**The agent reproduces the problem first, then fixes it, then stops** for the
+person to try again.
+
+**Why.** "It doesn't work" is what a beginner can say; a screenshot, three
+answers and the logs of the same minute are what an agent needs. Collecting
+them for the person, in dev where nothing is real, turns the one into the
+other, and reproducing before fixing is the guided plan's own rule applied to
+bugs.
+
+## The architect
+
+**Planned** (D45). From the architect's review of the second brief.
+
+**A second role the person talks to**: it turns an idea into a brief with a
+check for every step, and reviews the builder's report against the brief in
+plain words (what was built, what to try, what it is unsure about), sized to
+the change, so a small change gets a small plan. It can be a second, read-only
+Claude Code session with its own instructions that may only write briefs, and
+later another vendor's agent, for a second opinion.
+
+**Why.** It is how this repository itself is built (CLAUDE.md, "Roles"): one
+role owns what and why, another owns how, and a person tries every step. A
+beginner gets the same, without having to be the architect themselves.
 
 ## Also planned, and recorded elsewhere
 

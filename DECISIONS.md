@@ -1343,3 +1343,98 @@ and a vendor.
 **Subscription sign-in**, when Anthropic confirms it (D34), would add the
 sign-in hosts to the gate's allow list and pass them in the same way: the
 suite would still handle no credential. Likewise for later adapters' hosts.
+
+## D43. A finding: buying API credits asked a private person for a VAT number
+
+*2026-09-28. The third brief, item 3. A finding, recorded so that later
+decisions rest on it; nothing is built by it.*
+
+**What happened.** When the owner, buying as a private person in the EU, tried
+to buy API credits on the Claude Developer Platform, it asked for a VAT number,
+which a private person does not have. So the owner could not buy credits, and
+`ALLVIBE_TEST_ANTHROPIC_API_KEY` is deliberately not set.
+
+**Not verified:** whether this applies to every private person in the EU, or
+only to this case. It is one observation, not a policy anyone has confirmed.
+
+**If it does apply**, the "own API key" path the first adapter was built on
+(D34, D39) is out of reach for much of the suite's audience, who are private
+people. Then two paths matter far more than they did:
+
+- **signing in with a Claude subscription**, which waits for Anthropic's written
+  confirmation (D34, asked on 2026-09-28);
+- **adapters that use a subscription the user already has**, through that
+  vendor's own client, above all the MCP bridge (D44).
+
+**The live agent test** (the second brief's item 7) waits for either API credits
+or a confirmed subscription path. Until then no real key is used, and Claude
+Code has not talked to the model through the suite.
+
+## D44. The MCP bridge is the second adapter, ahead of Codex
+
+*2026-09-28. The third brief, item 3. A plan, in docs/roadmap.md; nothing is
+built by it. Changes the order of D34's later adapters.*
+
+**The bridge.** The machine runs an MCP server, and the user works with the AI
+client they already pay for, signed in through its vendor's own flow. The suite
+handles no AI credentials at all: not a key, not a token, not a sign-in (D34,
+D42). That is why it comes second, **ahead of OpenAI's Codex CLI**, and why the
+finding in D43 makes it matter more.
+
+**What its tools can do, and what they cannot:**
+
+- **Dev only**: read and write files in dev's working copy, deploy to dev, run
+  the checks, read dev's logs, and commit, through the key check (D38).
+- **Never a release.** The bridge can only propose one; the person releases it
+  in the panel, where the backup and the restore check happen (rule 2).
+- **Everything visible**: every tool call is logged and shown to the person.
+- **The method goes with it**: AGENTS.md and the guided plan (D36) are served as
+  MCP resources and prompts. What matters most, dev only, the key check and
+  additive migrations (D35), is **enforced by the tools**, not only asked for
+  in instructions.
+
+**Local clients first**, on the home network: Claude Code, Claude Desktop through
+a small local bridge, VS Code, Cursor. **Cloud connectors** that call in from
+outside would need the machine reachable from the internet, which rule 3
+forbids for the panel; they come later, if ever, and only behind strong
+sign-in.
+
+**Two roles.** The user's chat client can take the architect's role (D45) and a
+coding client the builder's, both through the same bridge, each with its own
+tools.
+
+## D45. Three more plans: two modes in the panel, a bug report builder, and the architect
+
+*2026-09-28. The third brief, item 3. Plans, each in docs/roadmap.md; nothing is
+built by them.*
+
+- **Two modes in the control panel.** A simple mode for beginners, and "Show
+  what's under the hood" for people who want details and finer control: a
+  deeper layer of the same panel, which can never bypass the safety net
+  silently. It shows (containers, logs, resources, files and code, each step's
+  diff, migrations with their class, release logs, backup details, the agent's
+  sessions, a live map of which containers can reach what), and it controls
+  within the safety net (templates, resource limits, the backup schedule and
+  extra targets, the choice of agent, a terminal into dev but never into prod,
+  a read-only view of prod's database). Ideas kept for it: "Load safe
+  defaults", ready-made profiles, an "Explain this" button that asks the AI to
+  explain a detail in plain words, a preview of what every advanced action will
+  change before it runs, a resource budget per app, and exporting an app.
+- **A bug report builder**, in the test copy only, never in prod: area
+  screenshots with marks, guided questions (what did you do, what did you
+  expect, what happened instead), and the context gathered by itself (the
+  browser console's errors, failed requests, dev's server log for the same
+  time, the version and the plan's step), bundled into one report file with its
+  images, in the project. The agent reproduces the problem first, then fixes
+  it, then stops for the person to try again.
+- **The architect**, a second role the person talks to: it turns an idea into a
+  brief with a check for every step, and reviews the builder's report against
+  the brief in plain words (what was built, what to try, what it is unsure
+  about), sized to the change, so a small change gets a small plan. It can be a
+  second, read-only Claude Code session with its own instructions that may only
+  write briefs, and later another vendor's agent, for a second opinion.
+
+**Why these are plans.** Each came from the architect's review of the second
+brief, and each rests on what the suite already has: the panel's runtime (D40),
+dev and prod kept apart (rule 1), the guided plan (D36), and the agent in dev
+(D39). Writing them down makes them plans rather than promises.
