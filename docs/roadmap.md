@@ -100,6 +100,11 @@ project container: it drives the suite, so D41's firewall, which keeps project
 containers off the machine and the home network, is not its fence. What it may
 reach, and who may reach it (rule 3), is decided with it.
 
+**Its design** is decided (D51): the owner's clickable demo is the reference,
+and its rules (calm when fine, action first, one meaning per colour, simple
+mode first, one word per thing, keyboard and screen readers) are in
+[docs/design/control-panel.md](design/control-panel.md).
+
 ## An installer on a USB stick
 
 **Planned.** One of the website's promises (D33).
@@ -172,17 +177,21 @@ own after a power cut.
 
 **Planned, and begun.** From the architect's review of the website (D34).
 **Built** (the second brief, D39): Claude Code, with the user's own API key
-from the key vault, in the agent container. **Still planned**: everything else
-below, from signing in with a Claude subscription on.
+from the key vault, in the agent container. **Built** (the fourth brief, D46 to
+D48): the same Claude Code signed in to the person's own Claude account,
+through Claude Code's own sign-in, with the login in the agent's memory only;
+built and run on the test host, the sign-in itself not yet tried. **Still
+planned**: everything else below.
 
 **The coding agent in dev is an official, unmodified vendor tool**, installed
 in the dev container, signed in through the vendor's own flow, and shown to the
 user as an interactive session in the web interface.
 
 - **Claude Code comes first, with the user's own API key.**
-- **Signing in with a Claude subscription is added only after Anthropic
-  confirms in writing** that the setup is permitted. The owner sent them the
-  question on 2026-09-28.
+- **Signing in with a Claude subscription** was to wait for Anthropic's
+  written confirmation (asked on 2026-09-28). The architect has since decided
+  it on Anthropic's published text, with conditions the suite enforces (D46),
+  to be revisited if Anthropic answers or the text changes.
 - **The suite never collects, reads, stores or proxies subscription
   credentials or tokens, and never pays for, resells or intermediates AI
   usage**, now or in any paid version.
@@ -204,7 +213,8 @@ means a project does not have to be rewritten for each agent.
 person, for a VAT number. If that holds for private people in the EU, the own
 API key is out of reach for much of the audience, and the paths that use a
 subscription the user already has, signing in with it and the MCP bridge,
-matter far more. The live agent test waits for either.
+matter far more. The live agent test is now the owner signing in to their own
+account (D46).
 
 ## Sign-in and invitations
 
@@ -332,6 +342,46 @@ later another vendor's agent, for a second opinion.
 **Why.** It is how this repository itself is built (CLAUDE.md, "Roles"): one
 role owns what and why, another owns how, and a person tries every step. A
 beginner gets the same, without having to be the architect themselves.
+
+## Your own services
+
+**Planned, and in development** (D50): nothing of it is in the code yet. From
+the architect's fourth brief; the control panel's demo shows how it would look
+(D51).
+
+**Services the person runs for their home, beside their apps**: an ad blocker
+for the whole home network, a smart home hub. Not apps they build, and not
+changed by the builder.
+
+- **Tested recipes, never an app store.** Each service comes as a recipe the
+  suite has tried: Pi-hole and Home Assistant first. There is no catalogue to
+  browse and install anything from.
+- **What it can access, before installing.** Each recipe shows its access card
+  first (D41): which of the home network, the machine and its devices it
+  needs, and why, and the person agrees to it before anything is installed.
+- **Updates through the safety checks.** A backup first; the new version
+  started and checked; and if the check fails, the old version back
+  automatically.
+- **Networks of their own, outside the apps' safety net**, and **the builder
+  never touches them**.
+- **Its data in the nightly backup**, with a warning when it makes the backup
+  much larger.
+- **Pi-hole's dependency, made plain.** When the home network uses it for its
+  names, the home network needs it: the recipe asks the person to set a backup
+  DNS server in the router first, so that the internet keeps working while
+  Pi-hole is updated, restarted or down.
+- **Home Assistant's limits, made plain.** In a container it has no add-ons. It
+  needs the home network to find devices, and possibly a USB stick (for Zigbee
+  or Z-Wave); both go through D41's opt-in per app, never around it.
+- **The person's own compose file, later**, marked plainly as the person's
+  responsibility.
+
+**Why.** People who run a computer for their apps soon want the same computer
+to run the home's services, and the usual way (an app store, or copying a
+compose file from a forum) skips everything this suite is for: knowing what a
+thing can reach, a backup before a change, and a way back. Recipes the suite
+has tried keep those, and keeping services apart from the apps keeps the
+builder out of the home's infrastructure.
 
 ## Also planned, and recorded elsewhere
 

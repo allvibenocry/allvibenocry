@@ -7,7 +7,9 @@ rolls itself back, and a manual rollback. Steps 17 to 20 and 22 are the second
 brief's: rolling back across a change to the database that only adds, and one
 that breaks; the key vault; the key check before every commit; and the coding
 agent in its container. Step 21 is the third's: every project container kept off
-the machine's own ports and the home network. It takes about fifty minutes.
+the machine's own ports and the home network. Step 23 is the fourth's: the agent
+signed in to your own Claude account, which only you can do. It takes about an
+hour.
 
 It works on the **test host** (a container on your workstation, D14) and,
 unchanged, on a **real Debian 13 machine** later. Where the two differ, and
@@ -751,7 +753,8 @@ the Docker socket, both backup keys, the backup disk and prod's keys absent;
 refused by it; dev's app, dev's database and the gate answering; and a fake key
 committed from inside the agent stopped by the key check. From inside the gate:
 the machine, the router, the device and link-local refused, and the API
-answering. It ends `50 of 50 as they must be`, and the gate's log lists every
+answering. The agent's settings say auto mode, and its home is in memory, with
+no mount or volume. It ends `75 of 75 as they must be`, and the gate's log lists every
 connection it refused.
 
 **With a real key**, open the agent's own session, host:
@@ -770,7 +773,125 @@ check for each step, and stops after each step for you to try it:
 allvibe agent stop moods
 ```
 
-## 23. Clean up
+## 23. Signing in with your own Claude account
+
+This one only you can do: the agent signs in to **your own** Claude account,
+through Claude Code's own sign-in, and nobody else touches it (D46). The suite
+gives Claude Code no key, keeps the login in the agent's memory only, lets it
+reach `api.anthropic.com`, `claude.ai` and `platform.claude.com` and nothing
+new, and never runs Claude Code for you (D48). You need a Claude plan that
+includes Claude Code (Pro, Max, Team or Enterprise), a browser, and about
+fifteen minutes.
+
+A scratch project, so nothing else is touched, and the agent in it. Host:
+
+```sh
+allvibe project create scratch
+allvibe agent start scratch --sign-in account
+```
+
+`project create` ends with the scratch project's two addresses; note **dev**'s.
+The agent's start ends:
+
+```
+ok   2/7 it signs in with your own Claude account
+       no API key, and nothing from the key vault: you sign in yourself, through Claude Code's own sign-in, in its shell.
+       the login stays in the agent's memory only, and is gone when the agent stops (D46)
+…
+ok   5/7 its only way out: api.anthropic.com, claude.ai, platform.claude.com, over HTTPS
+…
+ok   7/7 Claude Code is in it
+       Claude Code 2.1.283, as published
+       open it and sign in: allvibe agent shell scratch
+```
+
+Open Claude Code in it. Host:
+
+```sh
+allvibe agent shell scratch
+```
+
+1. It starts with its welcome and **its text style**: press Enter for the one
+   it marks, or pick another.
+2. Then **Select login method**. Choose **1. Claude account with
+   subscription**. (If you see its prompt instead, type `/login` and Enter.)
+3. It shows a long web address, which may run over several lines, and **Paste
+   code here if prompted**. The agent cannot open your browser: press `c` to
+   copy the address if your terminal allows it, or select all of it with the
+   mouse, and open it in **your own browser**, on your workstation or phone.
+4. Sign in there as you always do, and allow access. The page then shows a
+   code. Copy it, paste it into the terminal at **Paste code here if
+   prompted**, and press Enter.
+5. `Login successful`: press Enter. Claude Code shows its security notes
+   (Enter), and then asks whether you trust `/workspace`, the scratch
+   project's working copy. **Its default is "No, exit", which leaves Claude
+   Code**: press the down arrow to **Yes, I trust this folder**, then Enter.
+6. Its prompt. The line under it says `⏵⏵ auto mode on`: the suite sets that
+   mode, and Claude Code checks each of its actions before it runs (D47).
+
+Now ask it for a change, in its prompt:
+
+```
+Change the page heading to "Sign our guestbook". Follow AGENTS.md.
+```
+
+It writes a short plan, makes the change, **commits it**, and stops for you to
+try it (AGENTS.md, D36). Leave Claude Code running, and in a second host
+shell check the commit:
+
+```sh
+runuser -u allvibe -- git -C /var/lib/allvibe/projects/scratch/repo log --format='%h %an: %s' -3
+```
+
+The newest line is by `Claude Code (agent)`, with its plain message. Then
+deploy it to dev, and look:
+
+```sh
+allvibe dev deploy scratch
+```
+
+Reload **dev** in your browser (the dev address `project create` printed; on
+the test host, its port on `http://localhost`):
+the heading says "Sign our guestbook". **Prod** still says "Guestbook". Tell
+the agent that it works, or what does not.
+
+Leave Claude Code with `/exit`. Then stop the agent, start it again, and open
+it. Host:
+
+```sh
+allvibe agent stop scratch
+allvibe agent start scratch --sign-in account
+allvibe agent shell scratch
+```
+
+It shows its text style and, after Enter, **Select login method** again: the
+login went with the container, and nothing of it was left on the machine.
+Leave without signing in: press `Ctrl-C` twice, quickly. Then stop it:
+
+```sh
+allvibe agent stop scratch
+```
+
+**Stopping is not signing out.** The login is gone from this machine, but the
+session is still valid at Anthropic until it expires. To end it there too,
+type `/logout` in Claude Code before you leave it.
+
+**If the sign-in fails**, before stopping the agent, host:
+
+```sh
+docker logs allvibe-scratch-agent-egress | grep refused
+```
+
+It names every host the gate refused, and nothing else. A sign-in host that
+Claude Code's documentation does not list would show there; adding one is a
+decision for the architect (D46), not a change to make by hand.
+
+**Tell what happened**, in your own words: whether you could sign in, whether
+the change was made and committed, what dev showed, and whether the second
+start asked you to sign in again. That is recorded in STATE.md as tried by you,
+exactly as you say it.
+
+## 24. Clean up
 
 **Test host**, workstation:
 
@@ -782,4 +903,5 @@ The container, its volumes and its image are gone. Delete `.local/recovery-key.t
 too; it only opened this test host's backups. **On a real machine**, keep the
 recovery key in your password manager, and delete the file from your
 workstation; and on the machine, delete the stand-in keys in `/root`
-(`weather-dev`, `weather-prod`, `anthropic-key`) and the probes' `.out` files.
+(`weather-dev`, `weather-prod`, `anthropic-key`) and the probes' `.out` files,
+and the scratch project: `allvibe project remove scratch --delete-everything`.

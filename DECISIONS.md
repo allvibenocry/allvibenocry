@@ -1324,6 +1324,13 @@ every create and remove; the pools are fixed at install and never change
 (D16). The CLI managing the firewall: it runs as the service user. Dropping
 instead of refusing: slower failures, and no difference in what gets through.
 
+#### Amendment, 2026-09-28 (D49)
+
+The architect accepted D41, and five minutes for its check. Not filtering IPv6
+is accepted only while it stays true, so `allvibe doctor` now checks that no
+network in the suite's address pools has IPv6 on, and says so plainly when one
+does (D49).
+
 ## D42. The egress gate is a network filter, and the suite still never proxies credentials
 
 *2026-09-28. The third brief, item 2. The architect's review of the second
@@ -1702,3 +1709,68 @@ refusing it in the CLI means the panel cannot do it either.
 **What it does not stop.** A person in the agent's shell can run whatever they
 like, `claude -p` included: that is their own use, not the suite's. With a key
 (D39) nothing changes.
+
+## D49. The architect accepts D41 and D42, and IPv6 is checked by doctor
+
+*2026-09-28. The fourth brief, the architect's review of the third. D41 carries
+a note pointing here.*
+
+- **D41 is accepted**, and five minutes for the firewall's check is right.
+- **Not filtering IPv6 is accepted only as long as it stays true**: D41's rules
+  are IPv4 rules, which is enough while no network in the suite's address
+  pools has IPv6 on. `allvibe doctor` now checks exactly that, so that the day
+  it changes, it says so in plain words. It reads every Docker network, takes
+  those whose IPv4 subnet lies in Docker's address pools (D16), and reports:
+  - all of them with IPv6 off: `✓ IPv6: off on all 4 networks of the apps, so
+    the firewall covers everything they can reach`;
+  - any of them with IPv6 on: a problem, naming each such network and what to
+    do: `✗ IPv6 is on for <network>. The firewall that keeps project containers
+    off this machine and the home network covers IPv4 only, so over IPv6 they
+    are not kept off.` followed by where to turn it off.
+
+  `ipv6Check` and `subnetInPool` are pure functions with unit tests. On the
+  test host, doctor said the first; with a network made by hand in the pool
+  with IPv6 on, it said the second and exited 1; with that network removed, the
+  first again.
+- **D42 is accepted.**
+
+## D50. Your own services, planned
+
+*2026-09-28. The fourth brief. A plan, in docs/roadmap.md, marked Planned and
+in development; nothing of it is in the code yet.*
+
+Services the person runs for their home beside their apps, Pi-hole and Home
+Assistant first: tested recipes, never an app store; what each can access
+shown before it is installed; updates through the safety checks (a backup
+first, the new version started and checked, the old one back automatically);
+networks of their own, outside the apps' safety net and never touched by the
+builder; their data in the nightly backup, with a size warning; Pi-hole's
+dependency made plain (a backup DNS server in the router); Home Assistant's
+limits in a container made plain (no add-ons; the home network, and possibly a
+USB stick, only through D41's opt-in per app); and later the person's own
+compose file, marked as their responsibility. The roadmap entry has the
+details and the why.
+
+## D51. The control panel's design: the owner's demo, and its rules
+
+*2026-09-28. The fourth brief. A design decision for the panel, which is still
+Planned.*
+
+The owner's clickable demo of the control panel is the **reference design**.
+It goes onto the website at `/demo`, and its rules are recorded here in
+[docs/design/control-panel.md](docs/design/control-panel.md): calm when fine
+and clear when something needs the person; action first; one meaning per
+colour (green done, safe, works; pink the person's next action; yellow
+something to check; purple neutral structure; red a problem); heavy frames
+only for what matters most; simple mode first, with advanced mode behind an
+obvious switch, a warning and a confirmation, never bypassing the safety net
+(D45); one word per thing (test copy, live app, put live, go back, safety
+checks, restored and checked, service keys, the architect, the builder,
+instructions, what it can access, your own services, home network), with
+technical words and port numbers only in advanced mode, explained where they
+first appear; and keyboard and screen readers served properly (focus kept in
+dialogs and given back, the tab pattern, real radio buttons, a keyboard way
+for every pointer action).
+
+**What the demo is not.** It is a mock-up: nothing it shows is built unless
+the roadmap says so.

@@ -259,3 +259,20 @@ From the third brief, here:
 33. **A unit's command line is not a shell's.** systemd turned the `\n` in a
     `node -e` string into a line break, and the service never started. *Here:*
     a unit runs a file, not code written into its command line.
+
+From the fourth brief, here:
+
+34. **An option that a tool documents elsewhere may not exist in the tool you
+    have.** The agent's home got the kernel's `noswap` tmpfs option, in the code
+    and in a unit test, and Docker 29 refused to start the container with it.
+    *Here:* try a new option on the real engine before building on it; the
+    agent now gets no swap from Docker's own swap limit, seen as 0 inside it.
+35. **An interface's default can be the way out.** Claude Code's question
+    whether to trust the working copy defaults to "No, exit", so pressing Enter
+    through its first start left it. *Here:* every "press Enter" in the
+    walkthrough is replayed before it is written down, and a default that
+    leaves is named.
+36. **Closing a terminal does not end what it started in a container.** Killing
+    the terminal of `allvibe agent shell` left `claude` running in the agent
+    until the container was stopped. *Here:* say how to leave properly
+    (`/exit`, or `Ctrl-C` twice), and count on `agent stop` for the rest.

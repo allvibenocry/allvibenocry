@@ -1,9 +1,10 @@
 # State
 
-*Updated 2026-09-28: the third brief is built (D41 to D45), and its report is
-[reports/2026-09-28-brief-03.md](reports/2026-09-28-brief-03.md). The second
-brief's is [reports/2026-09-28-brief-02.md](reports/2026-09-28-brief-02.md), the
-first brief's [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
+*Updated 2026-09-28: the fourth brief's product items are built (D46 to D51),
+and its report is [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md).
+The third brief's is [reports/2026-09-28-brief-03.md](reports/2026-09-28-brief-03.md),
+the second's [reports/2026-09-28-brief-02.md](reports/2026-09-28-brief-02.md), the
+first's [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
 
 Everything below has been **built and run by the implementer on the local test
 host**. None of it has been tried by a human yet (rule 6), and none of it has
@@ -35,7 +36,8 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   internet, and the home network still reaches the apps through the proxy.
   The rules are put in place before Docker at every boot and again at every
   Docker restart, checked and repaired every five minutes, and reported by
-  `doctor`.
+  `doctor`, which also says whether any of the apps' networks has IPv6 on,
+  which the rules would not cover (D49).
 - **Backups.** Encrypted to a host key and a recovery key, only to a target
   proven off the machine, restore-checked by running the app against a scratch
   copy, daily by a timer that install enables, every run recorded. The
@@ -60,12 +62,41 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   unmodified Claude Code 2.1.283, in a container on dev's network only, with
   the working copy and its own key from the vault, reaching the model's API
   through an egress gate, a network filter that handles no credentials (D42),
-  and nothing else.
+  and nothing else. Its permission mode is set to auto, explicitly (D47).
+- **The agent, signed in to the person's own Claude account** (D46).
+  `allvibe agent start <project> --sign-in account`: the same Claude Code with
+  no key, for the person to sign in through Claude Code's own flow in
+  `allvibe agent shell`; the login only in the container's memory, gone when it
+  stops; the gate passing the two sign-in hosts as well, and nothing else; and
+  the suite never running Claude Code itself (D48). Run up to Claude Code's
+  sign-in choice, and no further: the sign-in is the owner's.
 - **The repository.** The rules ([CLAUDE.md](CLAUDE.md)), the decisions
-  ([DECISIONS.md](DECISIONS.md), D1-D45), the Vikt inventory, the test host
-  harness, its fixtures and probes (`test/host/`), 55 unit tests, and CI on
-  every push: a secret scan (gitleaks), the guard for rules 9 and 10, the unit
-  tests, and shellcheck of install.sh and firewall.sh.
+  ([DECISIONS.md](DECISIONS.md), D1-D51), the control panel's design rules
+  ([docs/design/control-panel.md](docs/design/control-panel.md)), the Vikt
+  inventory, the test host harness, its fixtures and probes (`test/host/`), 67
+  unit tests, and CI on every push: a secret scan (gitleaks), the guard for
+  rules 9 and 10, the unit tests, and shellcheck of install.sh and firewall.sh.
+
+## The fourth brief
+
+**Waiting for:** the owner's sign-in test, walkthrough step 23 (the brief's
+item 6); and the owner to try each item of all four briefs (rule 6).
+
+| Item | State |
+|---|---|
+| 1. Signing in with a Claude account in the agent | Built and run on a fresh test host: both ways of signing in start; the agent probe 75 of 75 with a key and 74 of 74 with an account; the new leftovers probe 12 of 12 in both (nothing of a session on disk while it runs, nothing anywhere after the stop); `allvibe agent shell` opened Claude Code with an account and showed its sign-in choice, where the run stopped (rule 13). With a stand-in key, its prompt showed `auto mode on`. D46, D47, D48. |
+| 2. Records | Recorded: D46 to D51, with notes under D34, D39, D41, D42 and D43; `doctor`'s IPv6 check, with unit tests, seen saying both of its answers on the test host (D49); the roadmap's "Your own services" (D50); the control panel's design rules (D51); walkthrough step 23, replayed on the test host up to the sign-in choice. |
+| 6. The owner's sign-in test | **Not tried yet.** Walkthrough step 23. |
+
+**Reviewed by the architect** (the third brief): D41 is accepted, with five
+minutes for its check; not filtering IPv6 is accepted only while it stays true,
+now checked by doctor (D49); D42 is accepted.
+
+**Open questions, for the owner and the architect** (D46): whether building
+Claude Code into the agent's container makes the suite a product that
+"preinstalls or runs Claude Code" in the sense of Anthropic's legal page, which
+asks such products to agree to its Commercial Terms of Service; this applies
+with a key too.
 
 ## The third brief
 
@@ -75,8 +106,6 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
 | 2. The egress decision | Recorded: D42, with notes under D34 and D39. Documentation only. |
 | 3. Findings and roadmap | Recorded: D43 (the VAT finding), D44 (the MCP bridge), D45 (two modes, a bug report builder, the architect), and their roadmap entries. Documentation only. |
 | 4. Walkthrough and record | The walkthrough, step 21 new and step 22's probe changed, run end to end on a fresh test host as written; this file, DECISIONS.md, CLAUDE.md's mistakes, the roadmap and the report. |
-
-**Waiting for:** the owner to try each item of all three briefs (rule 6).
 
 **Reviewed by the architect** (the second brief): the egress gate is accepted as
 a network filter, not a proxy of credentials (D42); the vault's agent scope and
@@ -127,7 +156,8 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   shows the last check's result.
 - **An app cannot reach a device on the home network**, a printer, say: that
   needs an explicit per-app opt-in, planned in D41 and not built.
-- **IPv6 is not filtered**: the suite's networks have none (D41).
+- **IPv6 is not filtered**: the suite's networks have none (D41), and `doctor`
+  says so, or says which network has it on (D49).
 - **AGENTS.md is followed by the agent, not enforced**: what is enforced is the
   migration check, the key check, the firewall and rule 1 (D36).
 - **A commit made with `--no-verify` is not key-checked**, and a blocked
@@ -135,9 +165,13 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   (D38).
 - **Built and not tried:** `key set` putting the old value back when the app
   does not come up with a new one; the agent's interactive session; Claude
-  Code talking to the API through the egress gate (the second brief's item 7).
-- **Subscription sign-in is not built**, and the egress gate allows no host for
-  it (D34, D39, D42).
+  Code talking to the model through the egress gate, with a key or with an
+  account; the sign-in itself (walkthrough step 23, the owner's).
+- **When the terminal of `allvibe agent shell` closes**, Claude Code keeps
+  running in the agent until `allvibe agent stop` (D46). Leaving it with
+  `/exit`, or `Ctrl-C` twice, ends it.
+- **Stopping the agent is not signing out**: the login is gone from the
+  machine, and stays valid at Anthropic until it expires or `/logout` (D46).
 
 ## Next
 
@@ -147,13 +181,14 @@ the recovery key in the web UI, a lost recovery key, the control panel at
 check-up, moving to a new computer, full disk encryption at install, the rest
 of the agent adapters with the MCP bridge next (D44), sign-in and invitations,
 two modes in the control panel, a bug report builder, the architect as a role
-(D45), and the team version. Its "Built, from this roadmap" part has what the
-second brief built.
+(D45), your own services (D50), and the team version. Its "Built, from this
+roadmap" part has what the second brief built. The control panel's design is
+decided (D51).
 
 Candidates for the next brief: the MCP bridge; the web UI calling this CLI, on
 the runtime D40 decided; sign-in in front of apps; the key check before push,
 with the GitHub integration; a lock between operations; pruning; the laptop;
-and the live agent test, once there are API credits or a subscription path.
+and the live agent test, which is now the owner's sign-in test (D46).
 
 ## To verify on real hardware
 
@@ -206,5 +241,9 @@ closes these. Each names the test override or stand-in used in the container.
   <project>` there.
 - **The agent's image on the laptop.** Built in about a minute on the
   workstation; it downloads Debian's git and Claude Code.
+- **Signing in over SSH.** On the test host the agent's shell was opened in a
+  terminal on the host itself. On the laptop it will be opened over SSH, and
+  the sign-in's web address has to be copied out of that terminal and its code
+  pasted back into it.
 - **The harness over SSH.** `exec`, `shell`, `push`, `pull` and `status` with
   `ALLVIBE_TEST_HOST` set have not run against a real machine.

@@ -17,7 +17,7 @@ import path from "node:path";
 import { BRAND, INSTALL_ROOT, NAMES } from "../lib/brand.js";
 import { checkTarget, humanBytes, listBackups } from "../lib/backup.js";
 import { readConfig } from "../lib/config.js";
-import { containerState, engineInfo } from "../lib/docker.js";
+import { containerState, engineInfo, tryDocker } from "../lib/docker.js";
 import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../lib/hostfacts.js";
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
 import { readOverrides } from "../lib/overrides.js";
@@ -86,6 +86,59 @@ export function firewallCheck(now = new Date(), file = NAMES.firewallStatus): [S
   ];
 }
 
+/** A Docker network, as the IPv6 check sees it. */
+export interface NetworkFacts {
+  name: string;
+  subnets: string[];
+  ipv6: boolean;
+}
+
+const ipv4Number = (address: string) => address.split(".").reduce((n, part) => n * 256 + Number(part), 0);
+
+/** Whether an IPv4 subnet (one of an app network's) lies inside a pool ("172.20.0.0/14"). IPv6 subnets never do. */
+export function subnetInPool(subnet: string, pool: string): boolean {
+  const [address, bits] = subnet.split("/");
+  const [base, poolBits] = pool.split("/");
+  if (!address?.includes(".") || !base?.includes(".") || Number(bits) < Number(poolBits)) return false;
+  const block = 2 ** (32 - Number(poolBits));
+  return Math.floor(ipv4Number(address) / block) === Math.floor(ipv4Number(base) / block);
+}
+
+/**
+ * D41's firewall filters IPv4 only. That is enough while no network in the
+ * suite's address pools has IPv6 on, and this says whether that still holds,
+ * in plain words, so that the day it changes doctor says so.
+ */
+export function ipv6Check(networks: NetworkFacts[], pools: string[]): [Status, string] {
+  if (!pools.length) return ["info", "IPv6: not checked, because Docker has no address pools set for the apps' networks"];
+  const inPools = networks.filter((n) => n.subnets.some((subnet) => pools.some((pool) => subnetInPool(subnet, pool))));
+  const on = inPools.filter((n) => n.ipv6).map((n) => n.name);
+  if (on.length) {
+    return [
+      "problem",
+      `IPv6 is on for ${on.join(", ")}. The firewall that keeps project containers off this machine and the home network covers IPv4 only, ` +
+        `so over IPv6 they are not kept off. If /etc/docker/daemon.json turns IPv6 on ("ipv6", or an IPv6 default for new networks), take that out and restart Docker; ` +
+        `then deploy the apps on ${on.length === 1 ? "that network" : "those networks"} again, or remove ${on.length === 1 ? "it" : "them"} if not an app's`,
+    ];
+  }
+  return ["ok", `IPv6: off on all ${inPools.length} network${inPools.length === 1 ? "" : "s"} of the apps, so the firewall covers everything they can reach`];
+}
+
+/** Every Docker network's name, subnets and whether IPv6 is on; null when Docker cannot say. */
+function dockerNetworks(): NetworkFacts[] | null {
+  const ids = tryDocker(["network", "ls", "-q"]);
+  if (ids.code !== 0) return null;
+  const list = ids.stdout.split(/\s+/).filter(Boolean);
+  if (!list.length) return [];
+  const inspected = tryDocker(["network", "inspect", ...list]);
+  if (inspected.code !== 0) return null;
+  return (JSON.parse(inspected.stdout) as { Name: string; EnableIPv6?: boolean; IPAM?: { Config?: { Subnet?: string }[] | null } }[]).map((n) => ({
+    name: n.Name,
+    subnets: (n.IPAM?.Config ?? []).map((c) => c.Subnet ?? "").filter(Boolean),
+    ipv6: n.EnableIPv6 === true,
+  }));
+}
+
 export function checks(): Check[] {
   const list: Check[] = [];
   const add = (id: string, status: Status, text: string, scope: Scope = "install") => list.push({ id, status, text, scope });
@@ -130,6 +183,10 @@ export function checks(): Check[] {
         ? `Docker gives app networks addresses from ${engine.addressPools.join(", ")}, away from your home network`
         : "Docker uses its default address pools, which can collide with a home network once there are many apps",
     );
+    // D41 filters IPv4 only, accepted as long as no app network has IPv6.
+    const networks = dockerNetworks();
+    if (networks) add("ipv6", ...ipv6Check(networks, engine.addressPools));
+    else add("ipv6", "problem", "IPv6: Docker's networks could not be read, so whether the firewall covers them is not known");
   }
 
   /* The installation */
