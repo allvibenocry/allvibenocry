@@ -844,6 +844,14 @@ here or a correction on the website. The rule about AI accounts is written as a
 rule because it is what a user has to be able to trust about software that runs
 their coding agent: their account and their bill stay theirs.
 
+#### Amendment, 2026-09-28 (D42)
+
+"Proxies" in the rule above means handling credentials: receiving, holding,
+forwarding, injecting or reading them, or standing in the user's account. A
+network egress filter that only lets an encrypted connection through to a
+vendor's host, cannot read it, and handles no credentials, as the agent's
+egress gate does (D39), is not a proxy in this sense. D42 draws the line.
+
 ## D35. Releases know their schema, and a rollback never crosses a breaking migration by code alone
 
 *2026-09-28. The second brief, item 1. Closes the gap recorded in D31.*
@@ -1160,6 +1168,15 @@ would still ask for a key. It is listed under "To verify on real hardware". The
 interactive session, and Claude Code talking to the API through the gate,
 have not been tried by a person (item 7 needs a real key).
 
+#### Amendment, 2026-09-28 (D41, D42)
+
+The architect accepted the gate as a **network egress filter, not a proxy of
+credentials** in D34's sense: it tunnels encrypted traffic it cannot read, to
+`api.anthropic.com` only, and handles no credentials. D42 records the line it
+must stay on. The known limit above did not stand: D41 closes it, for every
+project container, not only the agent; since D41, prod's door is refused to
+the agent by the firewall before nginx answers 403.
+
 ## D40. The control panel will run in a container on a pinned official Node 24 image
 
 *2026-09-28. The second brief, item 6. A decision made now, for the brief that
@@ -1289,3 +1306,40 @@ covered; nothing the suite runs for a project is on it.
 every create and remove; the pools are fixed at install and never change
 (D16). The CLI managing the firewall: it runs as the service user. Dropping
 instead of refusing: slower failures, and no difference in what gets through.
+
+## D42. The egress gate is a network filter, and the suite still never proxies credentials
+
+*2026-09-28. The third brief, item 2. The architect's review of the second
+brief; D34 and D39 carry a note pointing here.*
+
+**D34's rule** says the suite never collects, reads, stores or proxies
+subscription credentials or tokens, and never pays for, resells or
+intermediates AI usage. **D39's egress gate** passes the agent's connections to
+`api.anthropic.com`. Read side by side, the gate could look like a proxy. It is
+not one in D34's sense, and this is where the line runs.
+
+**A proxy of credentials** handles them: it receives, holds, forwards, injects or
+reads a credential or a token, terminates the encrypted connection so that it
+can see inside it, or stands in the user's account towards the vendor. D34
+forbids all of that, now and in any paid version.
+
+**A network egress filter** decides only whether a connection may open, and to
+where. The gate does that and nothing else:
+
+- it passes a `CONNECT` to port 443 of the one allowed host, when the name
+  resolves to public addresses only, and refuses everything else;
+- what passes is TLS between Claude Code and the API, end to end: the gate
+  cannot read it, and it never terminates, inspects or changes it;
+- it handles no credentials: the API key goes from the vault's file (D37) into
+  Claude Code, and from there, encrypted, to the API; the gate never sees it;
+- it logs host names and ports, and nothing else.
+
+**The line it stays on.** If the gate ever had to terminate TLS, read or change
+what passes, add or hold a credential, or log more than hosts and ports, it
+would no longer be a filter, and that would be a new decision against D34, for
+the architect. The same holds for anything else the suite puts between a user
+and a vendor.
+
+**Subscription sign-in**, when Anthropic confirms it (D34), would add the
+sign-in hosts to the gate's allow list and pass them in the same way: the
+suite would still handle no credential. Likewise for later adapters' hosts.
