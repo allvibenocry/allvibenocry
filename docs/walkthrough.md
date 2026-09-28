@@ -1,12 +1,13 @@
 # Walkthrough: from a fresh host to a release, a rollback, the vault and the agent
 
-This takes you from a fresh Debian 13 host through everything the first two
+This takes you from a fresh Debian 13 host through everything the first three
 briefs built. Steps 1 to 16 are the first brief's: installing, a project with
 dev and prod, backups and restore checks, a release, a broken release that
-rolls itself back, and a manual rollback. Steps 17 to 21 are the second
+rolls itself back, and a manual rollback. Steps 17 to 20 and 22 are the second
 brief's: rolling back across a change to the database that only adds, and one
 that breaks; the key vault; the key check before every commit; and the coding
-agent in its container. It takes about forty minutes.
+agent in its container. Step 21 is the third's: every project container kept off
+the machine's own ports and the home network. It takes about fifty minutes.
 
 It works on the **test host** (a container on your workstation, D14) and,
 unchanged, on a **real Debian 13 machine** later. Where the two differ, and
@@ -73,13 +74,13 @@ node test/host/host.mjs push bundle/allvibe-0.1.0 /root/
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
-You should see twelve steps, `[1/12] This machine` to `[12/12] How the host
+You should see thirteen steps, `[1/13] This machine` to `[13/13] How the host
 is`, each with `changed:` lines, then `allvibe doctor` with only `✓` lines (and
 one `i` line saying the test overrides are active, on the test host), `All
 green.`, and last:
 
 ```
-Installed All vibe no cry 0.1.0+<commit>: 27 change(s).
+Installed All vibe no cry 0.1.0+<commit>: 35 change(s).
 ```
 
 It takes about a minute: most of it is Docker Engine arriving from Docker's own
@@ -431,7 +432,8 @@ systemctl is-active allvibe-backup.timer
 allvibe doctor
 ```
 
-`active`, and `doctor` shows the proxy, the backup target and the project again
+`active`, and `doctor` shows the proxy, the firewall, the backup target and the
+project again
 (give the apps half a minute to become healthy after a restart).
 
 ## 17. A change to the database that only adds, and back past it
@@ -636,7 +638,83 @@ and the key is in no commit and, once the staged copy is unstaged and pruned,
 in no object. A clean commit then passes, and with the scanner taken away, the
 commit stops rather than pass unchecked.
 
-## 21. The coding agent
+## 21. The machine and the home network, out of every container's reach
+
+Every project container, the apps, the databases, the agent and its gate, is
+refused this machine's own ports and every private, link-local, shared or
+multicast address, which is where the router and every other device on the
+home network live. The apps still reach the internet, and the home network
+still reaches the apps through the proxy (D41). install.sh put the rules in
+place, in its step 11, and a check keeps them there. Host:
+
+```sh
+allvibe doctor | grep Firewall
+```
+
+```
+  ✓ Firewall: project containers cannot reach this machine's own ports or the home network (checked 2 minutes ago)
+```
+
+**Test host only:** give it what a real machine has around it, an SSH server,
+a service on port 9999, and another device on the home network (a network
+namespace of its own at `10.99.0.2`, with a service on port 8080). Workstation:
+
+```sh
+node test/host/host.mjs push test/host/lan-fixtures.sh /root/
+node test/host/host.mjs exec -- sh /root/lan-fixtures.sh
+```
+
+**Real machine:** it has SSH already. For the device, add the address of a real
+one on your home network and a port it answers on (a printer, say) to the probe
+below, after `moods`.
+
+Now probe it. Workstation:
+
+```sh
+node test/host/host.mjs push test/host/app-isolation.sh /root/
+node test/host/host.mjs exec -- sh /root/app-isolation.sh allvibe moods
+```
+
+It tries every target from the machine itself first, where each must answer,
+then from inside moods' dev and prod apps and databases, where each must be
+refused, and every line ends with its verdict:
+
+```
+from inside allvibe-moods-dev-app:
+  this machine's SSH, by its address                   ECONNREFUSED                 as it must be
+  …
+  prod's door, by the gateway, 8102                    ECONNREFUSED                 as it must be
+  the router, <its address>:80                         EHOSTUNREACH                 as it must be
+  a device on the home network, 10.99.0.2:8080         EHOSTUNREACH                 as it must be
+  link-local, 169.254.169.254:80                       EHOSTUNREACH                 as it must be
+  the public internet, https://example.com             HTTP 200                     as it must be
+  its own database, through its /healthz               HTTP 200 ok                  as it must be
+…
+what must keep working, from outside the containers:
+  …
+  the device on the home network, to the door 8102     HTTP 200                     as it must be
+59 of 59 as they must be
+```
+
+(The router is the one the machine uses: on the test host, Docker's; on a real
+machine, yours.) The
+rules outlast a restart of Docker, and of the machine. Host:
+
+```sh
+systemctl restart docker
+```
+
+Then the probe again (workstation, as above): `59 of 59 as they must be`. Then
+**test host**, workstation: `node test/host/host.mjs restart`; **real machine**:
+`reboot`. Then, host:
+
+```sh
+systemctl is-active allvibe-firewall.service allvibe-firewall-check.timer
+```
+
+`active` twice, and the probe once more: `59 of 59 as they must be`.
+
+## 22. The coding agent
 
 The agent is Claude Code, unmodified, in a container of its own that can
 reach dev and the model's API, and nothing else (D39). It needs an Anthropic
@@ -666,12 +744,15 @@ node test/host/host.mjs push test/host/agent-isolation.sh /root/
 node test/host/host.mjs exec -- sh /root/agent-isolation.sh allvibe moods /root/weather-prod /root/weather-dev /root/anthropic-key
 ```
 
-Prod refused by name and by address and at its door (`HTTP 403`), the host's
-ports and the home network unreachable, the Docker socket, both backup keys,
-the backup disk and prod's keys absent; `api.anthropic.com` answering through
-the egress gate, and every other host refused by it; dev's app and database
-answering; and a fake key committed from inside the agent stopped by the key
-check. The gate's log lists every connection it refused.
+From inside the agent: prod refused by name and by address; the machine's own
+ports, prod's door among them, the router, the device and link-local refused;
+the Docker socket, both backup keys, the backup disk and prod's keys absent;
+`api.anthropic.com` answering through the egress gate, and every other host
+refused by it; dev's app, dev's database and the gate answering; and a fake key
+committed from inside the agent stopped by the key check. From inside the gate:
+the machine, the router, the device and link-local refused, and the API
+answering. It ends `50 of 50 as they must be`, and the gate's log lists every
+connection it refused.
 
 **With a real key**, open the agent's own session, host:
 
@@ -689,7 +770,7 @@ check for each step, and stops after each step for you to try it:
 allvibe agent stop moods
 ```
 
-## 22. Clean up
+## 23. Clean up
 
 **Test host**, workstation:
 

@@ -32,9 +32,10 @@ The first brief built the operational core as command-line tools: the host
 installer, projects with dev and prod, backups with restore tests, and releases
 with rollback. The second built the foundations for the agent: rollback that
 knows the schema, the project template with the guided plan, the key vault,
-the key check before every commit, and the agent container itself. The web UI,
-sign-in in front of apps, internet publishing, tunnels, the GitHub integration
-and the key check before push come later.
+the key check before every commit, and the agent container itself. The third
+kept every project container off the machine's own ports and the home network.
+The web UI, sign-in in front of apps, internet publishing, tunnels, the GitHub
+integration and the key check before push come later.
 
 The product name and the command name are each defined once, in
 [brand.conf](brand.conf). The command is `allvibe`, and the service user and
@@ -235,3 +236,26 @@ From the second brief, here:
     clean commit wrote the line its last run had written, so the second run had
     nothing to commit and printed nothing. *Here:* what a probe changes is
     unique to each run.
+
+From the third brief, here:
+
+29. **A probe that cannot fail proves nothing, however green.** Busybox's `nc`
+    has no `-z`, so every probe of the databases answered "refused" whatever
+    happened. *Here:* run a new probe once without the thing it checks: without
+    the firewall, 24 of its 59 checks had to say WRONG, and did (mistake 5,
+    again).
+30. **A target that is down looks exactly like a target that is blocked.** The
+    test's listeners died on the first probe that hung up on them, so a
+    "refused" meant nothing. *Here:* try every target from the machine itself
+    first, where it must answer, in the same run as the containers.
+31. **sh has no local variables.** A helper's `seen` overwrote the caller's list
+    of hashes, and a check of dev's key passed because it compared against the
+    word "blocked". *Here:* a function's variables have names of their own
+    (`v_seen`), and the caller's say what they hold (`hashes`).
+32. **A self-check must not ask about what is not there yet.** The firewall's
+    unit runs before Docker at boot, and checked Docker's own jump, so it
+    failed at every boot while the rules were in place. *Here:* check at apply
+    only what apply did; check the rest after what it depends on has started.
+33. **A unit's command line is not a shell's.** systemd turned the `\n` in a
+    `node -e` string into a line break, and the service never started. *Here:*
+    a unit runs a file, not code written into its command line.

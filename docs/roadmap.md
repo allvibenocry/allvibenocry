@@ -95,6 +95,11 @@ hosts file. D18 rejected `.local` names *for projects* because they do not
 resolve the same way on every device, and that is why the address stays as the
 fallback and why projects are not given such names.
 
+**Its own boundaries.** The panel will run in a container (D40), but it is not a
+project container: it drives the suite, so D41's firewall, which keeps project
+containers off the machine and the home network, is not its fence. What it may
+reach, and who may reach it (rule 3), is decided with it.
+
 ## An installer on a USB stick
 
 **Planned.** One of the website's promises (D33).
@@ -215,6 +220,10 @@ signing in.** This entry closes that gap.
 ever joined it. The proxy (D12) is already the one way into every app, so it is
 where sign-in belongs, once, rather than in every app. And it has to exist
 before anything is published to the internet.
+
+**The other half of D41.** Since the third brief, the apps cannot reach the home
+network (D41); sign-in is the other direction: the home network, its guests and
+its devices, not reaching the apps unasked.
 
 ## The team version
 
