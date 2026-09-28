@@ -12,7 +12,7 @@
  * problems, so install.sh fails on a broken installation and not on a missing
  * backup disk, which doctor still reports.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { BRAND, INSTALL_ROOT, NAMES } from "../lib/brand.js";
 import { checkTarget, humanBytes, listBackups } from "../lib/backup.js";
@@ -22,6 +22,7 @@ import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../l
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
 import { readOverrides } from "../lib/overrides.js";
 import { tryRun } from "../lib/run.js";
+import { writeAtomic } from "../lib/files.js";
 import { entries, lastRecord } from "../lib/steps.js";
 
 export type Status = "ok" | "warn" | "problem" | "info";
@@ -327,12 +328,78 @@ export function checks(): Check[] {
   return list;
 }
 
-export function doctor(args: string[]): number {
-  const list = checks();
-  const installProblems = list.filter((c) => c.status === "problem" && c.scope === "install").length;
+/* ------------------------------------------------------- every night -- */
+
+/** How many nightly results are kept besides the latest (D58). */
+export const NIGHTLY_KEEP = 14;
+
+export interface NightlyResult {
+  at: string;
+  version: string;
+  summary: string;
+  problems: number;
+  warnings: number;
+  checks: Check[];
+}
+
+export function summarise(list: Check[]): { problems: number; warnings: number; summary: string } {
   const problems = list.filter((c) => c.status === "problem").length;
   const warnings = list.filter((c) => c.status === "warn").length;
   const summary = problems ? `${problems} problem(s)${warnings ? ` and ${warnings} warning(s)` : ""}` : warnings ? `${warnings} warning(s), no problems` : "All green.";
+  return { problems, warnings, summary };
+}
+
+export const nightlyResult = (list: Check[], now: Date, version: string): NightlyResult => ({ at: now.toISOString(), version, ...summarise(list), checks: list });
+
+/**
+ * Keeps a nightly result where the panel can read it (D58): `latest.json`, and
+ * the same under its time, of which the newest NIGHTLY_KEEP are kept.
+ */
+export function saveNightly(result: NightlyResult, dir = NAMES.doctorDir, keep = NIGHTLY_KEEP): string {
+  mkdirSync(dir, { recursive: true });
+  const text = `${JSON.stringify(result, null, 2)}\n`;
+  const stamped = `${result.at.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.json`;
+  writeAtomic(path.join(dir, stamped), text);
+  writeAtomic(path.join(dir, "latest.json"), text);
+  const history = readdirSync(dir).filter((f) => /^\d{8}T\d{6}Z\.json$/.test(f)).sort();
+  for (const old of history.slice(0, Math.max(0, history.length - keep))) rmSync(path.join(dir, old));
+  return path.join(dir, stamped);
+}
+
+export function readNightly(dir = NAMES.doctorDir): NightlyResult | null {
+  try {
+    return JSON.parse(readFileSync(path.join(dir, "latest.json"), "utf8")) as NightlyResult;
+  } catch {
+    return null;
+  }
+}
+
+/** doctor's checks, run by the nightly backup and kept (D58). Returns what was kept. */
+export function nightlyDoctor(now = new Date()): NightlyResult {
+  const result = nightlyResult(checks(), now, suiteVersion());
+  saveNightly(result);
+  return result;
+}
+
+export function doctor(args: string[]): number {
+  if (args.includes("--last")) {
+    const last = readNightly();
+    if (!last) {
+      process.stdout.write(`doctor has not run with the nightly backup yet. It runs every night at 03:30, with the backup.\n`);
+      return 0;
+    }
+    if (args.includes("--json")) {
+      process.stdout.write(`${JSON.stringify(last, null, 2)}\n`);
+      return last.problems ? 1 : 0;
+    }
+    process.stdout.write(`${BRAND.product} on this machine, as the nightly check found it at ${last.at.slice(0, 16).replace("T", " ")} UTC\n\n`);
+    for (const check of last.checks) process.stdout.write(`  ${SYMBOL[check.status]} ${check.text}\n`);
+    process.stdout.write(`\n${last.summary}\n`);
+    return last.problems ? 1 : 0;
+  }
+  const list = checks();
+  const installProblems = list.filter((c) => c.status === "problem" && c.scope === "install").length;
+  const { problems, warnings, summary } = summarise(list);
 
   if (args.includes("--json")) {
     process.stdout.write(`${JSON.stringify({ checks: list, problems, warnings, summary }, null, 2)}\n`);

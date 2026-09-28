@@ -1979,3 +1979,28 @@ on the test host makes the timing certain) stopped at "it is whole, and it
 decrypts", step 8 of 14, with prod on its version, answering, and its entries
 as before. The same probe against the previous bundle said WRONG on every
 check this change is for.
+
+## D58. doctor every night, its result kept for the panel
+
+*2026-09-29. The fifth brief, item 9. Builds D53's third plan.*
+
+**What.** The nightly service (`allvibe scheduled-backup`, D24) now ends with
+doctor's checks, run after that night's backups and restore checks are
+recorded, so that they see them. The full result, every check with its status
+and its plain words, the summary and the counts, is kept on the machine in
+`/var/lib/allvibe/doctor/`: `latest.json`, and the same under its time, of which
+the newest fourteen are kept. The service user owns it, and nobody else can
+write it. `allvibe doctor --last` shows it, as the nightly check found it, and
+exits 1 when it found a problem; `--json` gives the file's content for the
+panel (rule 5).
+
+**A failing check does not fail the night's backups.** The service's result is
+the backups' and restore checks', as before; doctor's result is beside it, and
+a doctor that could not run at all says so in the service's log.
+
+**Verified on the test host** (`test/host/doctor-nightly.sh`, 16 of 16): the
+service started as its timer starts it; the result kept, recent, with every
+check, owned by the service user; with the reverse proxy stopped, the service
+still succeeding, and the kept result and `doctor --last` naming "Reverse
+proxy: exited" with exit 1; the proxy back, all well again. Against the
+previous bundle, WRONG on every check this is for.

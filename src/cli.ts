@@ -21,6 +21,7 @@ const C = BRAND.command;
 const HELP = `${BRAND.product}: ${C} <command>
 
   doctor [--json]              the state of this host, in plain language
+  doctor --last [--json]       what the nightly check found, the last time it ran with the backup
   project create <name>        a new project from the starter template, with dev and prod
   project list                 every project, and whether its dev and prod are running
   project status <name>        one project in detail

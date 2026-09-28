@@ -48,6 +48,8 @@ export function namesFor(command: string) {
     recoveryConfirmed: `${etc}/recovery-confirmed.json`,
     projectsDir: `${state}/projects`,
     runsDir: `${state}/runs`,
+    /** doctor's nightly results, the latest and a short history, for the panel (D58). */
+    doctorDir: `${state}/doctor`,
     proxyDir: `${state}/proxy`,
     toolsDir: `${state}/tools`,
     /** Memory only (a tmpfs): the vault's keys, decrypted, while apps run (D37). */

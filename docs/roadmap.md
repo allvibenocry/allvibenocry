@@ -472,19 +472,6 @@ by side, and pointing at the places where they disagree, lets a person trust
 the work without reading every line, and catch the rare report that says more
 than was done.
 
-## Doctor every night
-
-**Planned** (D53). From the architect's review of the control panel's demo.
-
-**`allvibe doctor` runs with the nightly backup**, and its full result is kept on
-the machine, with a short history, in a form the control panel can read. A
-check that fails shows in the result in plain words.
-
-**Why.** Doctor answers when asked, and a beginner does not ask. Run every
-night beside the backup, it finds what went wrong while nobody was looking
-(a disk filling up, a firewall rule gone, the backup disk unplugged), and the
-panel can say so the next time the person opens it.
-
 ## Mains and battery
 
 **Planned** (D53). From the architect's review of the control panel's demo.
@@ -551,6 +538,21 @@ already takes first.
 restore check. Going back is also a change to the live app: it starts other
 code on today's data. Today it takes no backup (D26), because it keeps the
 data; a backup first makes a mistake in going back recoverable too.
+
+## Doctor every night
+
+**Built** (the fifth brief, D58). Was: Planned (D53), from the architect's review of the control panel's demo.
+
+The nightly service ends with doctor's checks; the result is kept in `/var/lib/allvibe/doctor/` with fourteen nights of history, and `allvibe doctor --last` shows it.
+
+**`allvibe doctor` runs with the nightly backup**, and its full result is kept on
+the machine, with a short history, in a form the control panel can read. A
+check that fails shows in the result in plain words.
+
+**Why.** Doctor answers when asked, and a beginner does not ask. Run every
+night beside the backup, it finds what went wrong while nobody was looking
+(a disk filling up, a firewall rule gone, the backup disk unplugged), and the
+panel can say so the next time the person opens it.
 
 ## Rollback past a migration
 

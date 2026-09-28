@@ -7,6 +7,9 @@
  * does not leave the others without their backup. The run as a whole fails,
  * and is recorded as failed, if any project's did, so the timer's service is
  * marked failed and `doctor` says so.
+ *
+ * Then doctor's checks run, and their result is kept for the panel, with a
+ * short history (D58).
  */
 import { NAMES } from "../lib/brand.js";
 import { readConfig } from "../lib/config.js";
@@ -14,6 +17,7 @@ import { listBackups, prune, type Backup } from "../lib/backup.js";
 import { listProjects } from "../lib/project.js";
 import { entries, ok, runSteps, saveRecord } from "../lib/steps.js";
 import { backupSteps, runRestoreCheck } from "./backup.js";
+import { nightlyDoctor } from "./doctor.js";
 
 export async function scheduledBackup(): Promise<number> {
   const config = readConfig();
@@ -62,5 +66,15 @@ export async function scheduledBackup(): Promise<number> {
     ],
     { kind: "scheduled-backup", facts: { results } },
   );
+
+  // doctor, after tonight's backups are recorded, so that it sees them, and
+  // kept for the panel (D58). Its result does not change the backups'.
+  process.stdout.write("\n== doctor, with the nightly backup\n");
+  try {
+    const doctor = nightlyDoctor();
+    process.stdout.write(`${doctor.summary}${doctor.problems ? `\n${doctor.checks.filter((c) => c.status === "problem").map((c) => `  ✗ ${c.text}`).join("\n")}` : ""}\nkept in ${NAMES.doctorDir}\n`);
+  } catch (error) {
+    process.stdout.write(`doctor could not run: ${(error as Error).message}\n`);
+  }
   return record.ok ? 0 : 1;
 }
