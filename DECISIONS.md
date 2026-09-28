@@ -1076,3 +1076,86 @@ random in the shape of an Anthropic API key: `dev commit` and a plain
 and the kind of key, never the value; the key in no commit, and, once the
 staged copy was unstaged and pruned, in no object at all; a clean commit
 passed; and with the scanner taken away, the commit stopped instead of passing.
+
+## D39. The agent container: Claude Code, unmodified, on dev's network, with one way out
+
+*2026-09-28. The second brief, item 5. Builds the first of the roadmap's "agent
+adapters" (D34), with an API key only.*
+
+`allvibe agent start <project>` runs the official, unmodified Claude Code in a
+container of its own; `allvibe agent shell <project>` opens Claude Code's own
+interactive session in it (or, with `-- <command>`, runs a command there);
+`allvibe agent stop <project>` removes it. `project status` shows whether it
+runs, and `project remove` removes it first.
+
+**The image** (`agent/`, in the bundle) is built on the host, for the service
+user's uid, never pulled: Node 24 on Debian 13 (`node:24.21.0-trixie-slim`,
+pinned by digest), git from Debian for its commits, the key check's scanner
+copied from its pinned image (D38), and Claude Code **2.1.283 installed with
+`npm ci` from a lock file**, so npm checks the integrity hash of the package
+and of its native binary. Claude Code is not changed in any way. Its own
+settings are used as documented: `DISABLE_AUTOUPDATER` (the pinned version
+stays the version) and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` (no
+telemetry or error reports, so its only traffic is to the model's API).
+
+**Its key comes from the vault only**, from the vault's own `agent` scope
+(D37): the decrypted copy in memory is mounted as one read-only file, and the
+container's start writes Claude Code's user settings with `apiKeyHelper`
+reading that file, the way Claude Code documents for API keys. So the key is
+never an environment variable and `docker inspect` shows only the file's path.
+Nothing else gets this key, not even dev's app. It is a user setting, not a
+managed one: every one of Claude Code's own ways of signing in stays as it is.
+
+**What the container has** (`agentRunArgs`, checked by unit tests):
+
+- **One network: dev's internal network**, where the dev app and the dev
+  database are. That network has no route out.
+- **One way out: the egress gate** (`agent/egress.mjs`, on the pinned Node
+  image the template uses), which sits on dev's network and on one of its own
+  that reaches the internet. It passes a `CONNECT` to `api.anthropic.com`
+  port 443 when the name resolves to public addresses only, and refuses
+  everything else with 403, logging the host name. What passes is TLS between
+  Claude Code and the API, which the gate cannot read. Claude Code uses it
+  through `HTTPS_PROXY`, as it documents for proxies.
+- **One working copy**, the project's repository, read-write, and the key file,
+  read-only. Its home and `/tmp` are in memory; its root filesystem is
+  read-only.
+- **The service user's uid and gid**, not root, so what it writes belongs to the
+  same owner as everything else there; no capabilities, no new privileges;
+  2 GB of memory, 2 CPUs, 512 processes; never restarted on its own.
+- **None of rule 12's**: no Docker socket (so the agent cannot deploy: it asks
+  the user to, D36), not the host's network, not privileged, no host key,
+  recovery key, backup target, or anything of prod's.
+
+**Why a gate, and not a firewall rule.** The CLI runs as the service user
+(D15), which cannot change the host's firewall, and a rule that keeps a
+container from the home network would have to be kept in step with Docker's
+own rules across restarts and upgrades. A gate is one small program the suite
+owns, its allow list is one line, and its log says what was refused.
+
+**Subscription sign-in is not built** (D34): the gate's allow list is the API
+host alone, so no subscription traffic passes through anything of the suite's.
+When Anthropic confirms the setup in writing, the sign-in hosts are added to
+the list. Nothing in Claude Code is changed either way.
+
+**Verified on the test host**, from inside the agent container: prod's
+containers do not resolve by name; prod's database and app are unreachable by
+address; prod's front door answers 403 through the dev network's gateway and
+is unreachable by the host's own address, and the gate refuses it; the host's
+loopback ports are refused; the Docker socket, `/etc/allvibe` with both keys,
+the backup target, `/var/lib/allvibe` and `/run/allvibe` are absent, no file
+holds an age private key, and no secret file holds prod's or dev's key value;
+the host's address and the router are unreachable, and the gate refuses them;
+`api.anthropic.com` does not resolve directly, and another internet host is
+refused, while through the gate the API answers over TLS; the dev app answers
+and the dev database accepts connections. `claude --version` answers 2.1.283.
+Its own commits go through the key check: a fake key is stopped and a clean
+commit is made. A `dev deploy` while it runs leaves it on dev's network.
+
+**Known limits.** Through its network's gateway the container can open a
+connection to any port the host itself listens on at every address: on the
+test host that is the proxy's doors, where prod answers 403 and dev answers,
+and nothing else; on a real machine it would also be, for example, SSH, which
+would still ask for a key. It is listed under "To verify on real hardware". The
+interactive session, and Claude Code talking to the API through the gate,
+have not been tried by a person (item 7 needs a real key).

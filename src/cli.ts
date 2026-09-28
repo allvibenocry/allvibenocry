@@ -4,6 +4,7 @@
  * /usr/local/bin/<command>, which runs it as the service user.
  */
 import { BRAND } from "./lib/brand.js";
+import { agent } from "./commands/agent.js";
 import { backupCommands } from "./commands/backup.js";
 import { dev } from "./commands/dev.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
@@ -25,6 +26,9 @@ const HELP = `${BRAND.product}: ${C} <command>
   project remove <name>        says what would be deleted; --delete-everything deletes it
   dev deploy <project>         rebuild dev from its working tree, and check it
   dev commit <project> <msg>   commit dev's changes: a release is a commit
+  agent start <project>        the coding agent (Claude Code) in dev, with its key from the vault
+  agent shell <project>        its own session, in this terminal; -- <command> runs a command instead
+  agent stop <project>         the agent gone
   release <project>            dev's commit to prod, after a backup and a restore check
   release <project> --dry-run  every check, and nothing changed
   rollback <project>           prod back to its previous version, keeping its data
@@ -58,6 +62,7 @@ const COMMANDS: Record<string, Handler> = {
   ...releaseCommands,
   dev: (args) => dev(args),
   key: (args) => key(args),
+  agent: (args) => agent(args),
   "keys-unlock": () => keysUnlock(),
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);

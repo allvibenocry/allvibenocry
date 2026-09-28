@@ -46,6 +46,7 @@ import { appliedMigrations, schemaOf } from "../lib/schema.js";
 import { renderProjectDocs } from "../lib/template.js";
 import { lockProject } from "../lib/vault.js";
 import { ensureHook } from "../lib/keycheck.js";
+import { agentState, stopAgent } from "../lib/agent.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
 
 const TEMPLATE = "guestbook";
@@ -212,6 +213,13 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
   }
   const record = await runSteps(
     [
+      {
+        name: "the agent, if it runs",
+        run: () => {
+          const gone = stopAgent(name);
+          return ok(gone.length ? `removed ${gone.join(", ")}` : "not running");
+        },
+      },
       ...ENVS.map((env) => ({
         name: `${env}: containers, networks and data`,
         run: () => {
@@ -314,6 +322,9 @@ async function status(name: string | undefined): Promise<number> {
     }
     out(`    check     ${check.ok ? `answers: ${check.entries} ${check.entries === 1 ? "entry" : "entries"}, version ${check.version}` : `NOT answering: ${check.said}`}`);
   }
+  const agent = agentState(name);
+  out("");
+  out(`  agent       ${agent.exists ? `${agent.status} (${agent.image})` : `not running: ${NAMES.command} agent start ${name}`}`);
   if (p.releases.length > 1) {
     out("");
     out(`  releases    ${p.releases.map((r) => `${r.version}${r.breaking?.length ? " (breaking)" : ""}`).join(", ")}`);

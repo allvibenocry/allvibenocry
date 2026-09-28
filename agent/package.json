@@ -1,0 +1,8 @@
+{
+  "name": "agent",
+  "private": true,
+  "description": "The coding agent in dev (D39): the official, unmodified Claude Code, at a pinned version, locked with integrity hashes.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.283"
+  }
+}
