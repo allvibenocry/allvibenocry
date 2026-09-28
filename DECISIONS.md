@@ -1031,3 +1031,48 @@ keys.
 plaintext copy on disk for Compose, as the database password has: it would not
 be encrypted at rest. A key of the vault's own: one more thing to lose, and a
 restored machine would need it as well as the recovery key.
+
+## D38. The key check before every commit: a pre-commit hook with the scanner CI uses
+
+*2026-09-28. The second brief, item 4.*
+
+Every project's git repository has a **pre-commit hook** that runs a pinned
+secret scanner over what is about to be committed, and stops the commit if
+anything looks like a key.
+
+- **The scanner is gitleaks 8.30.1**, from the same image, pinned by the same
+  digest, as this repository's own CI (D6). `setup` takes the binary out of
+  that image once, into `/var/lib/allvibe/tools/`, and checks it against its
+  own pinned checksum, so what runs is pinned twice. The agent's image copies
+  it from the same image (D39).
+- **The hook is in `.git/hooks`**, written by `project create` right after
+  `git init` (so even the template's first commit is checked), by `setup` into
+  every existing project, and again by every `dev commit`. It is a line of
+  shell that runs a small checker beside it (`allvibe-key-check.cjs`: the
+  project's `package.json` says ES modules, and `.cjs` keeps the checker's
+  kind of module certain). Because it lives in the repository, it runs for the
+  user's commits on the host and for the agent's in its container, which
+  mounts the same working copy.
+- **It says where, never what.** gitleaks runs with `--redact` and its own
+  output is not shown; the checker reads only the file, the line and the kind
+  of key from its report, and says in plain words to put the key in the vault
+  instead. `dev commit` shows that message as the step's reason, and unstages
+  the change so the next commit does not carry it by accident.
+- **It fails closed.** If the scanner is missing, or does not finish, the
+  commit stops and says so.
+
+**What it does not do.** A commit made with `--no-verify`, or after the hook
+has been edited, is not checked: the hook guards against mistakes, not against
+someone determined to commit a key. AGENTS.md tells the agent never to skip
+it. A staged file's content is written into git's object store before any
+hook runs, so a blocked commit leaves an unreferenced copy there until git's
+own cleanup, or `git prune`, removes it; it is in no commit and nothing sends
+it anywhere. The key check before push, with the GitHub integration, will scan
+the history again, where it matters.
+
+**Verified on the test host**, in a scratch project, with a fake key made at
+random in the shape of an Anthropic API key: `dev commit` and a plain
+`git commit` (as the agent commits) both stopped, naming `config.js, line 1`
+and the kind of key, never the value; the key in no commit, and, once the
+staged copy was unstaged and pruned, in no object at all; a clean commit
+passed; and with the scanner taken away, the commit stopped instead of passing.

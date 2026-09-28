@@ -9,7 +9,8 @@ import { NAMES } from "../lib/brand.js";
 import { buildDev, containerName, deployEnv, gitHead, readProject, repoDir, smoke, urlFor } from "../lib/project.js";
 import { run } from "../lib/run.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
-import { git } from "./project.js";
+import { ensureHook } from "../lib/keycheck.js";
+import { git, tryGit } from "./project.js";
 
 const C = NAMES.command;
 
@@ -55,9 +56,17 @@ async function commit(name: string | undefined, message: string | undefined): Pr
         run: () => {
           const changes = run("git", ["-C", repoDir(name), "status", "--porcelain"]).stdout.trim();
           if (!changes) return fail("there is nothing to commit: dev has no changes");
+          ensureHook(name);
           git(name, "add", "-A");
-          git(name, "commit", "-q", "-m", message);
-          return ok(`${gitHead(name).slice(0, 12)}: ${message}\n${changes}`);
+          // The key check runs as the commit's pre-commit hook (D38): if it stops the
+          // commit, what it said is the reason, in full.
+          const committed = tryGit(name, "commit", "-q", "-m", message);
+          if (committed.code !== 0) {
+            // Unstaged again, so the next commit does not carry it by accident.
+            tryGit(name, "reset", "-q");
+            return fail((committed.stderr || committed.stdout).trim(), "nothing was committed; the changes are still in dev's working tree");
+          }
+          return ok(`${gitHead(name).slice(0, 12)}: ${message}\n${changes}\nthe key check found nothing that looks like a key`);
         },
       },
     ],

@@ -41,14 +41,20 @@ import {
   type Env,
   type Project,
 } from "../lib/project.js";
-import { run } from "../lib/run.js";
+import { run, tryRun } from "../lib/run.js";
 import { appliedMigrations, schemaOf } from "../lib/schema.js";
 import { renderProjectDocs } from "../lib/template.js";
 import { lockProject } from "../lib/vault.js";
+import { ensureHook } from "../lib/keycheck.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
 
 const TEMPLATE = "guestbook";
 const GIT_IDENTITY = ["-c", `user.name=${BRAND.product}`, "-c", `user.email=${NAMES.command}@localhost`];
+
+/** git in the project's repository, whatever the exit code: for a commit whose hook may stop it. */
+export function tryGit(project: string, ...args: string[]) {
+  return tryRun("git", ["-C", repoDir(project), ...GIT_IDENTITY, ...args]);
+}
 
 export function git(project: string, ...args: string[]) {
   return run("git", ["-C", repoDir(project), ...GIT_IDENTITY, ...args]);
@@ -90,13 +96,18 @@ async function create(name: string | undefined): Promise<number> {
           cpSync(path.join(INSTALL_ROOT, "templates", TEMPLATE), repoDir(name), { recursive: true });
           const docs = renderProjectDocs(repoDir(name), { PROJECT: name, COMMAND: NAMES.command, DATE: new Date().toISOString().slice(0, 10) });
           run("git", ["init", "-q", "-b", "main", repoDir(name)]);
+          ensureHook(name);
           git(name, "config", "user.name", BRAND.product);
           git(name, "config", "user.email", `${NAMES.command}@localhost`);
           git(name, "add", "-A");
           git(name, "commit", "-q", "-m", `Start ${name} from the ${TEMPLATE} template`);
           commit = gitHead(name);
           saveProject(p);
-          return ok(`${repoDir(name)}, first commit ${commit.slice(0, 12)}\nwith ${docs.join(", ")}: the agent's instructions, and the project's own state and decisions`);
+          return ok(
+            `${repoDir(name)}, first commit ${commit.slice(0, 12)}\n` +
+              `with ${docs.join(", ")}: the agent's instructions, and the project's own state and decisions\n` +
+              "and the key check before every commit, which checked this one",
+          );
         },
       },
       {

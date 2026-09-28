@@ -7,6 +7,8 @@ import { mkdirSync } from "node:fs";
 import { NAMES } from "../lib/brand.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { ensureHostKey, ensureRecoveryKey } from "../lib/keys.js";
+import { ensureHook, ensureScanner } from "../lib/keycheck.js";
+import { listProjects } from "../lib/project.js";
 import { ensureProxy } from "../lib/proxy.js";
 import { ok, runSteps } from "../lib/steps.js";
 
@@ -51,6 +53,21 @@ export async function setup(): Promise<number> {
         run: async () => {
           const { changed, evidence } = await ensureProxy(config);
           return said(changed, evidence);
+        },
+      },
+      {
+        name: "the secret scanner for the key check",
+        run: () => {
+          const { changed, evidence } = ensureScanner();
+          return said(changed, evidence);
+        },
+      },
+      {
+        name: "the key check in every project's repository",
+        run: () => {
+          const projects = listProjects();
+          const changed = projects.map((p) => ensureHook(p.name)).filter(Boolean).length;
+          return said(changed > 0, projects.length ? `a pre-commit hook in ${projects.map((p) => p.name).join(", ")}` : "no projects yet");
         },
       },
     ],
