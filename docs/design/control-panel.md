@@ -69,6 +69,9 @@ The panel uses one word for each thing, everywhere:
 | an app's or service's access card (D41) | **what it can access** |
 | self-hosted services such as Pi-hole | **your own services** |
 | the LAN | **home network** |
+| the version the family uses, and its tab | **Live**, and its button **Put vN live** |
+| making an app reachable from the internet | **publish** |
+| a release to the live app | never **deploy**: that word is not used |
 
 **Technical words and port numbers appear only in advanced mode**, and each is
 explained where it first appears.
@@ -81,3 +84,38 @@ explained where it first appears.
   the selected tab is in the Tab order.
 - **Choices are real radio buttons**, not look-alikes.
 - **Every pointer action has a keyboard way**, marks on a screenshot included.
+
+## The app view
+
+*Decided with the owner and the architect (D55). The demo shows it.*
+
+The page for one app. **The same layout in simple and advanced mode, so that
+nothing moves when the person switches.**
+
+**The left side is who you talk to.**
+
+- **Simple mode: one chat, "Your AI"**, with the plan as a checklist at the top.
+- **Advanced mode: two tabs**, **Plan** (the architect) and **Build** (the
+  builder's session).
+
+**The right side is what you look at.**
+
+- **Simple mode: Preview and Live.**
+- **Advanced mode adds Code**: a file tree, and a viewer of the chosen file with
+  its changes.
+
+**Preview** is always there, because a project starts from the starter app.
+The line with **"It works"** and **"Something is wrong"** sits above the
+preview.
+
+**Live** holds the version the family uses, **"Put vN live"** with the safety
+checks shown as progress, and the earlier versions with **"Go back"**.
+
+**"More"** sits next to the app's name, and holds the backups, the service keys
+and the app's settings.
+
+**On a phone, one row of tabs**: Chat, Preview, Code (in advanced mode) and
+Live.
+
+**Small changes skip the plan** and become one step. **For planning, Claude
+Code's own plan mode is used**, not a mechanism of the suite's own.

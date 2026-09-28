@@ -1844,3 +1844,53 @@ The demo now says only that the person adds the machine with the address the
 machine shows them and a one-time connection code, shown once, and the MCP
 bridge's roadmap entry says the same, leaving the details to the brief that
 builds it.
+
+## D54. Sign-in with MFA, the first real project, a gallery, a session review
+
+*2026-09-29. The fifth brief, item 5. Plans, in docs/roadmap.md; nothing is
+built by them.*
+
+- **Sign-in and invitations require multi-factor authentication from the
+  start**, for the owner and everyone they invite.
+- **The first real project is the owner's homelab documentation site**: an IP
+  plan imported from Excel, documentation pages, read-only monitoring, sign-in
+  with MFA, publishing, and a public view for a forum signature built from an
+  explicit list of the fields that may be public, never a filtered private
+  view. The owner keeps a friction log while building it
+  ([docs/friction-log.md](docs/friction-log.md)).
+- **D41's opt-in per app gets its first real use case**: that site must read the
+  APIs of a Proxmox host and a backup server, read-only.
+- **A gallery, after publishing**: offered when a person publishes an app and
+  off until they turn it on; nothing of it in anyone's app; a page per project
+  that shares well; the plan shareable, so that others can "Build something
+  like this"; submissions reviewed by hand, by email to begin with, so the
+  website stays static; easy removal; links checked; never a promise of
+  visitors.
+- **A session review**, in advanced mode: a timeline of what was asked, the
+  plan, the tool calls, the commits and diffs, the checks, the confirmations
+  and the reports, with a summary that flags any claim without evidence behind
+  it.
+
+## D55. The app view: the same layout in both modes
+
+*2026-09-29. The fifth brief, item 5. Settled by the owner and the architect;
+recorded in [docs/design/control-panel.md](docs/design/control-panel.md), "The
+app view"; the website's demo shows it. The panel itself is still Planned.*
+
+The page for one app keeps the same layout in simple and advanced mode, so that
+nothing moves when the person switches. On the left, who you talk to: in
+simple mode one chat, "Your AI", with the plan as a checklist at its top; in
+advanced mode the tabs Plan (the architect) and Build (the builder's session).
+On the right, what you look at: Preview and Live, and in advanced mode Code (a
+file tree and the chosen file with its changes). The preview is always there,
+because a project starts from the starter app; "It works" and "Something is
+wrong" sit above it. Live holds the version the family uses, "Put vN live" with
+the safety checks as progress, and earlier versions with "Go back". "More",
+next to the app's name, holds backups, service keys and the app's settings. On
+a phone, one row of tabs: Chat, Preview, Code in advanced mode, and Live.
+
+Small changes skip the plan and become one step. Planning uses Claude Code's own
+plan mode, not a mechanism of the suite's own.
+
+**Words**: the tab is "Live" and its button "Put vN live"; "publish" is kept for
+making an app reachable from the internet; "deploy" is never used in the panel.

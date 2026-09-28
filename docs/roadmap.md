@@ -221,7 +221,9 @@ account (D46).
 **Planned.** From the architect's review of the website (D34).
 
 **Every app gets sign-in in front of it, private by default**: only the user
-and the people they invite.
+and the people they invite. **With multi-factor authentication from the start**
+(D54): a second factor is part of the first version, not something added
+later, for the owner and for everyone they invite.
 
 **Today, under D18, any machine on the home network can reach a project without
 signing in.** This entry closes that gap.
@@ -389,6 +391,86 @@ compose file from a forum) skips everything this suite is for: knowing what a
 thing can reach, a backup before a change, and a way back. Recipes the suite
 has tried keep those, and keeping services apart from the apps keeps the
 builder out of the home's infrastructure.
+
+## A device on the home network, for one app
+
+**Planned** (D41, D54). D41 keeps every project container off the home
+network. **An app that genuinely needs one device there gets an explicit
+opt-in**: the owner names the app, its environment, and the one address and
+port; the suite adds a rule for that app's network to that one destination
+ahead of the refusals; prod's needs a confirmation; and the panel shows it on
+its map of what can reach what. The machine itself stays refused to every
+container, opt-in or not.
+
+**The first real use case** is the owner's homelab documentation site (below),
+which must read the APIs of a Proxmox host and a backup server, and only read
+them: read-only credentials in the key vault, and one opt-in per API.
+
+**Why.** Without a real case the opt-in would be designed for an imagined one.
+A documentation site that reads, and never writes, is the right first case:
+the smallest reach that is still useful.
+
+## The first real project: a homelab documentation site
+
+**Planned** (D54). The owner's own project, and the suite's first real one: the
+suite is built for people like its owner, and this is where its gaps show.
+
+What the site is to hold:
+
+- **An IP plan**, imported from an Excel file.
+- **Documentation pages** about the homelab.
+- **Read-only monitoring**, through the opt-in above.
+- **Sign-in with multi-factor authentication**, from "Sign-in and
+  invitations".
+- **Publishing**, from the planned internet publishing.
+- **A public view for a forum signature**, built from an explicit list of the
+  fields that may be public. **Never a filtered private view**: the public
+  view is built up from what is allowed, not cut down from what is not, so a
+  field added later is private until someone adds it to the list.
+
+**A friction log** is kept while building it, by the owner: every place where
+the suite got in the way, confused, or was missing something
+([friction-log.md](friction-log.md)). It feeds the briefs that follow.
+
+**Why.** A product built only against a test host and a guestbook stays shaped
+like them. A real project, with real data that must stay private and a public
+part that must not leak, tests the promises the suite makes.
+
+## A gallery
+
+**Planned, after publishing** (D54). A place where people can show what they
+built, on the website.
+
+- **Offered when a person publishes an app, and off until they turn it on.**
+- **No footer link or badge in anyone's app.** The gallery is on the website;
+  nothing of it is put into the apps.
+- **Each project gets its own page**, one that looks good when it is shared.
+- **The creator may share the project's plan**, so that others can press "Build
+  something like this" and start from it.
+- **Submissions are reviewed by hand before they appear**, by email to begin
+  with, so that the website stays static.
+- **Easy removal on request**, and **links checked regularly**.
+- **Never a promise of visitors**: only a page to share.
+
+**Why.** People like to show what they made, and a plan someone else can start
+from is worth more than a screenshot. Keeping it opt-in, off the apps and
+reviewed by hand keeps it from becoming advertising, tracking, or a place for
+spam.
+
+## A session review
+
+**Planned** (D54). In advanced mode.
+
+**A timeline that weaves together** what the person asked, the plan, the agent's
+tool calls, the commits with their diffs, the checks, the person's
+confirmations, and the reports. **A summary on top flags any claim without
+evidence behind it**: for example an agent saying "checks ran" when no check
+appears in the log.
+
+**Why.** An agent's report is words; the log is what happened. Putting them side
+by side, and pointing at the places where they disagree, lets a person trust
+the work without reading every line, and catch the rare report that says more
+than was done.
 
 ## A release only after every step is tried
 
