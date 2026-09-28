@@ -69,7 +69,9 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   `allvibe agent shell`; the login only in the container's memory, gone when it
   stops; the gate passing the two sign-in hosts as well, and nothing else; and
   the suite never running Claude Code itself (D48). Run up to Claude Code's
-  sign-in choice, and no further: the sign-in is the owner's.
+  sign-in choice, and no further: the sign-in is the owner's. The owner has
+  since followed walkthrough step 23, and it worked as written (tried by the
+  owner, 2026-09-28).
 - **The repository.** The rules ([CLAUDE.md](CLAUDE.md)), the decisions
   ([DECISIONS.md](DECISIONS.md), D1-D51), the control panel's design rules
   ([docs/design/control-panel.md](docs/design/control-panel.md)), the Vikt
@@ -79,15 +81,17 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
 
 ## The fourth brief
 
-**Waiting for:** the owner's sign-in test, walkthrough step 23 (the brief's
-item 6); and the owner to try each item of all four briefs (rule 6).
+**Tried by the owner:** the sign-in test, walkthrough step 23 (the brief's
+item 6), in the owner's words: "I followed walkthrough step 23 on the test host
+on 2026-09-28, and it worked as written." **Waiting for:** the owner to try the
+other items of all four briefs (rule 6).
 
 | Item | State |
 |---|---|
 | 1. Signing in with a Claude account in the agent | Built and run on a fresh test host: both ways of signing in start; the agent probe 75 of 75 with a key and 74 of 74 with an account; the new leftovers probe 12 of 12 in both (nothing of a session on disk while it runs, nothing anywhere after the stop); `allvibe agent shell` opened Claude Code with an account and showed its sign-in choice, where the run stopped (rule 13). With a stand-in key, its prompt showed `auto mode on`. D46, D47, D48. |
 | 2. Records | Recorded: D46 to D51, with notes under D34, D39, D41, D42 and D43; `doctor`'s IPv6 check, with unit tests, seen saying both of its answers on the test host (D49); the roadmap's "Your own services" (D50); the control panel's design rules (D51); walkthrough step 23, replayed on the test host up to the sign-in choice. |
 | 3 to 6. The website | Done in the website repository (its STATE.md, D26 to D28): favicons, the control panel's demo at `/demo`, Under the hood and the claims sheets read at this repository's `6a20da8`, and a phone preview for the owner. Its claims sheet for the demo lists seven things the demo shows that nothing here says, for the owner. |
-| 6. The owner's sign-in test | **Not tried yet.** Walkthrough step 23, on the test host, which is left ready for it: installed, `moods` running, the backup target set, the recovery key confirmed, and no `scratch` project yet. |
+| 6. The owner's sign-in test | **Tried by the owner**, in their words: "I followed walkthrough step 23 on the test host on 2026-09-28, and it worked as written." |
 
 **Reviewed by the architect** (the third brief): D41 is accepted, with five
 minutes for its check; not filtering IPv6 is accepted only while it stays true,
@@ -165,9 +169,10 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   commit's staged copy stays in git's object store, unreferenced, until pruned
   (D38).
 - **Built and not tried:** `key set` putting the old value back when the app
-  does not come up with a new one; the agent's interactive session; Claude
-  Code talking to the model through the egress gate, with a key or with an
-  account; the sign-in itself (walkthrough step 23, the owner's).
+  does not come up with a new one; Claude Code talking to the model through
+  the egress gate with a key. With an account, walkthrough step 23 (the
+  sign-in, a change made by the agent, and a new start asking to sign in again)
+  was tried by the owner and worked as written.
 - **When the terminal of `allvibe agent shell` closes**, Claude Code keeps
   running in the agent until `allvibe agent stop` (D46). Leaving it with
   `/exit`, or `Ctrl-C` twice, ends it.
@@ -189,7 +194,7 @@ decided (D51).
 Candidates for the next brief: the MCP bridge; the web UI calling this CLI, on
 the runtime D40 decided; sign-in in front of apps; the key check before push,
 with the GitHub integration; a lock between operations; pruning; the laptop;
-and the live agent test, which is now the owner's sign-in test (D46).
+and the live agent test with a key, which still waits for API credits (D43).
 
 ## To verify on real hardware
 
