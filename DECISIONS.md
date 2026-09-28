@@ -1159,3 +1159,39 @@ and nothing else; on a real machine it would also be, for example, SSH, which
 would still ask for a key. It is listed under "To verify on real hardware". The
 interactive session, and Claude Code talking to the API through the gate,
 have not been tried by a person (item 7 needs a real key).
+
+## D40. The control panel will run in a container on a pinned official Node 24 image
+
+*2026-09-28. The second brief, item 6. A decision made now, for the brief that
+builds the control panel; nothing is built by it. Settles the roadmap's "The
+control panel's runtime".*
+
+**The control panel runs in a container, on the official `node` image at a
+Node.js 24 release, pinned by index digest** (D27), like every image the suite
+uses, and updated through the monthly check-up once that exists. It does not
+run on the host's Node.js.
+
+**Why.** The host's Node.js is Debian 13's `nodejs` package, 20.19.2, and D32
+records why that is right for the CLI: on 2026-09-27 Debian's security tracker
+listed six 2026 CVEs still open for Node.js 20 in Debian 13, fixed only in
+newer Debian releases, which carry Node.js 24. Debian's patches reach Debian
+13 when its security team backports them, not when upstream releases a fix.
+That is acceptable for a command-line tool that listens on no port and is
+started by the owner or the backup timer. **It is not acceptable for a web
+server**, which is what the panel is: it listens on the network, parses what
+any browser on the home network sends it, and is the one place the whole
+machine is driven from. Its runtime has to be the one that gets fixes first,
+and a pinned official image of the current long-term release is that, updated
+as one reviewed line (D27).
+
+**What stays.** The CLI keeps running on Debian's Node.js (D15, D32): the
+panel calls the CLI, the engine (rule 5), so the operations themselves do not
+move. A container also gives the panel the same boundaries as everything else
+the suite runs, and rule 3 still holds: it is never exposed directly to the
+internet.
+
+**Instead.** The panel on the host's Node.js 20, which D32 already rules out
+for anything that listens. NodeSource's repository for a newer Node.js on the
+host (D15 rejected it: another repository and signing key to trust, on its
+schedule rather than Debian's), which would also change the CLI's runtime for
+no gain to it.
