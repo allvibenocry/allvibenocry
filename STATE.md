@@ -1,6 +1,6 @@
 # State
 
-*Updated 2026-09-27: the architect's reviews are recorded (D29 to D33), and
+*Updated 2026-09-28: the architect's reviews are recorded (D29 to D34), and
 what is planned is in [docs/roadmap.md](docs/roadmap.md). The
 first brief's report is
 [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
@@ -70,9 +70,10 @@ is recorded as deliberate (D32). The review changes no code.
 What is planned, and not built, is in **[docs/roadmap.md](docs/roadmap.md)**,
 all of it Planned: off-site backups, the recovery key in the web UI, a lost
 recovery key, rollback past a migration, and, from the review of the website
-(D33), a key vault, the control panel at `allvibe.local`, an installer on a USB
-stick, disk health warnings, a monthly check-up, moving to a new computer, full
-disk encryption at install, and the control panel's runtime.
+(D33, D34), a key vault, the control panel at `allvibe.local`, an installer on a
+USB stick, disk health warnings, a monthly check-up, moving to a new computer,
+full disk encryption at install, the control panel's runtime, agent adapters, a
+guided plan, sign-in and invitations, and the team version.
 
 The next brief. Candidates from the first one: a lock between operations,
 pruning old release images and backups, the web UI calling this CLI, and the

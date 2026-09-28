@@ -205,6 +205,82 @@ web server. The panel could, for example, run in a container on the official
 Node.js 24 image, pinned by digest like every image the suite uses (D27), and
 updated through the monthly check-up.
 
+## Agent adapters
+
+**Planned.** From the architect's review of the website (D34).
+
+**The coding agent in dev is an official, unmodified vendor tool**, installed
+in the dev container, signed in through the vendor's own flow, and shown to the
+user as an interactive session in the web interface.
+
+- **Claude Code comes first, with the user's own API key.**
+- **Signing in with a Claude subscription is added only after Anthropic
+  confirms in writing** that the setup is permitted. The owner sent them the
+  question on 2026-09-28.
+- **The suite never collects, reads, stores or proxies subscription
+  credentials or tokens, and never pays for, resells or intermediates AI
+  usage**, now or in any paid version.
+- **Shared instructions live in `AGENTS.md`**, the cross-tool standard, with
+  `CLAUDE.md` pointing to it.
+- **Later adapters, in this order:** OpenAI's Codex CLI, GitHub's Copilot CLI,
+  then Google's agent once its move from Gemini CLI to Antigravity CLI has
+  settled. **Each vendor's terms are confirmed before its adapter ships.**
+
+**Why.** The agent is the vendor's product, and the user's relationship with
+the vendor is the user's: an unmodified tool, signed in the vendor's own way,
+keeps the user inside the vendor's terms, and keeps the suite out of their
+credentials and their bill. Dev is where rule 1 already puts the agent: nothing
+in a dev environment reaches prod. One instructions file that every tool reads
+means a project does not have to be rewritten for each agent.
+
+## A guided plan
+
+**Planned.** From the architect's review of the website (D34).
+
+**Each project gets instructions for the agent** (in its `AGENTS.md`, above) so
+that an idea becomes a short numbered plan in which **every step has a check the
+user can try**, and **the agent stops after each step** for the user to try it.
+
+**Why.** It is rule 6 of this repository, applied to the apps people build: a
+step counts as done when a person has tried it, not when the agent says so.
+Small steps with a check each also keep every change in dev small enough to try
+before it is released.
+
+## Sign-in and invitations
+
+**Planned.** From the architect's review of the website (D34).
+
+**Every app gets sign-in in front of it, private by default**: only the user
+and the people they invite.
+
+**Today, under D18, any machine on the home network can reach a project without
+signing in.** This entry closes that gap.
+
+**Why.** A home network is shared: family, guests, and every device that has
+ever joined it. The proxy (D12) is already the one way into every app, so it is
+where sign-in belongs, once, rather than in every app. And it has to exist
+before anything is published to the internet.
+
+## The team version
+
+**Planned, after version 1.** From the architect's review of the website (D34).
+
+- **Single sign-on** with the organisation's own identity provider.
+- **Roles, with a second approval before a release.**
+- **Approved stacks and databases**, set centrally for everyone.
+- **Shared connections to company data**, with fine-grained access.
+- **An audit trail** of every release and every AI action.
+- **Shared AI keys with spending limits**, owned and paid for by the
+  organisation.
+- **Running on the organisation's own servers.**
+
+**Why, and what it does not change.** It is the same safety for a whole
+organisation: people build the small apps they need, and IT decides where they
+run, what they reach and who gets in. It comes after version 1, so it does not
+contradict "several users per machine" being outside version 1 (CLAUDE.md).
+The AI keys are the organisation's own, bought by the organisation, which keeps
+the rule above: the suite never pays for, resells or intermediates AI usage.
+
 ## Also planned, and recorded elsewhere
 
 These were named when their decisions were made, and are not repeated here:

@@ -808,3 +808,38 @@ control panel's runtime** before it is built.
 **Why.** A promise on the website that nobody has written down here is a promise
 nobody is working towards. Writing it down makes it either a plan or a
 correction.
+
+## D34. The agent is the vendor's own tool, and the suite stays out of the user's AI account
+
+*2026-09-28. The architect's second review of the website.*
+
+The website promised five things this repository did not support at all. They
+are now entries in [docs/roadmap.md](docs/roadmap.md), all Planned, and the
+README says who makes the project:
+
+- **Agent adapters.** The coding agent in dev is an official, unmodified vendor
+  tool, installed in the dev container, signed in through the vendor's own
+  flow, and shown as an interactive session in the web interface. Claude Code
+  comes first, with the user's own API key; signing in with a Claude
+  subscription only after Anthropic confirms in writing that the setup is
+  permitted (asked on 2026-09-28). Then OpenAI's Codex CLI, GitHub's Copilot
+  CLI, and Google's agent once its move from Gemini CLI to Antigravity CLI has
+  settled, each after its vendor's terms are confirmed. Shared instructions live
+  in `AGENTS.md`, with `CLAUDE.md` pointing to it.
+- **The suite never collects, reads, stores or proxies subscription credentials
+  or tokens, and never pays for, resells or intermediates AI usage**, now or in
+  any paid version. This is a rule for every later decision, not only for the
+  first adapter.
+- **A guided plan**: a short numbered plan with a check the user can try at
+  every step, and the agent stopping after each.
+- **Sign-in and invitations**: private by default. Today, under D18, any machine
+  on the home network can reach a project without signing in; this closes that.
+- **The team version**, after version 1. It does not contradict "several users
+  per machine" being outside version 1.
+- **Credit**: the README says that All vibe no cry is made by Lundstream. That
+  is a fact today, not a plan, so it is in the README and not in the roadmap.
+
+**Why.** Same as D33: a promise on the website is either a plan written down
+here or a correction on the website. The rule about AI accounts is written as a
+rule because it is what a user has to be able to trust about software that runs
+their coding agent: their account and their bill stay theirs.

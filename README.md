@@ -33,6 +33,8 @@ and without losing data.
 
 [GNU Affero General Public License v3.0](LICENSE). Free and open source.
 
+All vibe no cry is made by Lundstream.
+
 ## Contributing and security
 
 Issues with bugs and questions are welcome; pull requests are not accepted yet.
