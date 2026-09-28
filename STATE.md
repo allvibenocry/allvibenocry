@@ -86,7 +86,8 @@ item 6); and the owner to try each item of all four briefs (rule 6).
 |---|---|
 | 1. Signing in with a Claude account in the agent | Built and run on a fresh test host: both ways of signing in start; the agent probe 75 of 75 with a key and 74 of 74 with an account; the new leftovers probe 12 of 12 in both (nothing of a session on disk while it runs, nothing anywhere after the stop); `allvibe agent shell` opened Claude Code with an account and showed its sign-in choice, where the run stopped (rule 13). With a stand-in key, its prompt showed `auto mode on`. D46, D47, D48. |
 | 2. Records | Recorded: D46 to D51, with notes under D34, D39, D41, D42 and D43; `doctor`'s IPv6 check, with unit tests, seen saying both of its answers on the test host (D49); the roadmap's "Your own services" (D50); the control panel's design rules (D51); walkthrough step 23, replayed on the test host up to the sign-in choice. |
-| 6. The owner's sign-in test | **Not tried yet.** Walkthrough step 23. |
+| 3 to 6. The website | Done in the website repository (its STATE.md, D26 to D28): favicons, the control panel's demo at `/demo`, Under the hood and the claims sheets read at this repository's `6a20da8`, and a phone preview for the owner. Its claims sheet for the demo lists seven things the demo shows that nothing here says, for the owner. |
+| 6. The owner's sign-in test | **Not tried yet.** Walkthrough step 23, on the test host, which is left ready for it: installed, `moods` running, the backup target set, the recovery key confirmed, and no `scratch` project yet. |
 
 **Reviewed by the architect** (the third brief): D41 is accepted, with five
 minutes for its check; not filtering IPv6 is accepted only while it stays true,
