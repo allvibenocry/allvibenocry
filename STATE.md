@@ -12,8 +12,9 @@ first's [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
 
 Everything below has been **built and run by the implementer on the local test
 host**. Only what is marked **tried by the owner** has been tried by a human
-(rule 6): so far, signing in with a Claude account (walkthrough step 23). None
-of it has run on real hardware.
+(rule 6): so far, signing in with a Claude account (walkthrough step 23), and
+the control panel's first slice (walkthrough steps 29 and 30). None of it has
+run on real hardware.
 
 ## What works
 
@@ -145,13 +146,25 @@ which the suite does not install or run Claude Code itself. It does not stop
 development, and it does not touch the MCP bridge (D44). Until then the website
 says "your own API key", and nothing about signing in with a Claude account.
 
+## The seventh brief
+
+*In progress.* The architect's review of the sixth brief is recorded (D66 to
+D70), and the owner's six stumbles are in [docs/friction-log.md](docs/friction-log.md),
+each with where it goes.
+
+| Item | State |
+|---|---|
+| 1. Records | Recorded: the owner's try of steps 29 and 30 (below); the friction log's six entries; D66 to D70; TLS at home as the next security milestone in the roadmap. |
+
 ## The sixth brief
 
-**Tried by the owner:** nothing in this brief yet. **Waiting for:** the owner
-to try the control panel (walkthrough steps 29 and 30), and three decisions:
-whether to rewrite the history for `864be95` (Known), where the deny rules
-should also live for a session opened above the repositories (item 1), and the
-nine open questions of the panel's architecture.
+**Tried by the owner:** the control panel, walkthrough steps 29 and 30, in the
+owner's words: "I followed walkthrough steps 29 and 30 on the test host on
+2026-09-29. After two stumbles (friction log 1 and 2) everything worked as
+written." **Reviewed by the architect:** accepted, with the nine open questions
+of the panel's architecture answered (D66), the history of `864be95` left as
+it is (D67), and the deny rules to live in the owner's user settings as well
+(D66; built in the seventh brief).
 
 | Item | State |
 |---|---|
@@ -262,9 +275,10 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   example address that is on the owner's private list, and a private range in
   a comment of `src/lib/panel.ts`. The guard found both, but its exit code was
   lost in a pipe, so the commit went ahead and was pushed; CI failed on it. The
-  next commit removes both from the files. The history is not rewritten
-  (rule 11): whether to, as for the website's first days (its D14), is the
-  owner's decision.
+  next commit removes both from the files. **The history is not rewritten**
+  (rule 11), by the owner's decision (D67): the address is an example address
+  in a test, from the owner's private list, and stays in `864be95`, as the
+  website's first days stay in its history (its D14).
 - **Machine health says a backup is not restore-checked right after a
   release**, although the release checked the one it took: doctor counts only
   the restore checks it runs on its own (the nightly one, or `allvibe

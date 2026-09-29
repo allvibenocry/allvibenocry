@@ -113,11 +113,26 @@ mode first, one word per thing, keyboard and screen readers) are in
 
 ## The panel over TLS at home, with passkeys
 
-**Planned** (D64). The panel starts on plain HTTP on the home network, so its
+**Planned: the next security milestone** (D64, D66). The panel starts on plain
+HTTP on the home network, accepted for one owner as a known limit, so its
 password and cookie could be read by someone on the same network who captures
 its traffic. **TLS on the home network**, with a certificate the machine makes
 and the person's devices trust once, and **passkeys** in place of the password,
 close that. MFA comes with sign-in and invitations (D54).
+
+**Why it is next** (D66):
+
+- **Passkeys need it.** A browser offers a passkey only to a secure context,
+  and a page on plain HTTP at a home-network address is not one.
+- **The session cookie can then be marked `Secure`**, so that a browser never
+  sends it over plain HTTP, to the panel or to anything else on the same name.
+- **Publishing needs it.** An app reachable from the internet must be served
+  over TLS, and the machine that makes certificates for the home network is
+  the first half of that.
+
+**What waits for it**: reaching the panel over a VPN to the home network (D66,
+question 2), only as an explicit setting, never by default, and only once TLS
+and MFA exist.
 
 **Why.** A password typed on a home network is only as private as the network,
 and the panel can put a version live.

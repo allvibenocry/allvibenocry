@@ -1,8 +1,9 @@
 # The control panel's design
 
-**The reference design is decided (D51). The panel itself is Planned**: see
-"The control panel at allvibe.local" and "Two modes in the control panel" in
-[the roadmap](../roadmap.md). Nothing below is built yet.
+**The reference design is decided (D51).** The panel's first slice is built
+(D65), in simple mode; the rest is Planned: see "The control panel at
+allvibe.local" and "Two modes in the control panel" in
+[the roadmap](../roadmap.md).
 
 **The reference** is the owner's clickable demo of the panel, which the
 website serves at `/demo` (its source is `site/demo.html` in the website's
@@ -119,3 +120,22 @@ Live.
 
 **Small changes skip the plan** and become one step. **For planning, Claude
 Code's own plan mode is used**, not a mechanism of the suite's own.
+
+### The chat, and the guided path
+
+*Decided by the owner in the seventh brief (D68, D69). The demo will be
+adjusted to them later; until then, where the demo differs, these win.*
+
+- **The chat is Claude Code's own interface**, in both modes: a terminal on the
+  left, under the plan's checklist, where the person talks to Claude Code and
+  signs in to it through its own flow. It is not a chat of the suite's own, and
+  nothing typed or shown in it is recorded by the suite (D69).
+- **The guided path** (D68): a step indicator at the top of an app's page,
+  **Plan, Try, Live, Done**, with how far along it is ("Try: 1 of 3"); **one
+  button for the next action**, always in the same place, whose words change
+  with the state ("Try step 1", "Put v2 live"); the panel moving on by itself
+  when a stage is over; and an ending, "v2 is live", with three choices: open
+  the app, go back if something feels wrong, or start something new. **Pink is
+  the next action, and there is only ever one.** The tabs stay, and the
+  ordinary path never needs them. Going back and restoring data are never a
+  "next": they stay deliberate, with their confirmations.

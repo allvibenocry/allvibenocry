@@ -2417,3 +2417,142 @@ disk should reach the engine at once; that is to be seen on real hardware.
 **Why.** The brief's test is a person in a real browser, so the checks drive
 one, as a person would, and look at what a person sees. A check that has not
 been seen failing may be checking nothing (CLAUDE.md, mistakes 29 and 38).
+
+## D66. The architect's answers to the panel's nine open questions
+
+*2026-09-29. The architect's review of the sixth brief, relayed by the owner in
+the seventh brief. The questions are the last section of
+[docs/design/panel-architecture.md](docs/design/panel-architecture.md).*
+
+1. **The Preview frame** loads the test copy from its own address: **accepted,
+   on conditions.** The test copy's code is written by the agent and is
+   untrusted, so the frame is **sandboxed** without the right to navigate the
+   top window, to open windows outside its sandbox, or to change the panel in
+   any way; otherwise it could send the whole window to a fake sign-in page
+   for the panel. The panel **checks the `Origin` header exactly, port
+   included**, on everything that changes anything, and **never trusts a
+   message from the frame**. And because cookies ignore ports, the panel's
+   session cookie would be sent to every port on the same host name, the test
+   copy's and the live app's included, and `SameSite` does not help, since
+   another port is the same site: **the panel and the apps answer on
+   different host names**, so that the panel's cookie never reaches an app.
+   How (the planned `allvibe.local` through mDNS for the panel is one way, the
+   apps keeping the machine's address or another name), with **a fallback for
+   devices that cannot resolve `.local` names**, is the implementer's to decide
+   and prove (the seventh brief, item 4).
+2. **Reaching the panel over a VPN** to the home network: **later**, only as an
+   explicit setting (for example "I use Tailscale"), never by default, and only
+   after TLS and MFA exist.
+3. **Plain HTTP at home**: **accepted for one owner, as a known limit.** TLS at
+   home becomes **the next security milestone**, Planned now with its reasons:
+   passkeys need it, the session cookie can then be marked `Secure`, and
+   publishing needs it (roadmap, "The panel over TLS at home, with passkeys").
+4. **Sessions in memory**: **accepted.** For one owner it is even a benefit that
+   a restart signs everyone out.
+5. **The CLI and the panel at the same time**: **must be fixed now.** Two
+   releases or rollbacks of the same app at once, one from the panel and one
+   from the CLI, could damage its data. **One lock per app, taken by both the
+   engine and the CLI**; whoever comes second is refused in plain words, for
+   example "A release of hello is already running, started from the panel 2
+   minutes ago" (the seventh brief, item 3).
+6. **The engine on Debian's Node.js 20**: **accepted, on conditions**: it
+   listens only on its local socket, reads only JSON with a size limit, and
+   has **no HTTP server and no TLS**. Revisit if an open vulnerability in
+   Debian's Node.js 20 touches what the engine uses. *The implementer's
+   reading:* the engine speaks HTTP/1.1 over its socket today (D62), which is
+   an HTTP server, if not a network one, and Node's HTTP parser is where many
+   of its security fixes land. So the engine drops HTTP and reads JSON, one
+   message per line, each with a size limit (the seventh brief, item 6, where
+   the terminal's stream needs a protocol of its own anyway).
+7. **Port 80**: first try the simplest way, **Docker publishing the machine's
+   port 80 to an unprivileged port inside the container**, so that Docker binds
+   port 80 and neither the proxy nor the machine needs a change. If there is a
+   reason that does not work (for example the proxy needing the host's network
+   to see source addresses), **a capability for the proxy alone is better than
+   a machine-wide setting**. Which, and why, is recorded (the seventh brief,
+   item 4).
+8. **The engine's next operations**, in this order, each with its
+   confirmation: **the agent** (start, stop, status and the terminal, for the
+   chat); **creating an app**; **service keys**, where values only go in and
+   never come out; **going back with the data**, confirmed by typing the app's
+   name; **work outside a plan**, with a reason; and **removing an app**,
+   confirmed by typing its name, with a backup kept. The seventh brief builds
+   the first two.
+9. **More than one person**: one password is enough now. Invitations with MFA
+   belong with the team version.
+
+**And where the deny rules live** (D61's open point): in the owner's **user
+settings** for Claude Code, so that they apply to every project on the
+workstation, **and** still in each repository's project settings, with a new
+hook that refuses heredocs and multi-line inline scripts before they run (the
+seventh brief, item 2).
+
+## D67. The address in `864be95` stays in the history
+
+*2026-09-29. The owner's decision, from the seventh brief.*
+
+Commit `864be95` added, in a test, an example address that is on the owner's
+private list (STATE.md, Known; mistake 42). It is an example address in a
+test, and **the history is not rewritten**, as for the website's first days
+(its D14): rule 11 holds.
+
+## D68. The guided path: Plan, Try, Live, Done
+
+*2026-09-29. The owner's decision, after following walkthrough steps 29 and 30
+(friction log, entry 6). Built in the seventh brief, item 5.*
+
+An app's page in the panel should feel linear, like a wizard: next, next, done.
+
+- **A step indicator at the top**: **Plan, Try, Live, Done**, showing how far
+  along the app is, for example **"Try: 1 of 3"**.
+- **One button for the next action, always in the same place**, whose words
+  change with the state: "Try step 1", "Try step 2", "Put v2 live", "Done".
+- **The panel moves on by itself**: after the last step is tried, it goes to
+  Live, with "Every step is tried. Next: put v2 live".
+- **An ending that feels like one**: "v2 is live", with three choices: open
+  the app, go back if something feels wrong, or start something new, which
+  leads back to Plan.
+- **The tabs stay** for anyone who wants to look around, but the ordinary path
+  never needs them.
+- **Going back and restoring data are never part of the chain of "next"**:
+  they stay deliberate choices, with their confirmations.
+- **In the panel's words and colour roles**: pink is the next action, and
+  there is only ever one.
+
+## D69. The chat is Claude Code's own interface, in a terminal in the panel
+
+*2026-09-29. The owner's decision, from the seventh brief. It makes D55's
+"one chat, Your AI" concrete; the demo will be adjusted to it later. Built in
+the seventh brief, items 6 and 7.*
+
+**In both modes, the conversation with the AI is Claude Code's own
+interface**, embedded in the panel as **a terminal on the left, under the
+plan's checklist**, not a chat of the suite's own:
+
+- **The suite never drives Claude Code for the person** (D48, rule 17): every
+  session is one the person drives, interactively, in that terminal.
+- **The person signs in to Claude Code in that same terminal**, through Claude
+  Code's own flow, as the owner did by hand in a browser-based terminal
+  (walkthrough step 23).
+- **Nothing typed in it, or shown in it, is recorded or logged by the suite.**
+
+**Why.** A chat of the suite's own would have to drive Claude Code on the
+person's behalf, which D48 rules out when they sign in with their own account,
+and it would put the suite between the person and their AI. Claude Code's own
+interface, in a terminal, is the vendor's product exactly as the person would
+use it anywhere else, and keeps everything it does (its sign-in, its plan
+mode, its questions) the vendor's.
+
+## D70. Every entry in the friction log is triaged in the next brief
+
+*2026-09-29. The owner's decision, from the seventh brief.*
+
+[docs/friction-log.md](docs/friction-log.md) keeps every place where the suite
+got in the way of the owner, while following the walkthrough and, later, while
+building the first real project (D54). **Every entry is triaged in the brief
+after it is written**: fixed there, or given an entry in the roadmap, and the
+log says which. The first six, from walkthrough steps 29 and 30, are triaged in
+the seventh brief.
+
+**Why.** A log that nobody reads back is a place where problems go to be
+forgotten; a rule that each is answered in the next brief keeps it short.
