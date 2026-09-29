@@ -27,7 +27,8 @@ One entry per snag, numbered in the order they came:
 - **How much it hurt:** it stopped me, until I saw why.
 - **Where it goes:** fixed in the seventh brief, item 3 (e): the walkthrough
   never assumes a project's name is unused. Each project has a name of its own,
-  or the old one is removed first, with a check that it is gone.
+  or the old one is removed first, with a check that it is gone. Built in
+  `0a45552`; steps 30 and 31 start that way.
 
 ### 2. Blocks with several commands
 
@@ -36,7 +37,8 @@ One entry per snag, numbered in the order they came:
   paste lands after it, on the same line.
 - **How much it hurt:** a little, twice.
 - **Where it goes:** fixed in the seventh brief, item 3 (e): one command per
-  block, everywhere in the walkthrough.
+  block, everywhere in the walkthrough. Built in `0a45552`, and checked by
+  `test/host/walkthrough-blocks.mjs`.
 
 ### 3. A green dot beside "The nightly checks have not run yet"
 
@@ -45,14 +47,16 @@ One entry per snag, numbered in the order they came:
   run.
 - **How much it hurt:** a little.
 - **Where it goes:** fixed in the seventh brief, item 3 (d): nothing that has
-  not run yet is green, anywhere in the panel.
+  not run yet is green, anywhere in the panel. Built in `0a45552`; to see in
+  step 29.
 
 ### 4. Machine health said no backup was restore-checked, right after a release that checked one
 
 - **2026-09-29, the control panel, Machine health**, after step 30's release.
 - **How much it hurt:** a little: it looked like a problem that was not there.
 - **Where it goes:** fixed in the seventh brief, item 3 (b): Machine health
-  counts the restore check a release or going back made.
+  counts the restore check a release or going back made. Built in `0a45552`;
+  to see at the end of step 30.
 
 ### 5. The Preview frame reloads whenever the pane redraws
 
@@ -62,7 +66,8 @@ One entry per snag, numbered in the order they came:
 - **How much it hurt:** a little.
 - **Where it goes:** fixed in the seventh brief, item 3 (c): the frame is
   reloaded only by "Restart the test copy" or by a change to the test copy
-  itself.
+  itself. Built in `0a45552`; to try in step 30 ("What you type in the test
+  copy stays").
 
 ### 6. The steps should feel linear, like a wizard
 
@@ -71,4 +76,4 @@ One entry per snag, numbered in the order they came:
   panel moving on by itself, and an ending that feels like one.
 - **How much it hurt:** a little; it is how it should feel.
 - **Where it goes:** the guided path, decided in D68 and built in the seventh
-  brief, item 5.
+  brief, item 5 (`3360ece`, D75); to try in steps 30 and 31.

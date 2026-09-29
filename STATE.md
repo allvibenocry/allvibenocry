@@ -1,10 +1,13 @@
 # State
 
-*Updated 2026-09-29: the sixth brief's items are built (D61 to D65): deny
-rules, the engine, the control panel's container and signing in, and its first
-slice in the browser; its report is
-[reports/2026-09-29-brief-06.md](reports/2026-09-29-brief-06.md). The fifth
-brief's is [reports/2026-09-29-brief-05.md](reports/2026-09-29-brief-05.md),
+*Updated 2026-09-30: the seventh brief's items are built (D66 to D79): the
+workstation's protections, one lock per app, the panel at `allvibe.local` on
+port 80, the guided path, the engine's agent and new app, the chat as Claude
+Code's own terminal in the panel, and browser checks for all of it; its
+report is [reports/2026-09-30-brief-07.md](reports/2026-09-30-brief-07.md).
+The sixth brief's is
+[reports/2026-09-29-brief-06.md](reports/2026-09-29-brief-06.md), the fifth
+brief's [reports/2026-09-29-brief-05.md](reports/2026-09-29-brief-05.md),
 the fourth's [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md),
 the third's [reports/2026-09-28-brief-03.md](reports/2026-09-28-brief-03.md),
 the second's [reports/2026-09-28-brief-02.md](reports/2026-09-28-brief-02.md), the
@@ -138,12 +141,14 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   repository, for the Bash and PowerShell tools; each seen refusing its
   command (`test/host/deny-probe.mjs`).
 - **The repository.** The rules ([CLAUDE.md](CLAUDE.md)), the decisions
-  ([DECISIONS.md](DECISIONS.md), D1-D65), the control panel's design rules
+  ([DECISIONS.md](DECISIONS.md), D1-D79), the control panel's design rules
   ([docs/design/control-panel.md](docs/design/control-panel.md)), the Vikt
   inventory, the test host harness, its fixtures, probes and browser checks
-  (`test/host/`), 104 unit tests, and CI on every push: a secret scan
-  (gitleaks), the guard for
-  rules 9 and 10, the unit tests, and shellcheck of install.sh and firewall.sh.
+  (`test/host/`), 170 unit tests, and CI on every push: a secret scan
+  (gitleaks, with the two things it may not take for keys in
+  `.gitleaks.toml`, D79), the guard for rules 9 and 10, the unit tests, and
+  shellcheck of install.sh and firewall.sh. In the owner's clones, the guard
+  runs before every commit (D71).
 
 ## Gates
 
@@ -157,9 +162,14 @@ says "your own API key", and nothing about signing in with a Claude account.
 
 ## The seventh brief
 
-*In progress.* The architect's review of the sixth brief is recorded (D66 to
-D70), and the owner's six stumbles are in [docs/friction-log.md](docs/friction-log.md),
-each with where it goes.
+**All nine items built, in one session** (D66 to D79); the report is
+[reports/2026-09-30-brief-07.md](reports/2026-09-30-brief-07.md). **Tried by
+the owner:** nothing of it yet. **Waiting for:** the owner to follow
+walkthrough steps 29 to 31 on the test host, which is left running, fresh, with
+no project on it: the guided path, the frame, the lock, and the chat, ending
+with the owner's own sign-in to Claude Code in the panel's terminal and a
+first small change; and to say what happened, in their own words, with what
+got in the way in [docs/friction-log.md](docs/friction-log.md).
 
 | Item | State |
 |---|---|
@@ -171,6 +181,7 @@ each with where it goes.
 | 6. The engine: the agent and a new app | Built and probed on the test host (D76): the engine's protocol is JSON lines, no HTTP (D66's condition); `app.create`, `agent.status`, `agent.start`, `agent.stop`, each change confirmed; `agent.terminal`, a stream through Docker's exec API, one browser at a time (a second takes over), 30 minutes idle, resizing, nothing kept; the panel's WebSocket for it. `engine-probe.mjs` 71 of 71; `terminal-probe.mjs` 26 of 26 in two real browsers, refusals with their control, a marker typed and shown found nowhere on the host; a race on take-over found and fixed. |
 | 7. The chat in the panel | Built and probed on a fresh test host (D77): Claude Code's own terminal on the left under the plan (xterm.js 6.0.0 and its fit add-on, bundled, pinned by version and checksum, served by the panel); "Start your AI" with the account or the key in the vault; "Make a new app" on the home screen, opening in Plan. `chat-probe.mjs` 30 of 30 in headless Edge at 1280 and 390 pixels: an app made in the panel, its AI started from the panel with a stand-in key (its image built on that first start), Claude Code answering the stand-in for the model in the terminal, and the plan it committed in the checklist and the guided path. Found and fixed: the first plan never reached the guided path; a long job stopped the engine (46 seconds on a first start, and the page gave up), now on a thread of its own, `engine-probe.mjs` 72 of 72 (slowest answer during a release 1 ms, 1358 ms on the control). Signing in with an account is the owner's step. |
 | 8. Browser checks | Built and run on a fresh test host (D78): `panel-checks.mjs`, 32 checks, now with the guided path, the frame keeping what is typed, the lock's refusal, a new app, the AI started and stopped, the terminal's keyboard and its refusals from a browser, and the side's lights; 33 broken copies, 47 pairs of copy and check, each seen failing and nothing else with it; then 145, 145, 147 and 147 passed at 1280 and 390 pixels, light and dark. Found and fixed: the side's light for an app being built drawn as a grid; a refusal naming a button that no longer exists; "on the left" on a phone; a key in the vault shown only after a reload. `panel-fixes.mjs` 19 of 19 again, brought up to the guided path; the sixth brief's `panel-journey.mjs` removed, its flows all in the checks. |
+| 9. Walkthrough and records | Built and run: step 30 rewritten for the guided path, the frame keeping what is typed, and the lock (a backup from the machine refused while the panel puts a version live); step 31 new, a new app made in the panel and its AI started with the owner's own account, ending with the owner's sign-in in the panel's terminal and a first small change; clean up is step 32. `walkthrough-blocks.mjs` 164 blocks, none wrong. On a fresh test host, steps 29 to 31 run exactly as written, every command and quoted output taken from the text in order (`walkthrough-panel.mjs`): 91 of 91 as the text says, up to "Select login method" in the panel's terminal, where the owner's sign-in begins. The records; the guard in both repositories; every revision of both scanned for rule 10 (only `864be95`, Known, and the website's first day, its D14) and with gitleaks, which found that CI had been failing since item 6 on three things that are not keys: allowed by name (D79), CI green again. The workstation as before, apart from the labelled test host. |
 
 ## The sixth brief
 
@@ -362,10 +373,22 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   after the last step was tried, and before the release, is released with the
   plan, and the release records the commit each step was tried at.
 - **Built and not tried by a person:** everything of the fifth brief (items 7
-  to 11), including a session with a real model logged and kept; and
-  everything of the sixth (the engine, the panel, its first slice, the deny
-  rules), which ran in a headless browser and in the probes, not in a
-  person's hands.
+  to 11), including a session with a real model logged and kept; the sixth's
+  engine, deny rules and container, whose first slice the owner has since
+  tried (steps 29 and 30); and everything of the seventh (the lock,
+  `allvibe.local` on port 80, the guided path, the agent and a new app from
+  the panel, the chat in its terminal), which ran in a headless browser and in
+  the probes, not in a person's hands. **Signing in with an account in the
+  panel's terminal** has not run at all: it is the owner's (step 31).
+- **The chat was tried against a stand-in for the model**, not a model: it
+  wrote and committed a plan of one step it was scripted to. A real model's
+  session through the panel, its plan, its steps and its commits, is the
+  owner's step 31. With the stand-in, auto mode's classifier cannot be
+  answered, so the test fixture allows the stand-in's one command (D77).
+- **On a phone the terminal is about 40 columns wide**: Claude Code wraps its
+  lines and shows its logo first; it works, and is cramped.
+- **A key put in the vault from the command line** shows in the panel within
+  a quarter of a minute (the page's quiet look for changes), not at once.
 
 ## Next
 
@@ -377,20 +400,21 @@ of the agent adapters with the MCP bridge next (D44), sign-in and invitations,
 two modes in the control panel, a bug report builder, the architect as a role
 (D45), your own services (D50), a device on the home network for one app, the
 first real project, a gallery and a session review (D54), and the team
-version. Its "Built, from this roadmap" part has what the second and fifth
-briefs built. The control panel's design is decided (D51), and its app view
-(D55).
+version. Its "Built, from this roadmap" part has what the second, fifth and
+seventh briefs built. The control panel's design is decided (D51), its app
+view (D55), the guided path (D68) and the chat as Claude Code's own terminal
+(D69).
 
-Candidates for the next brief: the panel's next slices (the chat with the
-agent, a new app from the panel, advanced mode, the recovery key and backups
-pages), and the nine open questions of docs/design/panel-architecture.md; the
-panel over TLS at home, with passkeys; doctor counting the restore checks a
-release and going back run (Known); the MCP bridge; sign-in in front of apps,
-with MFA (D54); the session
-review, now that the activity log and the conversations exist (D60); the key
-check before push, with the GitHub integration; a lock between operations;
-pruning, and rotating the activity log; the laptop; and the live agent test
-with a key, which still waits for API credits (D43).
+Candidates for the next brief: what the owner finds in steps 29 to 31; the
+engine's next operations in D66's order, each with the panel's part (service
+keys, where values only go in; going back with the data, confirmed by typing
+the app's name; work outside a plan, with a reason; removing an app); the
+panel over TLS at home, with passkeys (the next security milestone, D66);
+advanced mode, and the recovery key and backups pages; the MCP bridge;
+sign-in in front of apps, with MFA (D54); the session review (D60); the key
+check before push, with the GitHub integration; pruning, and rotating the
+activity log; the laptop; and the live agent test with a key, which still
+waits for API credits (D43).
 
 ## To verify on real hardware
 

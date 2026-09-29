@@ -123,8 +123,9 @@ Code's own plan mode is used**, not a mechanism of the suite's own.
 
 ### The chat, and the guided path
 
-*Decided by the owner in the seventh brief (D68, D69). The demo will be
-adjusted to them later; until then, where the demo differs, these win.*
+*Decided by the owner in the seventh brief (D68, D69), and built in it (D75,
+D77). The demo will be adjusted to them later; until then, where the demo
+differs, these win.*
 
 - **The chat is Claude Code's own interface**, in both modes: a terminal on the
   left, under the plan's checklist, where the person talks to Claude Code and

@@ -502,11 +502,17 @@ landed there should be found the day it landed, not whenever someone looks.
 These were named when their decisions were made, and are not repeated here:
 
 - In [CLAUDE.md](../CLAUDE.md): the rest of the web UI (its first slice is
-  built, D65), internet publishing, tunnels, the GitHub integration, and the
+  built, D65, and since then the guided path, a new app and the chat, D75 to
+  D77), internet publishing, tunnels, the GitHub integration, and the
   key check before push. (The agent container is
   built, D39, and so is a key check before every commit, D38.)
 - In D28: pruning old release images and release backups. (Its lock between
   operations is built: one lock per app, D72.)
+- In D66 (question 9): the engine's next operations, in this order, each with
+  its place in the panel. The agent and creating an app are built (D76, D77);
+  still planned are service keys, where values only go in and never come out;
+  going back with the data, confirmed by typing the app's name; work outside a
+  plan, with a reason; and removing an app.
 
 ---
 

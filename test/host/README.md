@@ -27,6 +27,7 @@ the test host as `C:/Program Files/Git/root/x.sh`. PowerShell does not do this.
 | `node test/host/host.mjs remove` | Removes the container, its volumes and its image. Nothing is left. |
 | `node test/host/fresh-host.mjs [<bundle dir>] [--keep]` | Walkthrough steps 1, 2, 5 and 6 in one go: a fresh test host, the bundle installed, the backup disk and the recovery key; `--keep` installs over the host that is there. Another bundle (an older commit's) makes a negative control. Never prints the setup code or the recovery key. |
 | `node test/host/walkthrough-blocks.mjs` | The walkthrough's shape: one command per block, no heredoc, and every project made on a name removed first. |
+| `node test/host/walkthrough-panel.mjs` | Walkthrough steps 29 to 31 run exactly as written, on a fresh test host: every block of those steps taken from `docs/walkthrough.md` in its order, each command run where the text says and each quoted output compared with what the machine or the page shows (in headless Edge, at the fallback address the text gives for the test host); a block it does not expect where it comes stops it. It stops where the owner's own sign-in begins, at "Select login method" in the panel's terminal, then stops the AI as the step's last paragraph says. |
 | `node test/host/host.mjs resources snapshot <file>` / `compare <file>` | Every container, image, volume and network on this workstation's Docker, as ids, and what was added or removed since the snapshot. |
 
 ## Probes

@@ -1532,7 +1532,7 @@ The control panel is where everything here is meant to be done from a browser
 (D63, D64). It runs on the machine in a container of its own that reaches
 nothing but the engine, which does the work with the same code as the commands
 above (D62), and it answers only on the home network. This step and the next
-need only steps 1, 2, 5 and 6.
+two need only steps 1, 2, 5 and 6; step 31 also needs your Claude account.
 
 The install printed the panel's address and a setup code, last (step 2):
 
@@ -1573,10 +1573,10 @@ Five wrong tries in a row pause signing in for 30 seconds, then longer. Type
 the right one: you are back on Your apps. A forgotten password, host: `allvibe
 panel reset`: a new setup code, and everyone signed out.
 
-## 30. The control panel: a step tried, put live, and back
+## 30. The control panel: the guided path, one thing at a time, and back
 
-The same as steps 24 and 25, from the browser. The plan and its change are
-written by hand again, as the agent would. A new project, on a name made free
+The same as steps 24 and 25, from the browser, one next action at a time. The
+plan and its change are written by hand again, as the agent would. A new project, on a name made free
 first, as in step 7: this step needs a hello that nobody has used. Host:
 
 ```sh
@@ -1622,13 +1622,24 @@ allvibe dev deploy hello
 ```
 
 In the panel, **Your apps** now has **hello**, `v1 is live`, "Say hello. Step 1
-is ready for you to try.", and a button **Try step 1**. Press it. On the left is
-the plan, `0 of 2 tried`, and a note that talking to your AI here comes later.
-On the right, **Preview** shows the test copy itself, under a line that says
-**Test copy**, with the heading "Hello, how are you?", and above it:
+is ready for you to try.", and a pink **Try step 1**. Pink is the next action,
+and there is only ever one on the screen (D68). Press it.
+
+**The guided path.** At the top of hello's page: **Plan**, ticked, then **Try: 1
+of 2**, **Live** and **Done**; one sentence; and one pink button, the next
+action, always in that place:
 
 ```
-Step 1 is ready. Try it: Open the test copy: the heading says Hello, how are you?
+Try step 1 in the test copy: Open the test copy: the heading says Hello, how are you?
+```
+
+with **Step 1 works**, pink, and **Something is wrong** beside it. On the left
+is the plan, `0 of 2 tried`, and under it **Your AI** (step 31). On the right,
+**Preview** shows the test copy itself, under a line that says **Test copy**,
+with the heading "Hello, how are you?", and above it what the step asks:
+
+```
+Step 1, to try: Open the test copy: the heading says Hello, how are you?
 ```
 
 Open **Live** first: `v2: say hello`, "2 steps left to try before v2 can go
@@ -1640,16 +1651,24 @@ AI in its own session to read it." Host, to see it where the AI will read it:
 cat /var/lib/allvibe/projects/hello/reports/*-something-is-wrong.txt
 ```
 
-Press **It works**: step 1 is ticked, `1 of 2 tried`, and step 2 is ready. Sign
-the guestbook in the frame, as step 2 asks, and press **It works** again:
+Press **Step 1 works**: step 1 is ticked, `1 of 2 tried`, and the next action
+is **Try step 2**, "Step 2 is ready: writing still works." Press it.
+
+**What you type in the test copy stays.** In the frame, type your name into the
+guestbook's form, and do not sign yet. Open **Live**, then **Preview** again:
+your name is still in the form (friction log 5). The frame starts again only
+when the test copy itself does. Now sign the guestbook in the frame: your entry
+is listed, as step 2 asks. Press **Step 2 works**. The panel moves on to **Live**
+by itself:
 
 ```
-All 2 steps are tried. Go to Live when you want everyone to get v2.
+Every step is tried. Next: put v2 live.
 ```
 
-**A step you have not tried.** Press **Go to Live**: "v2 is ready: say hello",
-and **Put v2 live**. Do not press it yet. The page looks for changes every
-fifteen seconds, except while a dialog is open, so open **More**, then
+and the next action is **Put v2 live**.
+
+**A step you have not tried.** Do not press it yet. The page looks for changes
+every fifteen seconds, except while a dialog is open, so open **More**, then
 **Backups**, and leave it open. The builder now adds a step. Workstation:
 
 ```sh
@@ -1686,9 +1705,11 @@ Nothing changed. It stopped at "every step of the plan is tried by you": the
 plan "Say hello" has steps you have not tried: step 3, "A friendlier button"
 ```
 
-with what would have to be true, and where to do it here. The six safety checks
-below it stop at the first, **Tried by you**. Press **OK**, then **Preview**:
-step 3 is ready. Look at the button in the frame and press **It works**.
+with what would have to be true, and where to go on from here. The six safety
+checks below it stop at the first, **Tried by you**. The next action at the top
+is **OK**. Press it: "Step 3 is ready: a friendlier button." Press **Try step
+3**, look at the button in the frame, and press **Step 3 works**. The next
+action is **Put v2 live** again.
 
 **A backup that cannot be taken.** Take the backup disk away. **Test host**,
 host (on the test host, the engine has its own view of the disks, so it starts
@@ -1702,8 +1723,8 @@ umount /mnt/allvibe-backup
 systemctl restart allvibe-engine
 ```
 
-**Real machine**: unmount or unplug the USB disk. In the panel, **Live**, **Put
-v2 live**:
+**Real machine**: unmount or unplug the USB disk. In the panel, press **Put v2
+live**:
 
 ```
 v2 is not live
@@ -1719,23 +1740,39 @@ workstation: `node test/host/host.mjs restart`; **real machine**: plug it in
 and `reboot`), give the apps half a minute, reload the panel and sign in again
 (a restart signs everyone out).
 
-**Put it live.** **hello**, **Live**, **Put v2 live**. The six checks fill in as
-the machine runs them: **Tried by you**, **Backup taken**, **Backup restored and
-checked**, **v2 started**, **v2 answers**, **Live**. In less than a minute:
+**Put it live, one thing at a time.** Open **hello** again and press **Put v2
+live**. The six checks fill in as the machine runs them: **Tried by you**,
+**Backup taken**, **Backup restored and checked**, **v2 started**, **v2
+answers**, **Live**. While they do, take a backup of hello from the machine.
+Host:
+
+```sh
+allvibe backup hello
+```
+
+```
+A release of hello is already running, started from the panel just now. Wait for it to end, then try again.
+```
+
+It changed nothing: the panel and the commands take the same lock, one per app,
+and whoever comes second is told so (D72). In less than a minute:
 
 ```
 v2 is live.
 Nothing lost. The version before it is kept below, so you can go back any time.
 ```
 
-**Open the live app**: "Hello, how are you?", and the button says Say hello.
-Write an entry there. **Earlier versions** has v2, **Live now**, and v1 with
-**Go back to v1**.
-**More**, **Backups**: the backup the release took first, `Before a release`.
+At the top, the guided path is at **Done**: "v2 is live. Everyone on your home
+network uses it now.", with three choices: **Open the app**, pink, **Start
+something new**, and **Something feels wrong? Go back to v1**. Press **Open the
+app**: the live app, in a tab of its own, "Hello, how are you?", and the button
+says Say hello. Write an entry there. Back in the panel, **Earlier versions** has
+v2, **Live now**, and v1 with **Go back to v1**. **More**, **Backups**: the
+backup the release took first, `Before a release`.
 
-**Go back.** Press **Go back to v1**. The dialog says your data stays, and that
-a fresh backup is taken and checked first; press **Go back to v1**. Six checks
-again, from **It can go back** to **v1 answers**, then:
+**Go back.** Press **Something feels wrong? Go back to v1**. The dialog says
+your data stays, and that a fresh backup is taken and checked first; press **Go
+back to v1**. Six checks again, from **It can go back** to **v1 answers**, then:
 
 ```
 Back on v1.
@@ -1755,7 +1792,89 @@ counts it (D73; friction log 4).
 Everything the panel did, it did through the engine, with the same steps as the
 commands: `ls /var/lib/allvibe/runs/` lists the release and the rollback.
 
-## 31. Clean up
+## 31. Your AI in the panel: a new app, and your own sign-in
+
+This step ends with what only you can do: signing in to your own Claude
+account, in Claude Code's own terminal, in the panel (D69, D77). The panel
+carries your keys in and Claude Code's screen out, never types into it, and
+keeps nothing of what passes (D48). You need what step 23 needs: a Claude plan
+that includes Claude Code, and about fifteen minutes.
+
+A new app, made in the panel, on a name made free first, as in step 7. Host:
+
+```sh
+allvibe project remove notes --delete-everything
+```
+
+```sh
+allvibe project list
+```
+
+notes is not in the list. In the panel, on **Your apps**, press **Make a new
+app**. It says what it will be: a small guestbook, with a test copy and a live
+app of its own. Type `notes` as its name and press **Make it**. Its steps show
+as they run, and in about a minute the panel opens **notes**, at **Plan**:
+
+```
+Start your AI, and tell it what you want to build. It works in the test copy, never the live app.
+```
+
+The next action is **Start your AI**. On the left, under the plan, **Your AI**
+asks how it signs in: **Sign in with your Claude account** ("In the terminal,
+when it starts.") or **Use the key in the vault**, which stays off while notes
+has no key there. Keep **Sign in with your Claude account** and press **Start
+your AI**: "Starting your AI. The first time takes a minute or two." (the first
+start on a machine builds the agent's image). Then Claude Code's own terminal
+opens under the plan, and above it:
+
+```
+Claude Code. It signs in with your Claude account.
+```
+
+Every key goes to Claude Code, Tab and Escape too; to leave its terminal with
+the keyboard, press Ctrl + ]. In the terminal, as in step 23:
+
+1. Its welcome and **its text style**: press Enter for the one it marks.
+2. **Select login method**. From here on, the steps are yours alone: choose
+   **1. Claude account with subscription**.
+3. It shows a long web address and **Paste code here if prompted**. Click the
+   address: it opens in a tab of its own (the panel opens only `https`
+   addresses). Sign in there as you always do, and allow access. Copy the code
+   the page then shows, paste it into the terminal (Ctrl+V) and press Enter.
+4. `Login successful`: press Enter. Its security notes: Enter. Then it asks
+   whether you trust `/workspace`, notes's working copy. **Its default is "No,
+   exit"**: press the down arrow to **Yes, I trust this folder**, then Enter.
+5. Its prompt, with `⏵⏵ auto mode on` under it (D47). The next action at the
+   top is now **Go to your AI**, which puts the keyboard in the terminal.
+
+**A first small change.** Type in Claude Code's prompt:
+
+```
+Change the page heading to "Our notes". Follow AGENTS.md.
+```
+
+It writes a plan, commits it, builds the step, commits it, and stops for you to
+try it (AGENTS.md, D36, D56). The panel sees each commit: the next action
+becomes **Update the test copy** ("Your AI has changed the app since the test
+copy started."). Press it: the test copy starts again on what the AI committed,
+the plan shows on the left, and the guided path goes on as in step 30: **Try
+step 1** (the heading in the frame says "Our notes"), **Step 1 works**, **Put v2
+live**, and **v2 is live**. If the AI is still building when you look, the path
+says so ("Your AI is building step 1"); press **Update the test copy** again
+when it has committed.
+
+**Stopping.** Press **Stop your AI**, under the plan. The dialog says what
+stays, and that stopping is not signing out: to end your sign-in at Anthropic
+too, type `/logout` in Claude Code first. Then press **Stop your AI** in the
+dialog: its terminal goes, and the choice of how it signs in comes back.
+
+**Tell what happened**, in your own words: whether you could sign in in the
+panel's terminal, whether the change was planned, made and committed, what the
+test copy and the live app showed, and anything that got in your way. That is
+recorded in STATE.md as tried by you, exactly as you say it, and what got in
+your way goes in the friction log (D70).
+
+## 32. Clean up
 
 **Test host**, workstation:
 
@@ -1768,6 +1887,7 @@ too; it only opened this test host's backups. **On a real machine**, keep the
 recovery key in your password manager, and delete the file from your
 workstation; and on the machine, delete the stand-in keys in `/root`
 (`weather-dev`, `weather-prod`, `anthropic-key`) and the probes' `.out` files,
-and the scratch, ideas and hello projects: `allvibe project remove scratch
---delete-everything`, `allvibe project remove ideas --delete-everything` and
-`allvibe project remove hello --delete-everything`.
+and the scratch, ideas, hello and notes projects: `allvibe project remove
+scratch --delete-everything`, `allvibe project remove ideas
+--delete-everything`, `allvibe project remove hello --delete-everything` and
+`allvibe project remove notes --delete-everything`.
