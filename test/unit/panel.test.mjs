@@ -203,7 +203,7 @@ test("its own files only, with its headers everywhere", async () => {
 test("an app's page may frame its test copy, on the host the browser used, and nothing else", async () => {
   const fake = fakeEngine({ claimed: true });
   const frames = testCopyFrame(fake.engine);
-  assert.deepEqual(await frames("guestbook", "192.168.1.20:8099"), ["http://192.168.1.20:8103"]);
+  assert.deepEqual(await frames("guestbook", "machine.example:8099"), ["http://machine.example:8103"]);
   assert.deepEqual(await frames("guestbook", "localhost:8099"), ["http://localhost:8103"]);
   assert.deepEqual(await frames("guestbook", "evil.example/x"), []);
   const panel = await serve({ engine: fake.engine, frames });

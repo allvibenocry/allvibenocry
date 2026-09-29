@@ -204,6 +204,15 @@ Debian's Node.js 20 is recorded as deliberate (D32).
 
 ## Known
 
+- **A detail of the owner's network is in the public history** (the sixth
+  brief, item 8): commit `864be95` added, in `test/unit/panel.test.mjs`, an
+  example address that is on the owner's private list, and a private range in
+  a comment of `src/lib/panel.ts`. The guard found both, but its exit code was
+  lost in a pipe, so the commit went ahead and was pushed; CI failed on it. The
+  next commit removes both from the files. The history is not rewritten
+  (rule 11): whether to, as for the website's first days (its D14), is the
+  owner's decision.
+
 - Nothing locks one operation against another yet (D28).
 - Release images and release backups are never pruned yet (D28).
 - `doctor` shows the timer's calendar time; `systemctl list-timers` shows the

@@ -40,7 +40,7 @@ export function panelImageTag(dir = panelDir()): string {
   return `${C}-panel:${hash.digest("hex").slice(0, 12)}`;
 }
 
-/** The last /24 of an address pool, e.g. 172.20.0.0/14 -> 172.23.255.0/24. */
+/** The last /24 of an address pool: the /24 whose third number is the pool's highest. */
 export function lastSubnet(pool: string): string {
   const [base, bits] = pool.split("/");
   const n = base.split(".").reduce((a, o) => a * 256 + Number(o), 0);
