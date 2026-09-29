@@ -98,12 +98,26 @@ fallback and why projects are not given such names.
 **Its own boundaries.** The panel will run in a container (D40), but it is not a
 project container: it drives the suite, so D41's firewall, which keeps project
 containers off the machine and the home network, is not its fence. What it may
-reach, and who may reach it (rule 3), is decided with it.
+reach, and who may reach it (rule 3), is decided: an engine on a socket, an
+internal network with no route out, the proxy as its door on the home network,
+and signing in even at home (D62 to D64,
+[docs/design/panel-architecture.md](design/panel-architecture.md)).
 
 **Its design** is decided (D51): the owner's clickable demo is the reference,
 and its rules (calm when fine, action first, one meaning per colour, simple
 mode first, one word per thing, keyboard and screen readers) are in
 [docs/design/control-panel.md](design/control-panel.md).
+
+## The panel over TLS at home, with passkeys
+
+**Planned** (D64). The panel starts on plain HTTP on the home network, so its
+password and cookie could be read by someone on the same network who captures
+its traffic. **TLS on the home network**, with a certificate the machine makes
+and the person's devices trust once, and **passkeys** in place of the password,
+close that. MFA comes with sign-in and invitations (D54).
+
+**Why.** A password typed on a home network is only as private as the network,
+and the panel can put a version live.
 
 ## An installer on a USB stick
 

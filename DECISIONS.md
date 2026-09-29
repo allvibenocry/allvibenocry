@@ -2247,3 +2247,97 @@ constrains arguments "is guidance, not a boundary"):
 rewritten history, a pruned volume, a deleted folder outside the repository),
 and each was within reach of the incident's text. Rules for commands, not a
 sandbox: they catch an accident, not a determined agent.
+
+## D62. The panel calls an engine: a host service on a socket, with an allow-list
+
+*2026-09-29. The sixth brief, item 6. Decided before any of the panel's code;
+the whole design, its threats and its open questions are in
+[docs/design/panel-architecture.md](docs/design/panel-architecture.md).*
+
+**What.** `allvibe-engine.service`: a small host service, run by systemd as the
+service user, on the CLI's Node.js, from the installed version. It listens only
+on a Unix socket, `/var/lib/allvibe/engine/engine.sock` (the folder the service
+user's with the group `allvibe-panel`, 0750; the socket 0660), and opens no
+network port. It speaks HTTP/1.1 with JSON over that socket, and offers an
+allow-list of operations that mirror the CLI and call its own code: the
+machine's status and last nightly check; the apps, with their state and next
+action; an app's plan; marking a step tried; "Something is wrong"; starting the
+test copy; putting a version live and going back, with their steps as
+progress; backups; and, for the panel alone, the setup code and the password.
+Every argument is validated before anything runs; anything not on the list is
+refused; one long operation runs at a time. It never offers a shell or a
+free-form command, and never returns a secret value.
+
+**Why.** Rule 5: the CLI is the engine, and the panel must not reimplement it.
+A service that runs the CLI's own code, rather than the panel running `allvibe`
+as a command, gives the panel structured results and each step's progress, and
+keeps what the panel can ask for to a list that can be read in one table. A
+socket that only the panel's user and the service user can open means no other
+process on the machine, container or user, can ask it anything.
+
+**Node.js 20** is right for it, by D32's and D40's own reasoning: it listens on
+no network and parses only the panel's requests.
+
+**Instead.** The panel running `allvibe` itself: it would need the service
+user's rights and Docker, which rule 12 forbids it. An engine on a network port:
+anything that can reach the port could ask it; a socket has an owner.
+
+## D63. The panel's container, and where it answers
+
+*2026-09-29. The sixth brief, item 6. Details in
+[docs/design/panel-architecture.md](docs/design/panel-architecture.md).*
+
+**The container.** Built on the machine from the official Node.js 24 image
+pinned by digest (D40), never pulled; Node's standard library only. It runs as
+its own user, `allvibe-panel`, not root, with every capability dropped,
+`no-new-privileges`, a read-only root file system and limits on memory and
+processes. **One mount**: the engine's socket folder, read-only, which holds
+nothing but the socket. Nothing from rule 12 reaches it.
+
+**Its network is Docker `--internal`**: no route out. Seen on the test host with
+a scratch container on such a network: the machine reached it; from inside it,
+the internet timed out and the machine's home-network address was unreachable.
+So it cannot reach the internet, the home network, the projects or the agent,
+whatever its code does.
+
+**The door is the proxy** (D12), with one more generated server: **port 80**, on
+**the machine's home-network address only**, to **private source addresses
+only** (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, and the machine itself), and
+only for its own `Host`, against DNS rebinding. The engine writes the door at
+every start, so a new address after a reboot is picked up. **D41 already keeps
+every project container and the agent off the machine's own ports and every
+private address**, the panel's door and network among them; that is to be
+proved from inside them.
+
+**Why.** The proxy is where access control belongs (D12), and it sees the real
+source address, which a Docker-published port may not. An internal network
+fences the panel by construction, with no rule of its own to get wrong. Port 80
+lets the address alone open the panel.
+
+## D64. Signing in to the panel, even at home
+
+*2026-09-29. The sixth brief, item 6. Details in
+[docs/design/panel-architecture.md](docs/design/panel-architecture.md).*
+
+- **A one-time setup code** for the first visit, shown by `install.sh` at its
+  end on the machine itself, 80 bits, kept only as a hash; it works once, and
+  only while nobody has claimed the panel, so another device on the home
+  network cannot claim it first.
+- **Then a password** the person chooses, 12 characters or more, kept as an
+  scrypt hash with its own salt.
+- **A session cookie**, `HttpOnly` and `SameSite=Strict`, holding a random id;
+  sessions in the panel's memory, 12 hours idle, 7 days at most.
+- **Cross-site requests refused**: JSON only, the session's token in a header of
+  its own, the panel's own `Origin`, no CORS.
+- **Attempts limited** by the engine, kept on disk: after 5 wrong in a row, 30
+  seconds, doubling up to 15 minutes.
+- **A forgotten password**: `allvibe panel reset`, on the machine.
+
+**The limit, recorded**: plain HTTP on the home network, so someone on the same
+network who captures its traffic could read the password and the cookie.
+**Planned**: TLS on the home network, passkeys, and MFA (roadmap, "The panel over
+TLS at home, with passkeys"; MFA with sign-in and invitations, D54).
+
+**Why at home too.** Anyone on the home network can reach the address, and the
+panel can put a version live or go back. The setup code closes the first minute,
+when the panel would otherwise belong to whoever reached it first.
