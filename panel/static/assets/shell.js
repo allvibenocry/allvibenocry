@@ -16,7 +16,7 @@
   const narrowMQ = matchMedia("(max-width:1080px)");
 
   let token = null;
-  const S = { view: "home", app: null, apps: [], last: null, now: null, detail: null, plan: null, right: "preview", m: "preview", job: null, jobKind: null, jobApp: null, jobFor: null, moreOpen: false, checkedNow: false };
+  const S = { view: "home", app: null, apps: [], last: null, now: null, detail: null, plan: null, right: "preview", m: "preview", job: null, jobKind: null, jobApp: null, jobFor: null, moreOpen: false, checkedNow: false, trying: null, stage: null };
 
   /* ------------------------------------------------------------ talking -- */
   async function session() {
@@ -118,6 +118,11 @@
       }
       S.detail = detail.result;
       S.plan = plan.ok ? plan.result : null;
+      if (S.tryOnOpen) {
+        S.tryOnOpen = false;
+        const s = S.plan?.state === "plan" && !S.plan.releasedIn ? current(S.plan) : null;
+        if (s?.state === "ready") S.trying = s.id;
+      }
       const kept = recalled(S.app);
       if (!S.job && kept) {
         const job = await api("job.get", { job: kept.id });
@@ -165,10 +170,13 @@
   function closeMenu() { $("#side").classList.remove("open"); $("#menu-btn").setAttribute("aria-expanded", "false"); }
 
   /* -------------------------------------------------------------- home -- */
-  function nextButton(a) {
+  // Pink is the next action, and there is only ever one (D68): the first app
+  // that waits for the person has it; the others' are plain.
+  function nextButton(a, first) {
     const n = a.next ?? {};
-    if (n.kind === "try") return `<a class="btn small pink" href="/apps/${a.name}" data-link>Try step ${n.step}</a>`;
-    if (n.kind === "put-live") return `<a class="btn small pink" href="/apps/${a.name}#live" data-link>Put ${esc(n.version)} live</a>`;
+    const look = first ? "pink" : "line";
+    if (n.kind === "try") return `<a class="btn small ${look}" href="/apps/${a.name}#try" data-link>Try step ${n.step}</a>`;
+    if (n.kind === "put-live") return `<a class="btn small ${look}" href="/apps/${a.name}#live" data-link>Put ${esc(n.version)} live</a>`;
     if (n.kind === "start-test-copy") return `<a class="btn small line" href="/apps/${a.name}" data-link>Start the test copy</a>`;
     return `<a class="btn small line" href="/apps/${a.name}" data-link>Open</a>`;
   }
@@ -194,9 +202,10 @@
     return `<div class="status-row${l.problems ? " stop" : l.warnings ? " warn" : ""}" role="status"><span class="led" aria-hidden="true"></span><b>${head}</b><span class="facts-inline">${facts.map((f) => `<span class="fact">${f}</span>`).join("")}<span class="fact">Checked ${when(l.at)}</span></span><a class="linkbtn" href="/machine" data-link>Machine health</a></div>`;
   }
   function viewHome() {
+    const first = S.apps.find((a) => a.next?.kind === "try" || a.next?.kind === "put-live")?.name;
     const cards = S.apps.map((a) => {
       const chip = liveChip(a);
-      return `<article class="app-card"><h3><a class="card-link" href="/apps/${a.name}" data-link>${esc(a.name)}</a></h3>${chip}<p class="muted">${a.plan?.title && !a.plan.releasedIn ? `${esc(a.plan.title)}. ` : ""}${workText(a)}</p><div class="card-foot"><span></span>${nextButton(a)}</div></article>`;
+      return `<article class="app-card"><h3><a class="card-link" href="/apps/${a.name}" data-link>${esc(a.name)}</a></h3>${chip}<p class="muted">${a.plan?.title && !a.plan.releasedIn ? `${esc(a.plan.title)}. ` : ""}${workText(a)}</p><div class="card-foot"><span></span>${nextButton(a, a.name === first)}</div></article>`;
     }).join("");
     return `${statusRow()}
       <div class="head"><div><h1>Your apps</h1><p class="muted">On this machine, for everyone on your home network.</p></div></div>
@@ -231,6 +240,85 @@
   const jobHere = () => S.job && S.jobApp === S.app;
   const running = () => jobHere() && S.job.state === "running";
 
+  /* ------------------------------------------------ the guided path (D68) -- */
+  // Plan, Try, Live, Done: where the app is, one sentence, and one button for
+  // the next action, always in the same place, the only pink on the page. The
+  // panel moves on by itself: to Preview when a step is to be tried, to Live
+  // when every step is. Going back and putting data back are never a "next":
+  // they stay deliberate, with their confirmations.
+  const newKey = (v) => `panel-new-${S.app}-${v}`;
+  const startedNew = (v) => { try { return sessionStorage.getItem(newKey(v)) === "1"; } catch { return false; } };
+  function stageOf() {
+    const d = S.detail;
+    const p = planOf();
+    if (jobHere() && S.jobKind === "putLive" && (S.job.state === "running" || !S.job.ok)) return "live";
+    if (p.releasedIn && d.live === p.releasedIn && !startedNew(p.releasedIn)) return "done";
+    if (p.state === "plan" && !p.releasedIn && p.steps.length) return allTried(p) ? "live" : "try";
+    return "plan";
+  }
+  function guide() {
+    const d = S.detail;
+    const p = planOf();
+    const stage = stageOf();
+    const v = nextV(d);
+    const s = stage === "try" ? current(p) : null;
+    const at = s ? p.steps.indexOf(s) + 1 : 0;
+    const label = { plan: "Plan", try: `Try: ${at} of ${p.steps.length}`, live: "Live", done: "Done" }[stage];
+    const btn = (action, words, extra = "") => `<button type="button" class="btn pink" data-action="${action}"${extra}>${words}</button>`;
+    const restarting = running() && S.jobKind === "startTestCopy";
+    let text;
+    let primary = "";
+    let second = "";
+    if ((stage === "plan" || stage === "try") && restarting) text = "The test copy is starting. This takes a minute.";
+    else if ((stage === "plan" || stage === "try") && !d.testCopy?.running) {
+      text = "The test copy is not running. Start it to try the app.";
+      primary = btn("start-test", "Start the test copy");
+    } else if (stage === "plan") {
+      text = p.state === "invalid"
+        ? `The plan cannot be read: ${esc(p.problem)}. Ask your AI to fix it.`
+        : `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Tell your AI what you want${p.releasedIn ? " next" : " to build"}, in your own words. It writes a plan, with something for you to try at every step.`;
+    } else if (stage === "try" && s.state === "building") {
+      text = `Your AI is building step ${s.id}: ${esc(lc(s.title))}. The test copy keeps working meanwhile.`;
+    } else if (stage === "try" && S.trying === s.id) {
+      text = `Try step ${s.id} in the test copy: ${esc(s.check)}`;
+      primary = btn("works", `Step ${s.id} works`, ` data-step="${s.id}"`);
+      second = `<button type="button" class="linkbtn" data-action="report" data-step="${s.id}">Something is wrong</button>`;
+    } else if (stage === "try") {
+      text = `Step ${s.id} is ready: ${esc(lc(s.title))}.`;
+      primary = btn("guide-try", `Try step ${s.id}`, ` data-step="${s.id}"`);
+    } else if (stage === "live" && running()) {
+      text = `Putting ${esc(S.jobFor)} live. Nothing anyone sees changes until every safety check has passed.`;
+    } else if (stage === "live" && jobHere() && S.job.state === "finished" && !S.job.ok) {
+      text = `${esc(S.jobFor)} is not live, and nothing was lost. What stopped it is in Live.`;
+      primary = btn("dismiss-job", "OK");
+    } else if (stage === "live") {
+      text = `Every step is tried. Next: put ${esc(v)} live.`;
+      primary = btn("put-live", `Put ${esc(v)} live`, ` data-v="${esc(v)}"`);
+    } else {
+      const back = d.versions.find((x) => x.live)?.from ?? null;
+      text = `<b>${esc(d.live)} is live.</b> Everyone on your home network uses it now.`;
+      primary = `<a class="btn pink" href="${esc(hostUrl(d.ports.live))}" target="_blank" rel="noopener noreferrer">Open the app</a>`;
+      second = `<button type="button" class="btn line" data-action="guide-new" data-v="${esc(d.live)}">Start something new</button>${back ? `<button type="button" class="linkbtn" data-action="go-back" data-v="${esc(back)}">Something feels wrong? Go back to ${esc(back)}</button>` : ""}`;
+    }
+    return { stage, label, text, primary, second };
+  }
+  function guideHTML() {
+    const g = guide();
+    const order = ["plan", "try", "live", "done"];
+    const now = order.indexOf(g.stage);
+    const names = { plan: "Plan", try: "Try", live: "Live", done: "Done" };
+    const stages = order.map((id, i) => {
+      const st = i < now || g.stage === "done" ? "past" : i === now ? "now" : "next";
+      const here = i === now;
+      const mark = st === "past" ? CHECK : `<span>${i + 1}</span>`;
+      const words = here ? ", where it is now" : { past: ", done", now: "", next: "" }[st];
+      return `<li class="${st}"${here ? ' aria-current="step"' : ""}><span class="g" aria-hidden="true">${mark}</span><span class="l">${here ? esc(g.label) : names[id]}<span class="sr">${words}</span></span></li>`;
+    }).join("");
+    return `<ol class="stages" aria-label="How far along ${esc(S.detail.name)} is">${stages}</ol>
+      <p class="guide-t" id="guide-t" tabindex="-1">${g.text}</p>
+      <div class="guide-acts">${g.primary}${g.second}</div>`;
+  }
+
   // The app view is drawn once per page (going into an app loads the page),
   // and after that only its parts are drawn again, each in its own box. The
   // Preview's frame has a box of its own that nothing redraws: it is replaced
@@ -238,7 +326,8 @@
   // test copy") or stops, so what is half typed in it stays (friction log 5).
   function viewApp() {
     const d = S.detail;
-    return `<div class="work" id="work" data-m="${S.m}" data-app="${esc(d.name)}">
+    return `<section class="guide" id="guide" aria-label="What comes next"></section>
+    <div class="work" id="work" data-m="${S.m}" data-app="${esc(d.name)}">
       <section class="left" aria-label="Your plan">
         <div class="apphead" id="apphead"></div>
         <div class="mtabs" id="mtabs" role="tablist" aria-label="${esc(d.name)}"></div>
@@ -263,6 +352,18 @@
       frameKey = null;
     }
     const part = (id, html) => keepFocus($(`#${id}`), () => { $(`#${id}`).innerHTML = html; });
+    // The panel moves on by itself (D68): to Live when every step is tried or
+    // a version goes live, and it says where it is now.
+    const stage = stageOf();
+    if (S.stage && S.stage !== stage) {
+      if (stage === "live" || stage === "done") {
+        S.right = "live";
+        S.m = "live";
+      }
+      announce({ plan: "Next: tell your AI what you want.", try: "Next: try the step that is ready.", live: "Every step is tried. Next: put it live.", done: `${d.live} is live.` }[stage]);
+    }
+    S.stage = stage;
+    part("guide", guideHTML());
     part("apphead", headHTML(d));
     part("mtabs", [["chat", "Plan"], ["preview", "Preview"], ["live", "Live"]].map(([id, l]) => tabHTML("mtab", id, l, S.m === id, id === "chat" ? "lside" : "rpane")).join(""));
     part("rtabs", [["preview", "Preview"], ["live", "Live"]].map(([id, l]) => tabHTML("rtab", id, l, S.right === id, "rpane")).join(""));
@@ -300,10 +401,9 @@
     frame.src = src;
     slot.replaceChildren(frame);
   }
+  // The tabs are for looking around; the guided path at the top never needs them (D68).
   function tabHTML(pre, id, label, selected, controls) {
-    const needs = id === "live" && allTried(planOf()) && !running();
-    const dot = needs ? '<span class="tdot" aria-hidden="true"></span><span class="sr">, needs you</span>' : "";
-    return `<button type="button" role="tab" id="${pre}-${id}" aria-controls="${controls}" aria-selected="${selected}" tabindex="${selected ? 0 : -1}" data-${pre}="${id}">${label}${dot}</button>`;
+    return `<button type="button" role="tab" id="${pre}-${id}" aria-controls="${controls}" aria-selected="${selected}" tabindex="${selected ? 0 : -1}" data-${pre}="${id}">${label}</button>`;
   }
   function headHTML(d) {
     const chip = liveChip(d);
@@ -329,16 +429,16 @@
       <div class="plan" id="plan-box">${box}</div>
       <p class="later-note">Talking to your AI here comes in a later version of this panel. For now, talk to it in its own session.</p>`;
   }
+  // What to try, above the test copy. The buttons are the guided path's, at
+  // the top of the page (D68): this line only says what the step asks.
   function tryLine() {
     const p = planOf();
-    const line = (cls, text, acts = "") => `<div class="tryline ${cls}" id="tryline" tabindex="-1"><p class="t">${text}</p>${acts ? `<div class="acts">${acts}</div>` : ""}</div>`;
-    if (p.state === "no-test-copy") return line("info", "<b>The test copy is not running.</b> Start it to try the app.", '<button type="button" class="btn small" data-action="start-test">Start the test copy</button>');
-    if (p.state === "none" || p.releasedIn) return line("info", "<b>Nothing is in progress.</b> Tell your AI what you want to change next.");
-    if (p.state === "invalid") return line("info", "<b>The plan cannot be read.</b> Ask your AI to fix it.");
-    if (running() && S.jobKind === "putLive") return line("building", "<b>Putting it live.</b> The safety checks are running in Live.", '<button type="button" class="btn pink small" data-action="to-live">Go to Live</button>');
-    if (allTried(p)) return line("done", `<b>All ${p.steps.length} steps are tried.</b> Go to Live when you want everyone to get ${nextV(S.detail)}.`, '<button type="button" class="btn pink small" data-action="to-live">Go to Live</button>');
+    const line = (cls, text) => `<div class="tryline ${cls}" id="tryline" tabindex="-1"><p class="t">${text}</p></div>`;
+    if (p.state !== "plan" || p.releasedIn || !p.steps.length) return "";
+    if (running() && S.jobKind === "putLive") return line("building", "<b>Putting it live.</b> The safety checks are running in Live.");
+    if (allTried(p)) return line("done", `<b>All ${p.steps.length} steps are tried.</b>`);
     const s = current(p);
-    if (s.state === "ready") return line("ready", `<b>Step ${s.id} is ready.</b> Try it: ${esc(s.check)}`, `<button type="button" class="btn small pink" data-action="works" data-step="${s.id}">${CHECK} It works</button><button type="button" class="linkbtn" data-action="report" data-step="${s.id}">Something is wrong</button>`);
+    if (s.state === "ready") return line("ready", `<b>Step ${s.id}, to try:</b> ${esc(s.check)}`);
     return line("building", `<b>Building step ${s.id}:</b> ${esc(lc(s.title))}. The test copy keeps working, so you can look around meanwhile.`);
   }
   function previewTopHTML() {
@@ -443,7 +543,7 @@
     let next = "";
     if (jobHere() && (S.jobKind === "putLive" || S.jobKind === "goBack")) next = jobCard();
     else if (allTried(p)) {
-      next = `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>${esc(v)} is ready: ${esc(lc(p.title))}</h2><p>You have tried all ${p.steps.length} steps. Before anything changes, your data is backed up and the backup is restored and checked. Then ${esc(v)} starts, and if it does not answer, ${d.live ? `${esc(d.live)} comes straight back` : "nothing live changes"}.</p><div class="acts"><button type="button" class="btn pink" data-action="put-live" data-v="${esc(v)}">Put ${esc(v)} live</button></div></section>`;
+      next = `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>${esc(v)} is ready: ${esc(lc(p.title))}</h2><p>You have tried all ${p.steps.length} steps. Before anything changes, your data is backed up and the backup is restored and checked. Then ${esc(v)} starts, and if it does not answer, ${d.live ? `${esc(d.live)} comes straight back` : "nothing live changes"}.</p><p>When you are ready: <b>Put ${esc(v)} live</b>, at the top.</p></section>`;
     } else if (p.state === "plan" && !p.releasedIn) {
       const left = p.steps.length - triedCount(p);
       next = `<section class="quiet lcard"><h2>${esc(v)}: ${esc(lc(p.title))}</h2><p>${left} step${left === 1 ? "" : "s"} left to try before ${esc(v)} can go live.</p><div class="acts"><button type="button" class="btn small line" data-action="to-preview">Back to the preview</button></div></section>`;
@@ -607,7 +707,8 @@
     S.jobApp = S.app;
     S.jobFor = extra.for ?? null;
     remember(S.app, { id: r.result.job, kind, for: S.jobFor });
-    renderRight("shipcard");
+    render();
+    ($("#shipcard") ?? $("#guide-t"))?.focus();
     poll();
   }
 
@@ -644,9 +745,30 @@
       const r = await api("app.markTried", { app: S.app, step: Number(b.dataset.step) });
       if (!r.ok) { b.disabled = false; toast(up(r.error.message)); return; }
       announce(`Step ${b.dataset.step} is marked as tried by you.`);
-      toast(r.result.left.length ? `Step ${b.dataset.step} works. Your AI builds the next one.` : "Every step is tried. You can put it live from Live.");
+      toast(r.result.left.length ? `Step ${b.dataset.step} works.` : "Every step is tried.");
+      S.trying = null;
       await load();
-      $("#tryline")?.focus();
+      // The next action is in the same place: focus goes there.
+      ($("#guide .guide-acts .btn") ?? $("#guide-t"))?.focus();
+      return;
+    }
+    if (a === "guide-try") {
+      // Trying a step: the test copy in view, and the next action becomes "it works".
+      S.trying = Number(b.dataset.step);
+      selectTab("preview");
+      render();
+      $("#guide .guide-acts .btn")?.focus();
+      return;
+    }
+    if (a === "guide-new") {
+      // Something new: back to Plan, and to the AI on the left.
+      try { sessionStorage.setItem(newKey(b.dataset.v), "1"); } catch {}
+      S.job = null;
+      S.jobKind = null;
+      remember(S.app, null);
+      selectTab(narrowMQ.matches ? "chat" : S.right);
+      render();
+      $("#guide-t")?.focus();
       return;
     }
     if (a === "report") return reportDialog(b.dataset.step, b);
@@ -654,7 +776,7 @@
     if (a === "put-live") return startJob("putLive", "app.putLive", { for: b.dataset.v });
     if (a === "go-back") return goBackDialog(b.dataset.v, b);
     if (a === "confirm-go-back") { closeModal(); selectTab("live"); return startJob("goBack", "app.goBack", { for: b.dataset.v }); }
-    if (a === "dismiss-job") { S.job = null; S.jobKind = null; remember(S.app, null); renderRight(); $("#rpane")?.focus(); return; }
+    if (a === "dismiss-job") { S.job = null; S.jobKind = null; remember(S.app, null); render(); ($("#guide .guide-acts .btn") ?? $("#rpane"))?.focus(); return; }
     if (a === "recheck") {
       b.disabled = true;
       b.textContent = "Checking…";
@@ -718,6 +840,8 @@
 
   route();
   if (S.view === "app" && location.hash === "#live") { S.right = "live"; S.m = "live"; }
+  // From home's "Try step N": the app opens trying it, the test copy in view.
+  if (S.view === "app" && location.hash === "#try") { S.right = "preview"; S.m = "preview"; S.tryOnOpen = true; }
   if (location.hash) history.replaceState(null, "", location.pathname);
   session().then((ok) => ok && load());
 })();

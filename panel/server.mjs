@@ -83,7 +83,9 @@ const HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-  "Cross-Origin-Opener-Policy": "same-origin",
+  // No Cross-Origin-Opener-Policy: a browser ignores it on plain HTTP at a
+  // name that is not localhost, as allvibe.local is, and says so as an error.
+  // It comes back with TLS at home (roadmap).
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 

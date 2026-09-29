@@ -2864,3 +2864,56 @@ of one host (D66): only another host name keeps the panel's cookie from an
 app's code, which the agent writes. The fallback cannot have another name, so
 the apps' doors make sure of it there, and they do it by name everywhere, so
 the rule holds whichever address a person used.
+
+## D75. The guided path, as built
+
+*2026-09-29. The seventh brief, item 5, building D68.*
+
+**At the top of an app's page, above both sides**, one bar: the step
+indicator (**Plan, Try, Live, Done**; the stage it is at shows how far along,
+"Try: 1 of 3"), one sentence, and **one button for the next action, in the
+same place, the only pink on the page**. Its words follow the state: "Start
+the test copy" when it is not running; "Try step 1", which brings the test
+copy into view and turns the button into **"Step 1 works"** (with "Something
+is wrong" beside it, not pink); then "Try step 2", and so on; **"Put v2
+live"**; nothing while the safety checks run, and "OK" if they stop it, which
+leads back to wherever the app then is (a step that was added, say). While
+the AI builds a step, or has no plan yet, there is no button: the sentence
+says what is happening.
+
+**The panel moves on by itself**: to Preview when a step is to be tried; to
+Live when the last step is tried, with "Every step is tried. Next: put v2
+live."; and to the ending when the version is live.
+
+**The ending**: "**v2 is live.** Everyone on your home network uses it now.",
+with its three choices: **Open the app** (the pink one), **Start something
+new** (back to Plan, and to the AI), and "**Something feels wrong? Go back to
+v1**", a link to going back with its confirmation, never a "next".
+
+**What "Done" is**: D68 lists "Done" among the button's words. Here Done is
+the indicator's last stage, and the ending's one pink button is "Open the
+app", because at the end the next thing a person does is look at what went
+live; a button that only said "Done" would lead nowhere the three choices do
+not. For the architect to confirm.
+
+**Only ever one pink**: the try line above the preview only says what the
+step asks; the Live pane describes putting live and points to the button at
+the top instead of holding a second one; the Live tab's pink dot is gone; a
+step ready to try is marked in the structure's purple; an app waiting for the
+person is yellow in the side bar (something to check); on the home screen only
+the first app that waits has a pink button, and its "Try step N" opens the app
+already trying that step.
+
+**Found on the way**: browsers ignore the `Cross-Origin-Opener-Policy` header
+on plain HTTP at a name that is not `localhost`, and report that as an error;
+since the panel is at `allvibe.local` (D74), the header is gone until TLS at
+home.
+
+**Probed** in headless Edge (`test/host/guided-probe.mjs`, 69 of 69), at 1280
+and 390 pixels, each with a project whose plan has three steps: from "Try step
+1" to "v2 is live" pressing only the next-action button, the path "Try step 1,
+Step 1 works, Try step 2, Step 2 works, Try step 3, Step 3 works, Put v2 live,
+Open the app"; exactly one pink thing on the screen at every stage, and it the
+button; the test copy in view while trying; Live by itself after the last
+step; the ending's words and three choices; every tab still showing what it
+shows; "Start something new" back at Plan with no pink; no console errors.
