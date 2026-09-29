@@ -62,6 +62,16 @@ export function namesFor(command: string) {
     firewallStatus: `/run/${command}/firewall.json`,
     firewallService: `${command}-firewall.service`,
     firewallTimer: `${command}-firewall-check.timer`,
+    /** The engine the panel calls (D62): a host service on a socket, as the service user. */
+    engineService: `${command}-engine.service`,
+    engineDir: `${state}/engine`,
+    engineSocket: `${state}/engine/engine.sock`,
+    /** The panel (D63, D64): its user, container and network; its sign-in, kept by the engine. */
+    panelUser: `${command}-panel`,
+    panelContainer: `${command}-panel`,
+    panelNetwork: `${command}-panel`,
+    panelDir: `${state}/panel`,
+    panelAuth: `${state}/panel/auth.json`,
     proxyProject: `${command}-proxy`,
     proxyContainer: `${command}-proxy`,
     /** The prefix of every Docker label the suite sets. */

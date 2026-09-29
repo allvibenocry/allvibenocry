@@ -242,6 +242,17 @@ export function checks(): Check[] {
       : `The key vault's boot unit is ${keysEnabled || "missing"}${runDirOk ? "" : `, and ${NAMES.runDir} does not exist`}: run install.sh again`,
   );
 
+  // The engine the control panel calls (D62): a service on a socket only.
+  const engineActive = tryRun("systemctl", ["is-active", NAMES.engineService]).stdout.trim();
+  const engineSocket = existsSync(NAMES.engineSocket);
+  add(
+    "engine",
+    engineActive === "active" && engineSocket ? "ok" : "problem",
+    engineActive === "active" && engineSocket
+      ? `Engine: running, for the control panel, on its socket only (${NAMES.engineSocket})`
+      : `The engine the control panel calls is ${engineActive || "missing"}${engineSocket ? "" : ", and its socket is not there"}: run install.sh again`,
+  );
+
   const enabled = tryRun("systemctl", ["is-enabled", NAMES.backupTimer]).stdout.trim();
   const active = tryRun("systemctl", ["is-active", NAMES.backupTimer]).stdout.trim();
   const next = tryRun("systemctl", ["show", NAMES.backupTimer, "-p", "NextElapseUSecRealtime", "--value"]).stdout.trim();

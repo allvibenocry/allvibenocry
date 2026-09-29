@@ -55,6 +55,13 @@ export interface RunOptions {
   facts?: Record<string, unknown>;
 }
 
+/**
+ * Told each step's number and name before it runs, when set: the engine sets it
+ * while it runs an operation, so the panel can show the step that is running
+ * (D62). Nothing else uses it.
+ */
+export const stepEvents: { onStart: ((number: number, total: number, name: string) => void) | null } = { onStart: null };
+
 const print = (options: RunOptions) => options.out === undefined ? (line: string) => process.stdout.write(`${line}\n`) : options.out;
 
 export async function runSteps(steps: Step[], options: RunOptions): Promise<RunRecord> {
@@ -74,6 +81,7 @@ export async function runSteps(steps: Step[], options: RunOptions): Promise<RunR
   for (const [index, step] of steps.entries()) {
     const number = `${index + 1}/${steps.length}`;
     let outcome: StepOutcome;
+    stepEvents.onStart?.(index + 1, steps.length, step.name);
     try {
       outcome = await step.run();
     } catch (error) {

@@ -33,6 +33,8 @@ FIREWALL_CONF=$ETC_DIR/firewall.conf
 UNIT_FIREWALL=/etc/systemd/system/$CMD-firewall.service
 UNIT_FIREWALL_CHECK=/etc/systemd/system/$CMD-firewall-check.service
 UNIT_FIREWALL_TIMER=/etc/systemd/system/$CMD-firewall-check.timer
+UNIT_ENGINE=/etc/systemd/system/$CMD-engine.service
+PANEL_USER=$CMD-panel
 LOG=/var/log/$CMD-install.log
 
 # Docker's apt signing key, as published in Docker's installation guide.
@@ -46,7 +48,9 @@ POOLS=(172.20.0.0/14 10.201.0.0/16)
 
 export DEBIAN_FRONTEND=noninteractive
 
-STEPS=13
+STEPS=14
+# Set when this run installs a different version: the engine then restarts on it.
+NEW_RELEASE=0
 N=0
 STEP=""
 NEED=""
@@ -318,6 +322,18 @@ if ! id -nG "$SERVICE_USER" | tr ' ' '\n' | grep -qx docker; then
 else
   unchanged "$SERVICE_USER may use Docker"
 fi
+# The control panel's own user (D62, D63): its container runs as it, and only
+# it and the service user may open the engine's socket. It may do nothing else.
+if ! getent group "$PANEL_USER" >/dev/null; then
+  groupadd --system "$PANEL_USER"
+  changed "group $PANEL_USER"
+fi
+if ! id -u "$PANEL_USER" >/dev/null 2>&1; then
+  useradd --system --gid "$PANEL_USER" --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin "$PANEL_USER"
+  changed "user $PANEL_USER, for the control panel"
+else
+  unchanged "user $PANEL_USER, for the control panel"
+fi
 
 # ---------------------------------------------------------------------------
 step "Directories" "the directories can be created and owned"
@@ -338,6 +354,10 @@ ensure_dir() {
 ensure_dir "$INSTALL_DIR" root:root 755
 ensure_dir "$ETC_DIR" "$SERVICE_USER:$SERVICE_USER" 750
 ensure_dir "$STATE_DIR" "$SERVICE_USER:$SERVICE_USER" 750
+# The engine's socket, for the service user and the panel's group only (D62);
+# the panel's sign-in, for the service user only (D64).
+ensure_dir "$STATE_DIR/engine" "$SERVICE_USER:$PANEL_USER" 2750
+ensure_dir "$STATE_DIR/panel" "$SERVICE_USER:$SERVICE_USER" 700
 
 # ---------------------------------------------------------------------------
 step "The $CMD command" "the bundle holds dist/cli.js, brand.conf and VERSION"
@@ -361,6 +381,7 @@ else
 fi
 if [ "$(readlink "$INSTALL_DIR/current" 2>/dev/null || true)" != "$release_dir" ]; then
   ln -sfn "$release_dir" "$INSTALL_DIR/current"
+  NEW_RELEASE=1
   changed "$INSTALL_DIR/current -> $version"
 else
   unchanged "$INSTALL_DIR/current -> $version"
@@ -588,6 +609,58 @@ sed -n 's/^       \(changed\|unchanged\): /      \1: /p' "$setup_output"
 setup_changes=$(grep -c '^       changed: ' "$setup_output" || true)
 CHANGES=$((CHANGES + setup_changes))
 rm -f "$setup_output"
+
+# ---------------------------------------------------------------------------
+step "The engine the control panel calls" "systemd accepts the unit, and the engine answers on its socket"
+
+# A host service, as the service user, on a Unix socket only (D62): the panel's
+# only way to act, through an allow-list of the CLI's own operations.
+engine_content="[Unit]
+Description=$PRODUCT_NAME: the engine the control panel calls (D62)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+User=$SERVICE_USER
+Group=$SERVICE_USER
+Environment=HOME=$STATE_DIR
+ExecStart=/usr/bin/node $INSTALL_DIR/current/dist/engine/main.js
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectHome=yes
+# No PrivateTmp: a restore check hands Docker files under /tmp, and Docker must
+# see the same /tmp as the engine.
+
+[Install]
+WantedBy=multi-user.target"
+engine=$(basename "$UNIT_ENGINE")
+engine_restart=$NEW_RELEASE
+if [ "$(cat "$UNIT_ENGINE" 2>/dev/null || true)" != "$engine_content" ]; then
+  printf '%s\n' "$engine_content" >"$UNIT_ENGINE"
+  systemctl daemon-reload
+  engine_restart=1
+  changed "$engine"
+else
+  unchanged "$engine"
+fi
+if [ "$(systemctl is-enabled "$engine" 2>/dev/null || true)" != enabled ]; then
+  quiet systemctl enable "$engine"
+  changed "$engine enabled"
+fi
+if ! systemctl is-active --quiet "$engine"; then
+  quiet systemctl start "$engine"
+  changed "$engine started"
+elif [ "$engine_restart" = 1 ]; then
+  quiet systemctl restart "$engine"
+  changed "$engine restarted, on this version"
+else
+  unchanged "$engine running"
+fi
+for _ in $(seq 1 30); do [ -S "$STATE_DIR/engine/engine.sock" ] && break; sleep 0.5; done
+[ -S "$STATE_DIR/engine/engine.sock" ] || fail "the engine did not open its socket" "$engine starts: journalctl -u $engine says why it does not"
+note "it answers on $STATE_DIR/engine/engine.sock, for the service user and the panel's user only"
 
 # ---------------------------------------------------------------------------
 step "How the host is" "$CMD doctor finds no problem with the installation itself"
