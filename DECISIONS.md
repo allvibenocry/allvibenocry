@@ -3095,4 +3095,81 @@ throws or ends its thread failing the job; and the adopted lock, with the
 control refused.
 
 **Not tried.** Signing in with a Claude account: that needs the owner's login
-(rule 13), and is his step in the walkthrough.
+(rule 13), and is the owner's step in the walkthrough.
+
+## D78. The browser checks for everything the seventh brief added, and what they found
+
+*2026-09-30. Built in the seventh brief, item 8, on D65's checks.*
+
+`test/host/panel-checks.mjs` is D65's browser checks brought up to what the
+panel is now, and extended to everything this brief added. One run: every
+check first seen failing on a deliberately broken copy of the panel, run in
+the real one's place (`panel-fixture.mjs break`), then every check on the real
+panel at 1280 and 390 pixels, light and dark, in headless Edge, each run with
+a fresh setup code of its own. The sixth brief's `panel-journey.mjs` is
+removed: every flow of it is here.
+
+**The 32 checks**, in the order a person meets them: setting up; home (its
+status line, the app's card and its next action, one pink thing at most, and
+each app's light in the side a dot); the skip link; Machine health; an app's
+page (the guided path at the top with its one pink next action, what the step
+asks, the plan, the frame's line, the test copy in the frame, and Your AI
+under the plan with its two ways to sign in); **the frame keeping what is
+typed in it** (across Live and back, the phone's Plan tab and back, and the
+next action's redraw); the tab lists by keyboard; the report dialog by
+keyboard, and a report kept where the AI reads it; **the guided path** from
+"Step 1 works" to "Put v2 live", the mouse and the keyboard in turn, one pink
+thing at every stage, the test copy in view while trying, and the panel
+moving on to Live by itself; the More menu and the Backups dialog by
+keyboard; **the refusals**: a step not tried, the backup disk gone, and **the
+app's lock held from the command line** (by a process of the service user's,
+with the suite's own lock), each in plain words with nothing changed; putting
+it live, the checks seen one after another, then Done and its three choices;
+the backups; going back, confirmed by keyboard; the new app's dialog by
+keyboard, and **a new app**: a name it cannot have and a name already taken
+refused in plain words, then made, opening in Plan; **its AI started** with a
+stand-in key, the choice made by keyboard, Claude Code's own screen in its
+terminal under the plan; **the terminal's keyboard** ("Go to your AI" puts
+the keys there, Tab stays there, Ctrl + ] leaves it); **the terminal's
+refusals from a browser**: a wrong token from the panel's own page, closed
+after its first message, and the test copy's own page, to which the browser
+sends the panel's cookie, refused at the handshake, the page's own terminal
+still open after both; the stop dialog by keyboard, and **its AI stopped**;
+signing out, a wrong password, signing in; and last, no console error but the
+refusals the checks asked for, and no request to another origin but the
+Preview frame's own. Nothing wider than the screen, on every screen, the
+terminal included. The apps a run made are removed at its end.
+
+**The broken copies**: 34 runs of 33 copies, one or more for each of the 32
+checks, 47 pairs of copy and check. The seventh brief's are: the guided path
+not moving on (`guide-stuck`), the frame drawn again on every redraw
+(`frame-reload`), the lock's refusal in other words (`lock-silent`), a new
+app never asked for (`new-app-noop`), "Start your AI" doing nothing
+(`ai-start-noop`), no way out of the terminal by keyboard (`no-leave`), the
+terminal's Origin check off (`ws-any-origin`), its token check off
+(`ws-no-token`), stopping doing nothing (`ai-stop-noop`), the AI's choices
+wider than a phone (`ai-overflow`), and the side's lights wide (`dot-wide`);
+and the three keyboard copies now take in the new app's and the stop
+dialogs. With the token check off, the wrong token got in and took the page's
+own terminal over: the check saw both.
+
+**What the checks found**, fixed:
+
+- **The side's light for an app being built was a grid.** Its class, `work`,
+  is also the app view's layout, and the dot became a grid 90 pixels wide.
+  Seen in a screenshot, then checked: every light in the side is a dot of 8
+  by 8 pixels. The class is now `building`.
+- **A refusal said to press "It works"**, a button the guided path replaced
+  (D75): it now says to press OK, and that the next action at the top takes
+  the person to each step to try.
+- **"In its terminal on the left"** is wrong on a phone, where the terminal is
+  under the plan, behind the Plan tab: the guided path now says "under your
+  plan".
+- **A key put in the vault showed only after a reload**: the page's quiet look
+  for changes now includes whether the app has one.
+- **The guided probe** (D75) expected no next action after "Start something
+  new"; since D77 it is "Start your AI" (mistake 37).
+
+**Limits.** The checks take Claude Code only to its first screen, with a
+stand-in key: talking to it is the chat probe's (D77), and signing in with an
+account is the owner's (rule 13). They run in headless Edge only.

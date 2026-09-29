@@ -388,3 +388,32 @@ From the seventh brief, here:
     has the other side talking while it joins. (And the probe of it pressed
     Enter at Claude Code's "No, exit", mistake 35 again: a probe waits for each
     screen before it answers it.)
+52. **Work that waits must not wait on the thread that answers.** Mistake 47
+    again, for jobs: a job ran the CLI's command on the engine's own thread,
+    and during the agent's first image build the engine answered nothing for
+    46 seconds; the panel's question timed out, and the page, on one failed
+    answer, stopped asking for good, so "Start your AI" never ended on a fresh
+    machine. *Here:* a job's command runs on a thread of its own; a page that
+    follows something asks again when an answer does not come; the engine
+    probe measures its slowest answer while a release runs, against a control.
+53. **What a view says about "since" must not wait for the rest of it.** The
+    plan's view worked out whether the AI had committed more only after it had
+    read a plan from the test copy, so an app whose test copy had no plan yet
+    never showed its first one. *Here:* what does not depend on the plan is
+    worked out before any early return, and the chat probe starts from an app
+    with no plan at all.
+54. **A class name is global.** A side light's state, `work`, was also the app
+    view's layout, and the light became a grid 90 pixels wide. No check looked,
+    and only a screenshot showed it. *Here:* a state's class says the state
+    (`building`), and the browser checks measure the lights.
+55. **A closed dialog keeps what it last showed.** A check waited for the
+    Backups list and read the one left from the dialog's last opening, before
+    the new one arrived. *Here:* a check waits for the dialog to be open, not
+    for its content to exist.
+56. **A stand-in for the model is asked more than the model's turns.** Auto
+    mode's classifier asks the same API before a command runs; the stand-in
+    answered with the end of a turn, and Claude Code blocked the command "for
+    safety" while the probe waited for a commit. *Here:* the fixture allows
+    the stand-in's own command in the working copy's local settings, and a
+    probe that waits on Claude Code shows what Claude Code sent back for each
+    tool call when it gives up.

@@ -5,7 +5,7 @@
 // product repository on the workstation, on a fresh test host whose nightly
 // backup has not run yet:
 //
-//   node test/host/panel-fixes.mjs [--url http://localhost:8099]
+//   node test/host/panel-fixes.mjs [--url http://allvibe.local:<the forwarded port>]
 //
 // It makes a project of its own, frameprobe, signs in with a fresh setup code
 // and a password it makes up (neither printed), and prints one verdict a line.
@@ -69,9 +69,10 @@ try {
   verdict("its line: nothing green", (await colours(".status-row")).join(" "), (s) => notGreen(s.split(/ (?=rgb)/)));
   verdict("the side bar's light: nothing green", (await colours("#side-status .led")).join(" "), (s) => notGreen(s.split(/ (?=rgb)/)));
 
-  await page.goto(`${URL_}/apps/${APP}`);
-  await page.waitFor(`!!document.querySelector("iframe.tc-frame") && !!document.querySelector("[data-action=works]")`, { what: "the frame and It works" });
-  verdict('"It works": not green', (await colours("[data-action=works]")).join(" "), (s) => notGreen(s.split(/ (?=rgb)/)));
+  // As from home's "Try step 1" (D75): the app opens trying it, and its "Step 1 works" is the next action.
+  await page.goto(`${URL_}/apps/${APP}#try`);
+  await page.waitFor(`!!document.querySelector("iframe.tc-frame") && !!document.querySelector("[data-action=works]")`, { what: "the frame and Step 1 works" });
+  verdict('"Step 1 works": not green', (await colours("[data-action=works]")).join(" "), (s) => notGreen(s.split(/ (?=rgb)/)));
 
   console.log("(c) the Preview frame keeps what is typed in it:");
   // The frame is the test copy's own origin: read it from an isolated world of its own.
@@ -129,6 +130,9 @@ try {
   onHost("dev deploy", C, "dev", "deploy", APP);
   verdict("the frame, within 30 s of a new start with a change", await reloaded(30000), "reloaded");
   verdict("and it shows the change", await inFrame(`document.querySelector("h1")?.textContent ?? ""`), /^A changed heading/);
+  // Every step tried, the page has moved on to Live by itself (D75): the button is in Preview.
+  await page.click("#rtab-preview");
+  await sleep(400);
   await typeFresh();
   await page.click("[data-action=start-test]");
   verdict('the frame, after "Restart the test copy"', await reloaded(120000), "reloaded");

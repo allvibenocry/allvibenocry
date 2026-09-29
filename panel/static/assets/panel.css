@@ -54,7 +54,6 @@ button{cursor:pointer}
 .nav .sub{padding-left:20px;font-weight:400}
 .nav .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--side-muted)}
 .nav .dot.live{background:var(--go)}
-.nav .dot.work{background:var(--pink)}
 .nav .new{color:var(--side-muted);font-weight:400}
 .side-status{display:flex;align-items:center;gap:10px;margin-top:12px;padding:12px;border-radius:12px;background:rgba(255,255,255,.06);font-size:.9rem;line-height:1.35}
 .side-status .led{width:10px;height:10px;border-radius:50%;background:var(--go);box-shadow:0 0 0 4px rgba(0,166,80,.25);flex:none}
@@ -389,7 +388,8 @@ p{margin:0}
 .nav [aria-current="page"]{background:rgba(255,255,255,.1);box-shadow:inset 3px 0 0 var(--side-text)}
 .nav .nav-app{font-size:1rem}
 .nav .dot.act{background:var(--pink);box-shadow:0 0 0 3px rgba(255,77,148,.3)}
-.nav .dot.work{background:var(--lav)}
+/* Not "work": that is the app view's own layout, and made the dot a grid (seventh brief, item 8). */
+.nav .dot.building{background:var(--lav)}
 .nav .dot.idle{background:var(--side-muted)}
 .nav-machine{margin-top:auto;padding-top:14px;display:flex;flex-direction:column;gap:2px}
 .nav-machine button{font-size:.9rem;font-weight:400;color:var(--side-muted)}

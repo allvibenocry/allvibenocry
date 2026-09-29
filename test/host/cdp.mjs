@@ -19,7 +19,7 @@ const CANDIDATES = [
 const KEYS = {
   Tab: [9, "Tab"], Enter: [13, "Enter", "\r"], Escape: [27, "Escape"], " ": [32, "Space", " "],
   ArrowLeft: [37, "ArrowLeft"], ArrowUp: [38, "ArrowUp"], ArrowRight: [39, "ArrowRight"], ArrowDown: [40, "ArrowDown"],
-  Home: [36, "Home"], End: [35, "End"],
+  Home: [36, "Home"], End: [35, "End"], "]": [221, "BracketRight", "]"],
 };
 
 export async function launch() {
@@ -173,10 +173,11 @@ export async function openPage(port, { width = 1280, height = 800, mobile = fals
       await send("Input.dispatchMouseEvent", { type: "mousePressed", x: box.x, y: box.y, button: "left", clickCount: 1 });
       await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x, y: box.y, button: "left", clickCount: 1 });
     },
-    /** A real key press; `shift` for Shift+key. */
-    async key(name, { shift = false } = {}) {
-      const [code, keyCode, text] = KEYS[name] ?? [name.toUpperCase().charCodeAt(0), `Key${name.toUpperCase()}`, name];
-      const base = { key: name, code: keyCode, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, modifiers: shift ? 8 : 0 };
+    /** A real key press; `shift` for Shift+key, `ctrl` for Ctrl+key (which types nothing). */
+    async key(name, { shift = false, ctrl = false } = {}) {
+      const [code, keyCode, typed] = KEYS[name] ?? [name.toUpperCase().charCodeAt(0), `Key${name.toUpperCase()}`, name];
+      const text = ctrl ? undefined : typed;
+      const base = { key: name, code: keyCode, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, modifiers: (shift ? 8 : 0) | (ctrl ? 2 : 0) };
       await send("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", ...base, ...(text ? { text } : {}) });
       await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
     },

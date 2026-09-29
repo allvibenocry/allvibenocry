@@ -131,7 +131,7 @@
         else remember(S.app, null);
       }
     }
-    const sig = JSON.stringify([S.view, S.app, S.apps, S.last, S.view === "app" ? [S.detail, S.plan, S.agent?.running, S.agent?.signIn] : null]);
+    const sig = JSON.stringify([S.view, S.app, S.apps, S.last, S.view === "app" ? [S.detail, S.plan, S.agent?.running, S.agent?.signIn, S.agent?.hasKey] : null]);
     if (quiet && sig === S.sig) return;
     S.sig = sig;
     render();
@@ -142,7 +142,7 @@
 
   /* ------------------------------------------------------------ the side -- */
   // Green only for a live app that runs; a live app that does not is a problem, and says so first.
-  const dotOf = (a) => (a.live && !a.prod?.running ? "down" : a.next?.kind === "try" || a.next?.kind === "put-live" ? "act" : a.next?.kind === "building" ? "work" : a.live ? "live" : "");
+  const dotOf = (a) => (a.live && !a.prod?.running ? "down" : a.next?.kind === "try" || a.next?.kind === "put-live" ? "act" : a.next?.kind === "building" ? "building" : a.live ? "live" : "");
   const liveChip = (a) => (!a.live ? '<span class="chip idle">Not live yet</span>' : a.prod?.running ? `<span class="chip live">${esc(a.live)} is live</span>` : `<span class="chip stop">${esc(a.live)} is not running</span>`);
   function renderNav() {
     const item = (label, href, current, cls = "") => `<a href="${href}" data-link class="${cls}"${current ? ' aria-current="page"' : ""}>${label}</a>`;
@@ -150,7 +150,7 @@
     h += '<p class="nav-group">Your apps</p>';
     for (const a of S.apps) {
       const d = dotOf(a);
-      const sr = d === "act" ? '<span class="sr">, waiting for you</span>' : d === "work" ? '<span class="sr">, the builder is working</span>' : d === "down" ? '<span class="sr">, its live app is not running</span>' : "";
+      const sr = d === "act" ? '<span class="sr">, waiting for you</span>' : d === "building" ? '<span class="sr">, the builder is working</span>' : d === "down" ? '<span class="sr">, its live app is not running</span>' : "";
       h += item(`<span class="dot ${d || "idle"}"></span>${esc(a.name)}${sr}`, `/apps/${a.name}`, S.view === "app" && S.app === a.name, "nav-app");
     }
     if (!S.apps.length) h += '<p class="nav-empty">No apps yet.</p>';
@@ -289,10 +289,10 @@
       text = `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Start your AI, and tell it what you want${p.releasedIn ? " next" : " to build"}. It works in the test copy, never the live app.`;
       primary = btn("start-ai", "Start your AI");
     } else if (stage === "plan" && T.state !== "open") {
-      text = T.state === "taken" ? "Your AI's terminal is open in another window." : "Your AI is running. Open Claude Code, on the left, to talk to it.";
+      text = T.state === "taken" ? "Your AI's terminal is open in another window." : "Your AI is running. Open Claude Code, under your plan, to talk to it.";
       primary = T.state === "taken" || T.state === "lost" ? btn("join-ai", "Open it here") : T.state === "connecting" || T.state === "none" ? "" : btn("open-ai", "Open Claude Code");
     } else if (stage === "plan") {
-      text = `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Tell your AI what you want${p.releasedIn ? " next" : " to build"}, in its terminal on the left, in your own words. It writes a plan, with something for you to try at every step.`;
+      text = `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Tell your AI what you want${p.releasedIn ? " next" : " to build"}, in its terminal under your plan, in your own words. It writes a plan, with something for you to try at every step.`;
       primary = btn("focus-ai", "Go to your AI");
     } else if (stage === "try" && s.state === "building") {
       text = `Your AI is building step ${s.id}: ${esc(lc(s.title))}. The test copy keeps working meanwhile.`;
@@ -682,7 +682,7 @@
     const fix = cut === -1 ? [] : lines.slice(cut + 1);
     const note = job.phases.flatMap((p) => p.notes).find((n) => !/^stopped at step/.test(n)) ?? "";
     // The engine's words name the CLI; for the steps a person does here, the panel says where.
-    const here = s && /^every step of the plan is tried/.test(s.name) ? '<p><b>Here:</b> try each step in Preview and press "It works", then come back to Live.</p>' : "";
+    const here = s && /^every step of the plan is tried/.test(s.name) ? "<p><b>Here:</b> press OK, and the next action at the top takes you to each step to try.</p>" : "";
     return `<div class="stopbox" role="alert"><p><b>${esc(heading)}.</b> ${s ? `It stopped at "${esc(s.name)}": ${esc(why.join(" "))}` : esc(note)}</p>${fix.length ? `<p><b>What would have to be true:</b> ${esc(fix.join(" "))}</p>` : ""}${here}</div>`;
   }
   function jobCard() {

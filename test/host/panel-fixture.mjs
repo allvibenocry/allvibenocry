@@ -1,7 +1,7 @@
 // What the browser checks of the control panel need done on the test host, as
 // the builder or the machine would do it (the sixth brief, items 9 and 10).
-// Runs on the test host as root; test/host/panel-journey.mjs calls it through
-// the harness.
+// Runs on the test host as root; the browser checks (test/host/panel-checks.mjs
+// and the probes beside it) call it through the harness.
 //
 //   node panel-fixture.mjs plan <app> <steps>   the fixture plan's first <steps> steps, built: committed and deployed to the test copy
 //   node panel-fixture.mjs unplug               the backup disk, taken away (it stays mounted elsewhere, to come back)
@@ -11,7 +11,13 @@
 //   node panel-fixture.mjs live <app>           the app's live version, as the CLI says it
 //   node panel-fixture.mjs break <variant>      a deliberately broken copy of the panel, run in the real one's place (item 10)
 //   node panel-fixture.mjs mend                 the real panel back, as install makes it
-import { spawnSync } from "node:child_process";
+//   node panel-fixture.mjs app <app>            an app for the checks, made unless it is there
+//   node panel-fixture.mjs remove <app...>      the apps a run made, gone with everything of theirs
+//   node panel-fixture.mjs agent-key <app>      a stand-in key in the app's vault, for its AI
+//   node panel-fixture.mjs hold-lock <app> <op> the app's lock, held from the command line until free-lock
+//   node panel-fixture.mjs free-lock <app>      that lock, let go
+import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { chownSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 const C = process.env.SUITE_COMMAND ?? "allvibe";
@@ -20,6 +26,9 @@ const DISK = `/mnt/${C}-backup`;
 const KEPT = `/mnt/.${C}-backup-kept`;
 const PANEL = `${C}-panel`;
 const COPY = "/var/tmp/panel-broken";
+// hold-lock: this script, where the service user can run it, and the file that tells it to let go.
+const HOLDER = "/var/tmp/panel-fixture-lock.mjs";
+const FREE = "/var/tmp/panel-fixture-lock.free";
 
 /*
  * The broken copies: each breaks what one of the browser checks is there to
@@ -40,8 +49,8 @@ const BROKEN = {
   "sign-in-stays": [[ENTRY, "if (answer.ok) {", 'if (answer.ok && form.id === "setup-form") {']],
   "sign-in-silent": [[ENTRY, "say(message.charAt(0).toUpperCase() + message.slice(1));", 'say("");']],
   "sign-out-fake": [[SHELL, 'await fetch("/api/sign-out"', 'if (0) await fetch("/api/sign-out"']],
-  "home-no-action": [[SHELL, 'if (n.kind === "try") return `<a class="btn small pink"', 'if (n.kind === "try") return ""; if (0) return `<a class="btn small pink"']],
-  "frame-wrong": [[SHELL, 'src="${esc(hostUrl(d.ports.testCopy))}"', 'src="${esc(hostUrl(d.ports.live))}"']],
+  "home-no-action": [[SHELL, 'if (n.kind === "try") return `<a class="btn small ${look}"', 'if (n.kind === "try") return ""; if (0) return `<a class="btn small ${look}"']],
+  "frame-wrong": [[SHELL, "frame.src = src;", "frame.src = hostUrl(d.ports.live);"]],
   "works-noop": [[SHELL, 'const r = await api("app.markTried", { app: S.app, step: Number(b.dataset.step) });', "const r = { ok: true, result: { left: [0] } };"]],
   "report-lost": [[SHELL, 'const r = await api("app.report", { app: S.app, text: `Step ${step}: ${text}` });', "const r = { ok: true };"]],
   "stop-mute": [[SHELL, "  function stopBox(job, heading) {", '  function stopBox(job, heading) {\n    return "";']],
@@ -55,6 +64,18 @@ const BROKEN = {
   "no-arrows": [[SHELL, 'if (tab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {', "if (false && tab) {"]],
   "menu-no-focus": [[SHELL, 'if (S.moreOpen) $("#more-menu button")?.focus();', 'if (0) $("#more-menu button")?.focus();']],
   "no-skip": [["static/pages/shell.html", '<a class="skip" href="#main">Skip to the content</a>', ""]],
+  // The seventh brief's (item 8): the guided path, the frame, the lock, a new app, the AI and its terminal.
+  "guide-stuck": [[SHELL, "if (S.stage && S.stage !== stage) {", "if (false) {"]],
+  "frame-reload": [[SHELL, "if (key === frameKey && slot.firstChild) return;", "void key;"]],
+  "lock-silent": [[SHELL, "const r = await api(op, { app: S.app, ...(extra.args ?? {}) });\n    if (!r.ok) {\n      toast(up(r.error.message));", 'const r = await api(op, { app: S.app, ...(extra.args ?? {}) });\n    if (!r.ok) {\n      toast("It could not start.");']],
+  "new-app-noop": [[SHELL, 'const r = await api("app.create", { app: name, confirm: true });', 'const r = { ok: false, error: { message: "not made" } };']],
+  "ai-start-noop": [[SHELL, 'if (a === "start-ai") {', 'if (a === "start-ai") { return;']],
+  "no-leave": [[SHELL, 'if (e.type === "keydown" && e.ctrlKey && e.key === "]") {', "if (false) {"]],
+  "ws-any-origin": [["server.mjs", 'if (!fromHere(request)) return refuseUpgrade(socket, 403, "Forbidden");', 'if (false) return refuseUpgrade(socket, 403, "Forbidden");']],
+  "ws-no-token": [["server.mjs", 'if (m?.t !== "hello" || !tokenMatches({ headers: { "x-allvibe-token": m.token } }, s)) return ws.close(4401, "not signed in");', 'if (m?.t !== "hello") return ws.close(4401, "not signed in");']],
+  "ai-stop-noop": [[SHELL, 'if (a === "confirm-stop-ai") { closeModal(); return startJob("agentStop", "agent.stop", { args: { confirm: true } }); }', 'if (a === "confirm-stop-ai") { closeModal(); return; }']],
+  "dot-wide": [["static/assets/panel.css", ".nav .dot{width:8px;height:8px;", ".nav .dot{width:80px;height:8px;"]],
+  "ai-overflow": [["static/assets/panel.css", ".ai-keys{display:none;font-size:.8rem;color:var(--muted)}", ".ai-keys{display:none;font-size:.8rem;color:var(--muted)}\n.ai-choices{min-width:600px}"]],
 };
 const inspect = (format) => sh("docker", ["inspect", "-f", format, PANEL]).stdout.trim();
 function waitHealthy() {
@@ -182,6 +203,56 @@ if (action === "plan") {
     seen.push(`${view}: ${run("mountpoint", ["-q", DISK]).status === 0 ? "mounted" : "not mounted"}`);
   }
   console.log(`backup disk: ${action === "unplug" ? "unplugged" : "plugged in"} (${seen.join("; ")})`);
+} else if (action === "app") {
+  // An app for the checks, made as the CLI makes one, unless it is there.
+  const [app] = rest;
+  if (!existsSync(`${STATE}/projects/${app}`)) must("project create", sh(C, ["project", "create", app]));
+  console.log(`app: ${app}, there`);
+} else if (action === "remove") {
+  // The apps a run of the checks made, gone with everything of theirs.
+  for (const app of rest) {
+    if (!existsSync(`${STATE}/projects/${app}`)) continue;
+    sh(C, ["agent", "stop", app]);
+    must(`project remove ${app}`, sh(C, ["project", "remove", app, "--delete-everything"]));
+  }
+  console.log(`removed: ${rest.join(", ") || "nothing"}`);
+} else if (action === "agent-key") {
+  // A stand-in key for the app's AI, given on standard input as a person gives one: never a real key.
+  const [app] = rest;
+  must("key set", sh(C, ["key", "set", app, "agent", "ANTHROPIC_API_KEY"], { input: randomBytes(24).toString("base64") }));
+  console.log(`agent-key: a stand-in key in ${app}'s vault, for its AI`);
+} else if (action === "hold-lock") {
+  // The app's lock (D72), held as `allvibe` holds it from the command line: by
+  // a process of the service user's, with the suite's own code, until
+  // free-lock, or ten minutes.
+  const [app, operation] = rest;
+  const lock = `${STATE}/projects/${app}/operation.lock`;
+  cpSync(process.argv[1], HOLDER);
+  must("readable", sh("chmod", ["a+r", HOLDER]));
+  rmSync(FREE, { force: true });
+  spawn("runuser", ["-u", C, "--", process.execPath, HOLDER, "lock-holder", app, operation], { detached: true, stdio: "ignore" }).unref();
+  for (let i = 0; i < 50 && !existsSync(lock); i++) sh("sleep", ["0.2"]);
+  if (!existsSync(lock)) { process.stderr.write(`the lock of ${app} was not taken\n`); process.exit(1); }
+  console.log(`hold-lock: ${app}'s lock, held for "${operation}", from the command line`);
+} else if (action === "lock-holder") {
+  const [app, operation] = rest;
+  const { takeLock } = await import(`/opt/${C}/current/dist/lib/lock.js`);
+  const taken = takeLock(app, operation);
+  if (!taken.ok) process.exit(1);
+  const until = Date.now() + 10 * 60 * 1000;
+  const timer = setInterval(() => {
+    if (!existsSync(FREE) && Date.now() < until) return;
+    taken.release();
+    clearInterval(timer);
+  }, 200);
+} else if (action === "free-lock") {
+  const [app] = rest;
+  const lock = `${STATE}/projects/${app}/operation.lock`;
+  writeFileSync(FREE, "");
+  for (let i = 0; i < 50 && existsSync(lock); i++) sh("sleep", ["0.2"]);
+  rmSync(FREE, { force: true });
+  if (existsSync(lock)) { process.stderr.write(`the lock of ${app} is still held\n`); process.exit(1); }
+  console.log(`free-lock: ${app}'s lock, let go`);
 } else if (action === "setup-code") {
   const status = sh(C, ["panel", "status"]).stdout;
   const r = must("setup code", sh(C, ["panel", /set up: sign in/.test(status) ? "reset" : "setup-code"]));
@@ -226,6 +297,6 @@ if (action === "plan") {
   console.log(`panel: the real one back (${left ? `STILL BROKEN: ${left}` : "no broken copy"}; ${r.stdout.split("\n").filter((l) => /^\s*changed:/.test(l)).length} changed)`);
   if (left) process.exit(1);
 } else {
-  process.stderr.write("usage: node panel-fixture.mjs plan <app> <steps> [label] | cookies <app> | unplug | plug | setup-code | report <app> | live <app> | break <variant> | mend\n");
+  process.stderr.write("usage: node panel-fixture.mjs plan <app> <steps> [label] | cookies <app> | stub <app> | stub-stop <app> | unplug | plug | setup-code | report <app> | live <app> | break <variant> | mend | app <app> | remove <app...> | agent-key <app> | hold-lock <app> <op> | free-lock <app>\n");
   process.exit(2);
 }
