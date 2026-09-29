@@ -1,0 +1,10 @@
+#!/bin/sh
+# The guard for rules 9 and 10, on the commit message (D71). Its exit code
+# decides. Installed by copying this file to .git/hooks/commit-msg.
+node scripts/guard.mjs --message "$1"
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "commit-msg: the guard refused this commit's message (exit $status). Nothing was committed."
+  exit 1
+fi
+exit 0

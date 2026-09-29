@@ -1,0 +1,12 @@
+#!/bin/sh
+# The guard for rules 9 and 10, before every commit (D71): the working tree
+# and every file as it is staged. It runs on its own, never through a pipe,
+# and its exit code decides (mistake 42). Installed by copying this file to
+# .git/hooks/pre-commit; git runs it from the top of the working tree.
+node scripts/guard.mjs --staged
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "pre-commit: the guard refused this commit (exit $status). Nothing was committed; what was staged stays staged."
+  exit 1
+fi
+exit 0

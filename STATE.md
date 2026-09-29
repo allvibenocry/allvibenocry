@@ -155,6 +155,7 @@ each with where it goes.
 | Item | State |
 |---|---|
 | 1. Records | Recorded: the owner's try of steps 29 and 30 (below); the friction log's six entries; D66 to D70; TLS at home as the next security milestone in the roadmap. |
+| 2. The workstation's protections | Built and seen on the workstation (D71; the website's D34): in the owner's user settings, D61's 90 deny rules, 20 more against skipping commit hooks, and a hook that refuses heredocs and multi-line quoted text; the same in both repositories' project settings; the guard as pre-commit and commit-msg hooks in both clones. A heredoc, a multi-line `node -e` and a here-string refused by the hook; `--no-verify`, `-n`, `core.hooksPath` and a force push refused by deny rules; the guard's hooks 9 of 9 in a throwaway clone of each repository, each refusal with its control; ordinary commands and commits through. |
 
 ## The sixth brief
 
@@ -293,9 +294,13 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   "The nightly checks have not run yet." until the first night; Machine health
   runs them on demand. Signing in lives in the panel's memory: restarting it,
   or the machine, signs everyone out (D64).
-- **Claude Code's deny rules apply only to a session opened on the
-  repository** (D61): a session opened on the folder above both repositories
-  did not get them. Where else to put them is the owner's decision.
+- **Claude Code's deny rules and the inline-scripts hook are in the owner's
+  user settings** (D71), so they apply to every session on the owner's
+  workstation, and in each repository's project settings. They catch
+  accidents, not a determined agent: a command inside `bash -c` or a script is
+  not seen (D61, D71). The project settings' hook relies on
+  `$CLAUDE_PROJECT_DIR`, not yet seen in a session opened on a repository on
+  Windows.
 
 - Nothing locks one operation against another yet (D28).
 - Release images and release backups are never pruned yet (D28).

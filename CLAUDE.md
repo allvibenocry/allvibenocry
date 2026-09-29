@@ -115,8 +115,11 @@ directories use the same name.
 
 Before every commit: `node scripts/guard.mjs` is clean, run on its own and its
 exit code checked, never piped (mistake 42), and nothing in the diff is a
-secret or a detail of anybody's infrastructure. The CI scans every push for
-secrets (D6).
+secret or a detail of anybody's infrastructure. In the owner's clone, git runs
+it itself before every commit, on the staged files and on the message, and
+refuses a commit it finds anything in (`scripts/hooks/`, D71); in a new clone,
+copy `scripts/hooks/pre-commit` and `scripts/hooks/commit-msg` into
+`.git/hooks/`. The CI scans every push for secrets (D6).
 
 ## Mistakes we do not repeat
 
@@ -329,7 +332,9 @@ From the fifth brief, here and in the website:
     inserted a section into STATE.md; nothing went wrong, and nothing stopped
     them. *Here:* a commit message is a file written with the file tool,
     committed with `git commit -F`; so is every script, however short it
-    looks, and every edit goes through the Edit tool.
+    looks, and every edit goes through the Edit tool. Since D71, a hook in the
+    owner's user settings and in this repository's refuses a heredoc or
+    multi-line quoted text before it runs.
 44. **A service's sandbox is part of its environment.** The engine ran the
     CLI's release under `PrivateTmp=yes`, which hid its temporary files from
     Docker, and then under a tighter umask, which made the restore check's

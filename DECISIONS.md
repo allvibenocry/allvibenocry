@@ -2556,3 +2556,77 @@ the seventh brief.
 
 **Why.** A log that nobody reads back is a place where problems go to be
 forgotten; a rule that each is answered in the next brief keeps it short.
+
+## D71. The workstation's protections: deny rules and a hook for every project, and the guard before every commit
+
+*2026-09-29. The seventh brief, item 2, after D66's answer on where D61's
+rules live. The same is in the website's repository (its D34).*
+
+**Claude Code, for every project on the owner's workstation.** The owner's
+user settings for Claude Code (`~/.claude/settings.json`, backed up first, and
+everything already in it kept) now hold:
+
+- **D61's 90 deny rules**, so that they apply to a session opened on any
+  folder, not only on a repository.
+- **20 more, against skipping the commit hooks**, for the Bash and PowerShell
+  tools: `git commit` with `--no-verify` or `-n`, also written `git -C <dir>
+  commit`; `git push --no-verify`; `git merge --no-verify`; and any git
+  command that names `core.hooksPath`, which would point the hooks elsewhere.
+- **A hook that refuses multi-line text through the shell, before it runs**
+  (rule 16): `scripts/hooks/inline-scripts.mjs`, a `PreToolUse` hook for the
+  Bash and PowerShell tools, with a copy in `~/.claude/hooks/` for the user
+  settings. It refuses a heredoc, a PowerShell here-string, any quoted text
+  that spans lines (so an inline script over several lines through `python
+  -c`, `node -e` or any other command, and a multi-line `git commit -m`), and
+  ANSI-C quoted text with a line break, and says to write the text to a file
+  with the file tool and give the command the file. Commands on several lines
+  outside quotes, a line continued with a backslash, and one-line scripts
+  pass. 36 unit tests (`test/unit/inline-scripts.test.mjs`), each case both
+  ways.
+
+**Each repository's project settings keep the same**: the 110 deny rules, the
+same list in both, and the hook, as `node
+"$CLAUDE_PROJECT_DIR/scripts/hooks/inline-scripts.mjs"`, so that anyone who
+works on a clone has them.
+
+**The guard before every commit, in both repositories' local clones.**
+`scripts/hooks/pre-commit` runs `node scripts/guard.mjs --staged`, on its own,
+and its exit code decides (mistake 42); `scripts/hooks/commit-msg` runs
+`node scripts/guard.mjs --message <file>` on the commit's message. They are
+copied into `.git/hooks/`, not reached through `core.hooksPath`, which the deny
+rules now forbid changing. The guard gained two modes: `--staged` reads every
+file as it is staged, from the index, as well as the working tree, because a
+file can be staged with a finding and then changed; `--message` reads a commit
+message, without git's comment lines.
+
+**Seen on the workstation**, in this Claude Code session, opened above both
+repositories, so with the user settings only: a harmless heredoc, a multi-line
+`node -e` and a PowerShell here-string were each refused by the hook before
+they ran, with its message; `git commit --no-verify`, `git commit -n`, `git -c
+core.hooksPath=/dev/null commit` and `git push --force` were each refused by a
+deny rule, in a throwaway repository, which still had its one commit after;
+an ordinary command and a one-line `node -e` ran. **The guard's hooks**, in a
+throwaway clone of each repository with the same hook files and the owner's
+private list: a private string in a staged file, a private string only in the
+staged copy, and a private string in the commit message were each refused,
+with no commit made, and each refusal had its control (the working tree only,
+and no commit-msg hook), where the same commit was made; an ordinary commit
+went through; 9 of 9 in each. In the real clones, the commit of this item was
+first refused while an untracked file held a private string, and went through
+once it was gone. The staged cases ran in throwaway clones because a refused
+commit has still written what was staged into git's object store (mistake 26).
+
+**Limits, as D61's**: a command inside `bash -c` or a script is not seen by the
+deny rules; `-n` joined to another short flag (`git commit -an`) is not seen;
+the hook reads the command Claude Code is given, and lets a call run when its
+input cannot be read; the hooks in `.git/hooks/` can be removed by editing
+files, which no rule covers; and the user settings are on this workstation
+only. The project settings' hook depends on `$CLAUDE_PROJECT_DIR`, which a
+session opened on a repository sets; on this workstation that was not tried,
+since this session was opened above the repositories.
+
+**Why.** D61's rules applied only to a session opened on a repository, and the
+session that ran the walkthrough's text as commands was not one. Rule 16 was
+kept by habit (mistake 43); a hook keeps it by refusing. And the guard's exit
+code was lost in a pipe once (mistake 42); a hook that git runs, and that
+decides by its exit code, cannot be piped.

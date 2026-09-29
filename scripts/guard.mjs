@@ -2,7 +2,14 @@
 /**
  * Rules 9 and 10, as a check that runs on every file about to be committed.
  *
- *   node scripts/guard.mjs
+ *   node scripts/guard.mjs                   every file in the working tree
+ *   node scripts/guard.mjs --staged          and every file as it is staged (the pre-commit hook)
+ *   node scripts/guard.mjs --message <file>  a commit message (the commit-msg hook)
+ *
+ * The hooks are scripts/hooks/pre-commit and scripts/hooks/commit-msg, copied
+ * into .git/hooks/ of the owner's clone (D71): a commit the guard refuses is
+ * not made. The staged copy is read too, because a file can be staged with a
+ * finding and then changed in the working tree.
  *
  * Rule 9: nothing is ever named after the ransomware family (D2). The word may
  * appear only inside the project's external names, which were given to it: the
@@ -92,20 +99,38 @@ function wordFindings(line, markdown) {
   return rest.includes(WORD);
 }
 
+/** Every file as it is staged: its path and its bytes, read from the index. */
+function stagedFiles() {
+  const entries = execFileSync("git", ["ls-files", "-s", "-z"], { cwd: ROOT, encoding: "utf8" })
+    .split("\0")
+    .filter(Boolean)
+    .map((entry) => {
+      const [meta, file] = entry.split("\t");
+      return { file, blob: meta.split(" ")[1], mode: meta.split(" ")[0] };
+    })
+    .filter((e) => e.mode !== "160000");
+  if (!entries.length) return [];
+  const out = execFileSync("git", ["cat-file", "--batch"], { cwd: ROOT, input: entries.map((e) => e.blob).join("\n") + "\n", maxBuffer: 512 * 1024 * 1024 });
+  const found = [];
+  let at = 0;
+  for (const entry of entries) {
+    const end = out.indexOf(0x0a, at);
+    const size = Number(out.subarray(at, end).toString("utf8").split(" ")[2]);
+    found.push({ file: entry.file, buffer: out.subarray(end + 1, end + 1 + size) });
+    at = end + 1 + size + 1;
+  }
+  return found;
+}
+
 const findings = [];
 const local = privateStrings();
-const list = files();
 
-for (const file of list) {
-  if (file.toLowerCase().includes(WORD)) findings.push(`${file}: rule 9, the file's own name`);
-
-  const buffer = readFileSync(path.join(ROOT, file));
-  if (buffer.includes(0)) continue; // binary
-  const markdown = file.endsWith(".md");
+/** One text's findings, under the name it is reported by. */
+function inspect(name, buffer, { markdown = false, ownList = false } = {}) {
+  if (buffer.includes(0)) return; // binary
   const lines = buffer.toString("utf8").split("\n");
-
   lines.forEach((line, index) => {
-    const where = `${file}:${index + 1}`;
+    const where = `${name}:${index + 1}`;
     if (wordFindings(line, markdown)) findings.push(`${where}: rule 9, a name made of the forbidden word`);
 
     for (const match of line.matchAll(PRIVATE_V4)) {
@@ -114,15 +139,44 @@ for (const file of list) {
     if (WINDOWS_PROFILE.test(line)) findings.push(`${where}: rule 10, a Windows user profile path`);
     WINDOWS_PROFILE.lastIndex = 0;
 
-    if (local && file !== ".local/private-strings.txt") {
+    if (local && !ownList) {
       const lower = line.toLowerCase();
       if (local.some((s) => lower.includes(s))) findings.push(`${where}: rule 10, a string from .local/private-strings.txt`);
     }
   });
 }
 
+const messageAt = process.argv.indexOf("--message");
+let checked;
+if (messageAt !== -1) {
+  const file = process.argv[messageAt + 1];
+  if (!file || !existsSync(file)) {
+    process.stdout.write("guard: --message needs the commit message's file\n");
+    process.exit(2);
+  }
+  // git's own comment lines are not part of the message.
+  const text = readFileSync(file, "utf8").split("\n").filter((l) => !l.startsWith("#")).join("\n");
+  inspect("the commit message", Buffer.from(text), { markdown: true });
+  checked = "the commit message checked for rule 9 and rule 10";
+} else {
+  const list = files();
+  for (const file of list) {
+    if (file.toLowerCase().includes(WORD)) findings.push(`${file}: rule 9, the file's own name`);
+    inspect(file, readFileSync(path.join(ROOT, file)), { markdown: file.endsWith(".md"), ownList: file === ".local/private-strings.txt" });
+  }
+  checked = `${list.length} files checked for rule 9 and rule 10`;
+  if (process.argv.includes("--staged")) {
+    const staged = stagedFiles();
+    for (const { file, buffer } of staged) {
+      if (file.toLowerCase().includes(WORD)) findings.push(`${file} (staged): rule 9, the file's own name`);
+      inspect(`${file} (staged)`, buffer, { markdown: file.endsWith(".md"), ownList: file === ".local/private-strings.txt" });
+    }
+    checked += `, and ${staged.length} as staged`;
+  }
+}
+
 process.stdout.write(
-  `guard: ${list.length} files checked for rule 9 and rule 10` +
+  `guard: ${checked}` +
     `${local ? `, including ${local.length} local private strings` : " (generic checks only: no .local/private-strings.txt here)"}\n`,
 );
 if (findings.length > 0) {
