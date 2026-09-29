@@ -3173,3 +3173,30 @@ own terminal over: the check saw both.
 **Limits.** The checks take Claude Code only to its first screen, with a
 stand-in key: talking to it is the chat probe's (D77), and signing in with an
 account is the owner's (rule 13). They run in headless Edge only.
+
+## D79. Two things gitleaks takes for keys, allowed by name and nothing else
+
+*2026-09-30. Found in the seventh brief, item 9 (mistake 57).*
+
+CI's secret scan (D6) failed on the pushes of items 6, 7 and 8: gitleaks'
+generic rule took for keys **RFC 6455's sample nonce**, the
+`Sec-WebSocket-Key` a unit test of the panel's WebSocket sends
+(`dGhlIHNhbXBsZSBub25jZQ==`, the protocol's own example), and **two minified
+names in the bundled xterm.js** (D77). None is a secret, and the history
+keeps them (rule 11).
+
+`.gitleaks.toml` keeps gitleaks' own rules and allows exactly these: the
+sample nonce, by its whole value; and the files of a bundled library, inside
+a package's folder under `panel/static/assets/vendor/`, which
+`test/unit/vendor.test.mjs` pins file by file by SHA-256 and which it refuses
+any unlisted file in. gitleaks reads the file itself, in CI and over a
+working tree.
+
+**Seen** with the suite's pinned gitleaks 8.30.1, on the test host: every
+commit and the working tree clean with it; the four findings again without it
+(the control); and a key planted in `src/`, and one directly in the vendor
+folder, both still found with it.
+
+**Why not a list of fingerprints**: a fingerprint names a commit and a line;
+the next update of the library would fail again, and a list says nothing of
+why. The rules say what and why.

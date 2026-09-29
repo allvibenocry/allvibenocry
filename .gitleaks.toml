@@ -1,0 +1,19 @@
+# gitleaks, over every commit (CI) and the working tree: its own rules, and
+# exactly two things that are not secrets, each with why (D79).
+[extend]
+useDefault = true
+
+# Third-party code, bundled as published and pinned file by file by its
+# SHA-256 (panel/vendor.json, D77): its minified names look like keys to the
+# generic rule. test/unit/vendor.test.mjs fails on any file there that the
+# manifest does not name, or on any change to one that it does.
+[[allowlists]]
+description = "the panel's bundled libraries, pinned by checksum"
+# (Over the working tree, the paths it sees start where the scan starts.)
+paths = ['''(^|/)panel/static/assets/vendor/[^/]+/[^/]+$''']
+
+# RFC 6455's own sample nonce (section 1.3), the Sec-WebSocket-Key a unit
+# test sends: a handshake value everyone knows, not a secret.
+[[allowlists]]
+description = "RFC 6455's sample Sec-WebSocket-Key"
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']

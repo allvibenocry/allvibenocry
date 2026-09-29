@@ -119,7 +119,9 @@ secret or a detail of anybody's infrastructure. In the owner's clone, git runs
 it itself before every commit, on the staged files and on the message, and
 refuses a commit it finds anything in (`scripts/hooks/`, D71); in a new clone,
 copy `scripts/hooks/pre-commit` and `scripts/hooks/commit-msg` into
-`.git/hooks/`. The CI scans every push for secrets (D6).
+`.git/hooks/`. The CI scans every push for secrets (D6). **After every push,
+its run is read** (`gh run list`), and a red one is the next thing fixed
+(mistake 57).
 
 ## Mistakes we do not repeat
 
@@ -417,3 +419,11 @@ From the seventh brief, here:
     the stand-in's own command in the working copy's local settings, and a
     probe that waits on Claude Code shows what Claude Code sent back for each
     tool call when it gives up.
+57. **A push is not done until its checks have run.** The seventh brief's
+    items 6, 7 and 8 were pushed with CI failing, and nobody looked: gitleaks,
+    over every commit, took a WebSocket test's handshake value and two names
+    in the bundled xterm.js for keys. The guard and the unit tests were green
+    on the workstation, and the report was being written as if CI were too.
+    *Here:* after every push, its run is read, and a red one is the next thing
+    fixed; the secret scan also runs on the test host before the report
+    (D79).
