@@ -2158,6 +2158,24 @@ probe fails, 11 of 22 as they must be (the probe then had 22 checks).
 **Not verified**: a session with a real model, in either way of signing in:
 that is the owner's to try.
 
+#### Amendment, 2026-09-29 (the architect's review of the fifth brief)
+
+**The activity log is a narrative, not evidence.** The agent can add lines of
+its own making (see "Known limits" above), so nothing may treat a line of it as
+proof that something happened. The session review (D54) flags a claim without
+evidence only against records the suite writes itself, outside the agent: the
+deploys and releases it ran, the checks it ran and their results, and the
+commits as seen from outside the agent, in the repository on the machine. The
+activity log may be shown beside them, as what the agent said it did, and is
+never the only record behind a "checked" or a "done".
+
+**Planned: a key scan of each session's conversations.** When the agent stops,
+the key check's scanner (D38) runs over the transcripts of that session and, if
+it finds something that looks like a key, says so in plain words, naming the
+conversation and never the value, and deletes nothing: what to do with it is
+the person's choice (`allvibe agent transcripts <project> --delete`, or keeping
+it). Recorded in docs/roadmap.md.
+
 ## D61. Claude Code may not run the most dangerous commands in this repository
 
 *2026-09-29. The sixth brief, item 1, after mistake 41: text of the walkthrough

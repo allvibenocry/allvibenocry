@@ -468,13 +468,33 @@ activity log and its kept conversations (D60).
 **A timeline that weaves together** what the person asked, the plan, the agent's
 tool calls, the commits with their diffs, the checks, the person's
 confirmations, and the reports. **A summary on top flags any claim without
-evidence behind it**: for example an agent saying "checks ran" when no check
-appears in the log.
+evidence behind it**: for example an agent saying "checks ran" when the suite
+has no record of a check.
 
-**Why.** An agent's report is words; the log is what happened. Putting them side
-by side, and pointing at the places where they disagree, lets a person trust
-the work without reading every line, and catch the rare report that says more
-than was done.
+**Evidence comes only from what the suite records itself**, outside the agent
+(D60, amended): the deploys and releases it ran, the checks it ran and their
+results, and the commits as seen from outside the agent. The agent's activity
+log is a narrative, since the agent can add lines of its own making: it is shown
+as what the agent said it did, and is never the only record behind a "checked"
+or a "done".
+
+**Why.** An agent's report is words; the suite's own records are what happened.
+Putting them side by side, and pointing at the places where they disagree, lets
+a person trust the work without reading every line, and catch the rare report
+that says more than was done.
+
+## A key scan of each session's conversations
+
+**Planned** (D60, amended). When the agent stops, the key check's scanner (D38)
+runs over the transcripts of that session. If it finds something that looks like
+a key, it says so in plain words, naming the conversation and never the value,
+and deletes nothing: whether to delete the conversations
+(`allvibe agent transcripts <project> --delete`) is the person's choice. The
+control panel shows the same warning.
+
+**Why.** A conversation keeps whatever the person pasted into it or the agent
+printed, and the activity log's scan does not reach the transcripts. A key that
+landed there should be found the day it landed, not whenever someone looks.
 
 ## Also planned, and recorded elsewhere
 

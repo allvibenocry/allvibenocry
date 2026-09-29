@@ -234,9 +234,11 @@ Debian's Node.js 20 is recorded as deliberate (D32).
 - **The agent's conversations keep what it read and was told** (D60): a key
   pasted into the conversation, or a file the agent printed, is in its
   transcript on this machine until deleted. The activity log is scanned for
-  keys; the transcripts are Claude Code's own files, and are not.
-- **The activity log**: the agent can add lines of its own making, though it
-  cannot change or delete one; lines are lost, and the agent carries on, if the
+  keys; the transcripts are Claude Code's own files, and are not yet: a scan
+  of each session's conversations when the agent stops is planned (D60,
+  amended).
+- **The activity log is a narrative, not evidence** (D60, amended): the agent
+  can add lines of its own making, though it cannot change or delete one; lines are lost, and the agent carries on, if the
   logger is down; the log is not rotated (D60).
 - **A plan's marks belong to its words** (D56): if the agent changes a tried
   step's title or check, the step is untried again; a change the agent commits
