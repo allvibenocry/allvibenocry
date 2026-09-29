@@ -93,6 +93,31 @@ if (action === "plan") {
   must("dev commit", sh(C, ["dev", "commit", app, `The builder: ${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"} of the plan built`]));
   const deployed = must("dev deploy", sh(C, ["dev", "deploy", app]));
   console.log(`plan: ${plan.steps.length} steps, built; the test copy deployed (${deployed.stdout.split("\n").filter((l) => l.startsWith("ok")).length} steps ok)`);
+} else if (action === "cookies") {
+  // What the app receives (D74): a route, added as the builder would, that
+  // answers with the names of the cookies the request brought, never their
+  // values; committed and deployed to the test copy.
+  const [app] = rest;
+  const repo = `${STATE}/projects/${app}/repo`;
+  const file = `${repo}/server.js`;
+  const anchor = '    if (request.method === "GET" && url.pathname === "/") {';
+  const route = [
+    '    if (request.method === "GET" && url.pathname === "/cookies-received") {',
+    '      const names = String(request.headers.cookie ?? "").split(";").map((c) => c.trim().split("=")[0]).filter(Boolean);',
+    '      response.writeHead(200, { "Content-Type": "application/json" });',
+    "      response.end(JSON.stringify({ cookies: names }));",
+    "      return;",
+    "    }",
+    "",
+  ].join("\n");
+  const text = readFileSync(file, "utf8");
+  if (!text.includes("/cookies-received")) {
+    if (!text.includes(anchor)) { process.stderr.write("the app's server.js has no GET / route to put the new one before\n"); process.exit(1); }
+    writeFileSync(file, text.replace(anchor, `${route}${anchor}`));
+  }
+  must("dev commit", sh(C, ["dev", "commit", app, "A route that names the cookies it receives"]));
+  must("dev deploy", sh(C, ["dev", "deploy", app]));
+  console.log("cookies: /cookies-received, in the test copy");
 } else if (action === "unplug" || action === "plug") {
   // The test host's mounts are private (Docker's default), so an unmount here
   // does not reach a service with its own mount namespace, as the engine has
@@ -155,6 +180,6 @@ if (action === "plan") {
   console.log(`panel: the real one back (${left ? `STILL BROKEN: ${left}` : "no broken copy"}; ${r.stdout.split("\n").filter((l) => /^\s*changed:/.test(l)).length} changed)`);
   if (left) process.exit(1);
 } else {
-  process.stderr.write("usage: node panel-fixture.mjs plan <app> <steps> [label] | unplug | plug | setup-code | report <app> | live <app> | break <variant> | mend\n");
+  process.stderr.write("usage: node panel-fixture.mjs plan <app> <steps> [label] | cookies <app> | unplug | plug | setup-code | report <app> | live <app> | break <variant> | mend\n");
   process.exit(2);
 }

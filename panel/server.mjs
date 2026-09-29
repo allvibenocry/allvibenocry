@@ -114,16 +114,16 @@ export function engineOver(socketPath = ENGINE) {
 
 /**
  * The Preview's one allowed frame: the app's test copy, at its own port on the
- * host the browser reached the panel by (the machine's address, or, on the
- * test host, the workstation's loopback that forwards to it).
+ * apps' host, which the engine gives: the machine's address, never the panel's
+ * own name, whose cookie the browser would send to it (D74). On the test host,
+ * the host the harness declares.
  */
 export function testCopyFrame(engine) {
-  return async (app, host) => {
-    const hostname = /^([a-z0-9.-]+|\[[0-9a-f:]+\])(:\d+)?$/i.exec(host)?.[1];
-    if (!hostname) return [];
+  return async (app) => {
     const answer = await engine("app.get", { app });
+    const host = answer.body?.result?.appsHost;
     const port = answer.body?.result?.ports?.testCopy;
-    return Number.isInteger(port) ? [`http://${hostname}:${port}`] : [];
+    return Number.isInteger(port) && typeof host === "string" && /^[a-z0-9.-]{1,253}$/i.test(host) ? [`http://${host}:${port}`] : [];
   };
 }
 
@@ -182,14 +182,18 @@ export function createPanel({ engine = engineOver(), staticDir = path.join(HERE,
   };
   const redirect = (response, where) => send(response, 303, "", { Location: where });
 
-  /** A request that changes something: JSON, and from the panel's own pages. */
+  /**
+   * A request that changes something comes from the panel's own pages: its
+   * Origin is exactly the panel's, port included (D66, D74). Browsers send one
+   * with every such request; a request without one, or with "null" (a
+   * sandboxed frame), or with another port of the same host (a test copy, a
+   * live app), is refused. The Host is the panel's own: its door lets no other
+   * name through.
+   */
   const fromHere = (request) => {
     const host = String(request.headers.host ?? "");
     const origin = request.headers.origin;
-    const site = request.headers["sec-fetch-site"];
-    if (origin !== undefined) return origin === `http://${host}`;
-    if (site !== undefined) return site === "same-origin";
-    return false;
+    return typeof origin === "string" && host !== "" && origin === `http://${host}`;
   };
   const tokenMatches = (request, s) => {
     const given = String(request.headers["x-allvibe-token"] ?? "");

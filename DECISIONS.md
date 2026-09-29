@@ -1337,6 +1337,15 @@ is accepted only while it stays true, so `allvibe doctor` now checks that no
 network in the suite's address pools has IPv6 on, and says so plainly when one
 does (D49).
 
+#### Amendment, 2026-09-29 (D74)
+
+Two rules more, because the panel's door is now a container Docker publishes:
+from the pools, **replies** to connections opened from elsewhere go back (so
+the door answers the home network), and a connection a container **opens to a
+port the machine publishes** is refused (so the door stays off-limits to every
+project container, as every other port of the machine is). D74 says what was
+seen; the app isolation probe still counts 59 of 59.
+
 ## D42. The egress gate is a network filter, and the suite still never proxies credentials
 
 *2026-09-28. The third brief, item 2. The architect's review of the second
@@ -2329,6 +2338,13 @@ below the projects' (8100 and up), on the machine's home-network address:
 roadmap's "The control panel at allvibe.local", and is an open question in
 docs/design/panel-architecture.md.
 
+#### Amendment, 2026-09-29 (the seventh brief, item 4): port 80, by a door of its own
+
+The panel answers at `http://allvibe.local/`, and at the machine's address, on
+port 80, through a door container of its own that Docker publishes, not a
+server of the proxy (D74, which says why and what was seen). Port 8099 is
+closed.
+
 ## D64. Signing in to the panel, even at home
 
 *2026-09-29. The sixth brief, item 6. Details in
@@ -2736,3 +2752,115 @@ without asking anyone to remember.
    remove <name> --delete-everything`, then `allvibe project list`, where it is
    not. `test/host/walkthrough-blocks.mjs` checks both, and a heredoc: 161
    blocks, none with a problem; 48 before.
+
+## D74. The panel and the apps on different host names; the Preview frame fenced; port 80
+
+*2026-09-29. The seventh brief, item 4, carrying out D66's answers to
+questions 1 and 7. It amends D63: the panel's door is no longer a server of
+the proxy.*
+
+**The names.** The panel is **`allvibe.local`** (the command's name and
+`.local`), which the machine announces on the home network by multicast DNS,
+through Debian's Avahi: `allvibe-mdns.service`, as the service user, runs
+`avahi-publish` for the machine's address and follows it when it changes.
+**The apps keep the machine's address**, with a port each (D18, D30), and the
+panel links to them there, never on its own name: the engine gives the apps'
+host with every app (`appsHost`), and the Preview frame, "Open the live app"
+and the page's `frame-src` use it. The panel's session cookie is host-only
+(no `Domain`), so a browser that reached the panel by its name never sends the
+cookie to an app.
+
+**The fallback, for a device that cannot find `.local` names:** the machine's
+address, where the panel answers too (install, `panel status` and doctor say
+both). There the panel and the apps share a host, and the browser does send
+the panel's cookie to every app's port. So **every app's door takes it out**:
+the proxy passes each app the Cookie header without the panel's cookie,
+wherever it is in the header (two passes, and a header that still holds one
+after them is dropped whole), and the app's own cookies as they are; it is
+`HttpOnly`, so no app's page can read it either. And **no app's door answers
+on the panel's name** (421), so that `allvibe.local:<an app's port>` reaches
+nothing.
+
+**The Preview frame is sandboxed** (`allow-scripts allow-same-origin
+allow-forms`): the test copy runs, keeps its own origin, which is never the
+panel's, and sends its forms; it cannot navigate the top window, open a
+window, or reach the panel. The page listens to no message from it. "In a tab
+of its own", in the frame's bar, is the panel's own link, for what the frame
+does not allow.
+
+**The Origin check is exact and required**: every request that changes
+anything must carry `Origin` equal to the panel's own origin, port included;
+no Origin, `null`, another port of the same host (a test copy, a live app) or
+another host is refused. The fallback to `Sec-Fetch-Site` is gone: browsers
+send `Origin` with every such request.
+
+**Port 80.** The architect's first choice, Docker publishing port 80 to an
+unprivileged port inside a container, **does not work for the proxy**: it runs
+on the host's network (to see each visitor's real address, D12), where Docker
+publishes nothing. The second, **a capability for the proxy alone**, does not
+reach it either: Docker gives an added capability to a container's root user,
+not to the unprivileged user the proxy runs as. Seen on the test host with the
+proxy's own image (`test/host/port80-try.sh`): its user with `NET_BIND_SERVICE`
+added had effective capabilities `0000000000000000`; only root got `0400`. So
+it would mean running the proxy's master as root. (The test host cannot show
+the privilege itself: in a container's network namespace any user may bind
+from port 0, which the same script prints; a real Debian machine starts at
+1024.) **So the panel has a door of its own**, which Docker publishes: a small
+nginx from the proxy's pinned image, as its unprivileged user, with every
+capability dropped, read-only, on a network of its own and the panel's
+internal one, published on **port 80 of the machine's address only**. Docker
+binds the port; neither the proxy nor the machine changes, as the architect
+wanted of the first choice. Docker keeps a home-network device's own address
+for a published port, so the door's private-sources-only rule and its own
+names only rule (its name, the address, and the machine itself; anything else
+421) work as before. The proxy's server on 8099 is removed.
+
+**Two firewall rules follow from the door being a container** (D41, amended):
+
+- **Replies go back**: from the pools, a packet of a connection opened from
+  elsewhere (state `RELATED,ESTABLISHED`) is left to Docker's rules, so the
+  door answers the home network. Before, the refusal of everything from the
+  pools to private addresses took the replies too: from another device, port
+  80 timed out.
+- **A port the machine publishes is the machine's own**: a connection a
+  container opens to one is rewritten to the door's container, which the
+  pools' own traffic would have let through; it is refused now, by how it was
+  opened (`DNAT`, in the original direction). Found by the panel's probe:
+  from inside the test copy and the live app, the door answered 200. Now
+  "unreachable", like every other port of the machine.
+
+**Probed** on a fresh test host: `test/host/names-probe.mjs` 43 of 43, in
+headless Edge and on the host: the name resolved by Avahi and by another
+device over multicast DNS (`mdns-ask.mjs`, from the stand-in device's own
+network namespace); port 80 by the name and by the address, from the machine
+and from the device; another name 421; 8099 closed; no app's door on the
+panel's name; what the app receives (`panel-fixture.mjs cookies` gives the
+test project a route that names the cookies it received, never their values):
+straight at its own port it sees the panel's cookie (the control), through its
+door never, by the name the browser does not even send it, by the fallback
+the browser sends it and the door takes it out, and the app's own cookie
+passes; from the frame's own scripts, top navigation refused, no window, and a
+message and a form to the panel changing nothing, while a frame without the
+sandbox, the control, takes its top window over; six Origins refused and
+writing nothing, and the panel's own writing one report. `panel-probe.mjs` 62
+of 62 (with the door container's own fences), D41's `app-isolation.sh` 59 of
+59, `engine-probe.mjs` 54 of 54.
+
+**Limits.** A second machine on the same network announcing `allvibe.local`
+takes the name from this one; doctor then says so and gives the address
+(`mdns`). Avahi answers on every interface with multicast, Docker's bridges
+included; the containers are refused the machine anyway (D41). The test host's
+workstation browser reaches the panel through a forwarded port, as
+`localhost`, which is the fallback: the checks map `allvibe.local` to the
+loopback in their own browser only. And **an app's own cookies do not work
+inside Preview** when the panel is reached by its name: the frame is then from
+another site, where a browser sends a cookie only if it says `SameSite=None`,
+which needs HTTPS. So an app that keeps its own sign-in in a cookie is signed
+out in the frame; "In a tab of its own" works. TLS at home (D66, the next
+security milestone) is where that can change.
+
+**Why.** Cookies ignore ports, and `SameSite` does not help between two ports
+of one host (D66): only another host name keeps the panel's cookie from an
+app's code, which the agent writes. The fallback cannot have another name, so
+the apps' doors make sure of it there, and they do it by name everywhere, so
+the rule holds whichever address a person used.

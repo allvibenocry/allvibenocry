@@ -660,6 +660,9 @@ body.appview main{max-width:none;padding:0}
 .pview-top{display:flex;flex-direction:column;gap:14px}
 .pview-top:empty{display:none}
 .frame-slot{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+.fbar .fopen{flex:none;margin-left:auto;color:var(--text);font-size:.85rem;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.fbar .fopen + button{margin-left:12px}
+@media (max-width:640px){.fbar{flex-wrap:wrap;row-gap:4px}}
 
 /* Colour roles (docs/design/control-panel.md, rule 3; friction log 3):
    nothing that has not run yet is green. What has not run is neutral; a

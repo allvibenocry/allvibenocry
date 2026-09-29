@@ -79,38 +79,6 @@ When it is lost, the plan is:
   manifest (D23), so the suite can say exactly which backups the lost key was
   needed for.
 
-## The control panel at allvibe.local
-
-**Planned.** One of the website's promises (D33). **The panel itself is
-built**, its first slice (the sixth brief, D62 to D65, under "Built" below), at
-the machine's address on port 8099: what stays Planned here is the name, and
-port 80 (D63, amended).
-
-The control panel answers at **`allvibe.local`**, a name announced on the home
-network by multicast DNS (mDNS), with **the machine's address as the fallback**.
-The name is the machine's, not each project's: **projects keep one port per
-environment on the host's address**, as D18 and D30 decided, and the panel
-links to them.
-
-**Why.** A beginner needs one address to type, once; after that the panel's
-links take them everywhere (D30). mDNS needs no DNS server, router change or
-hosts file. D18 rejected `.local` names *for projects* because they do not
-resolve the same way on every device, and that is why the address stays as the
-fallback and why projects are not given such names.
-
-**Its own boundaries.** The panel will run in a container (D40), but it is not a
-project container: it drives the suite, so D41's firewall, which keeps project
-containers off the machine and the home network, is not its fence. What it may
-reach, and who may reach it (rule 3), is decided: an engine on a socket, an
-internal network with no route out, the proxy as its door on the home network,
-and signing in even at home (D62 to D64,
-[docs/design/panel-architecture.md](design/panel-architecture.md)).
-
-**Its design** is decided (D51): the owner's clickable demo is the reference,
-and its rules (calm when fine, action first, one meaning per colour, simple
-mode first, one word per thing, keyboard and screen readers) are in
-[docs/design/control-panel.md](design/control-panel.md).
-
 ## The panel over TLS at home, with passkeys
 
 **Planned: the next security milestone** (D64, D66). The panel starts on plain
@@ -546,6 +514,27 @@ These were named when their decisions were made, and are not repeated here:
 
 Each moved here when a brief built it; its heading is the one it had above.
 Built, run on the test host, and not yet tried by the owner (rule 6).
+
+## The control panel at allvibe.local
+
+**Built** (the seventh brief, D74). Was: Planned, one of the website's
+promises (D33); the panel itself was built in the sixth brief (D62 to D65), at
+the machine's address on port 8099.
+
+The control panel answers at **`http://allvibe.local/`**, a name the machine
+announces on the home network by multicast DNS (Avahi), on **port 80**, through
+a door of its own that Docker publishes, with **the machine's address as the
+fallback** for a device that cannot find `.local` names. The name is the
+panel's, not each project's: **projects keep one port per environment on the
+machine's address** (D18, D30), and the panel links to them there, so that its
+cookie never reaches an app; where a device uses the address for both, the
+apps' doors take the panel's cookie out.
+
+**Why.** A beginner needs one address to type, once; after that the panel's
+links take them everywhere (D30). mDNS needs no DNS server, router change or
+hosts file. D18 rejected `.local` names *for projects* because they do not
+resolve the same way on every device, and that is why the address stays as the
+fallback and why projects are not given such names.
 
 ## A release only after every step is tried
 

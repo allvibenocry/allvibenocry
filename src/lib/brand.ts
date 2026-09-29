@@ -72,6 +72,18 @@ export function namesFor(command: string) {
     panelNetwork: `${command}-panel`,
     panelDir: `${state}/panel`,
     panelAuth: `${state}/panel/auth.json`,
+    /**
+     * The panel's own name on the home network, announced by multicast DNS
+     * (D74): never an app's, so that its session cookie never reaches one.
+     */
+    panelName: `${command}.local`,
+    /** The panel's door on port 80 (D74): a container from the proxy's image, which Docker publishes. */
+    panelDoorContainer: `${command}-panel-door`,
+    panelDoorNetwork: `${command}-panel-door`,
+    panelDoorDir: `${state}/panel-door`,
+    mdnsService: `${command}-mdns.service`,
+    /** The panel's session cookie, which no app's door passes on (D74). */
+    panelCookie: `${command}_panel`,
     proxyProject: `${command}-proxy`,
     proxyContainer: `${command}-proxy`,
     /** The prefix of every Docker label the suite sets. */

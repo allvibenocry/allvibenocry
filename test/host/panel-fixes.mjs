@@ -15,7 +15,13 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { launch, openPage } from "./cdp.mjs";
 
 const args = process.argv.slice(2);
-const URL_ = args.includes("--url") ? args[args.indexOf("--url") + 1] : "http://localhost:8099";
+/** The panel, by its name, at the port the harness forwards the test host's port 80 to (D74). */
+function panelUrl() {
+  const status = spawnSync(process.execPath, ["test/host/host.mjs", "status"], { encoding: "utf8" }).stdout;
+  const port = /panel +test host 80 -> http:\/\/[^:]+:(\d+)\//.exec(status)?.[1];
+  return port ? `http://allvibe.local:${port}` : "http://localhost:8099";
+}
+const URL_ = args.includes("--url") ? args[args.indexOf("--url") + 1] : panelUrl();
 const APP = "frameprobe";
 const C = "allvibe";
 const GREEN = ["rgb(0, 166, 80)", "rgb(221, 243, 229)", "rgb(19, 48, 31)"];
@@ -70,12 +76,8 @@ try {
   console.log("(c) the Preview frame keeps what is typed in it:");
   // The frame is the test copy's own origin: read it from an isolated world of its own.
   async function inFrame(expression) {
-    const { frameTree } = await page.send("Page.getFrameTree");
-    const child = (frameTree.childFrames ?? [])[0]?.frame;
-    if (!child) return null;
-    const { executionContextId } = await page.send("Page.createIsolatedWorld", { frameId: child.id, worldName: `probe${Date.now()}` });
-    const r = await page.send("Runtime.evaluate", { expression, contextId: executionContextId, returnByValue: true });
-    return r.result.value;
+    const src = await page.eval(`document.querySelector("iframe.tc-frame")?.src ?? ""`);
+    return src ? page.evalInFrame(new URL(src).origin, expression) : null;
   }
   await page.waitFor(`true`);
   await sleep(1500);

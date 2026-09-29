@@ -54,6 +54,9 @@ sh /root/<script> allvibe <project> …`.
 | `power-fixtures.sh <command>` | Mains, battery and low battery, from stand-in power supply files, in doctor and the nightly result (D59). |
 | `app-isolation.sh <command> <project> [<device address> <port>]` | From inside dev's and prod's apps and databases: the machine's own ports, the router, a device on the home network and link-local refused; the public internet reached; each app reading its database; the doors answering the machine and the device (D41). The targets are tried from the machine first, where they must answer. Counts, and exits 1 if anything is wrong. |
 | `lan-fixtures.sh` | **Test host only.** Stand-ins for what a real machine has around it: an SSH server, a service on port 9999, and another device on the home network (a network namespace at 10.99.0.2, port 8080). Each is a unit, so it comes back after a restart. |
+| `mdns-ask.mjs <name>.local` | Asks the home network for a `.local` name by multicast DNS, with nothing but a socket, as a phone would; run inside the stand-in device's namespace (`ip netns exec lan-device node mdns-ask.mjs allvibe.local`). |
+| `http-ask.mjs <address> <port> <host> [path] [cookie]` | One request with a Host header (and a Cookie header) of one's choosing: the status and the start of the body. |
+| `mdns-try.sh`, `port80-try.sh` | What D74 was decided on, kept to be run again: Avahi publishing and resolving the panel's name as the service user; and whether the proxy's image binds port 80 as its user, with a capability added (its effective capabilities stay none), and the lowest port any user may bind on the test host (0, where a real machine has 1024). |
 | `lock-probe.mjs <command>` | One lock per app (D72): a release from the engine and one from the command line at once, both ways round, the second refused in plain words and one release made; a stale lock cleared; the nightly backup waiting for going back to end; and doctor counting the restore check a release and going back made (D73). With a project of its own, left behind for a look. |
 | `panel-fixture.mjs <action>` | **Test host only.** What the browser checks need done on the host, as the builder or the machine would: a plan's steps built and deployed to the test copy (`plan`), the backup disk unplugged and back (`unplug`, `plug`, in the engine's view too, since the test host's mounts do not reach a service's own), a setup code (`setup-code`), the newest report (`report`), a broken copy of the panel in the real one's place and the real one back (`break`, `mend`). The two browser scripts below push and call it. |
 
@@ -71,6 +74,7 @@ need the ports forwarded at the same numbers (`status` says).
 | Script | What it shows |
 |---|---|
 | `panel-journey.mjs <folder>` | The first slice of the panel, from the first visit to signing out: a step ready to try, a report, steps tried, a step the builder added refused, an unplugged backup disk refused, a version put live with every safety check shown as it runs, and going back to the one before. Screenshots of each screen. |
+| `names-probe.mjs` | The panel and the apps on different host names (D74), in the browser and on the host: the name announced and heard by another device, port 80 by the name and the address, no other name; the panel's cookie never received by the test copy or the live app, by the name (never sent) or by the address (sent, and taken out by the apps' doors), as the app itself says; the framed test copy, from its own scripts, unable to navigate the top window, open a window or act on the panel, and the control, a frame without the sandbox, taking its window over; every other Origin refused. |
 | `panel-fixes.mjs [--url …]` | The seventh brief's fixes (D73): text typed into the Preview frame kept across switching tabs, a step marked tried and the periodic look for changes, and the frame reloaded by a new test copy and by "Restart the test copy"; nothing green before the nightly checks have run, "It works" not green, a stopped live app red. Needs a host whose nightly backup has not run. |
 | `panel-checks.mjs <folder> [--broken <variants>\|none] [--configs <names>\|none]` | Every check, first seen failing on a deliberately broken copy of the panel (one per check), then passing on the real one, at 1280 and 390 px wide, light and dark: signing in and out, every flow and refusal, no console errors, no request to another origin, nothing wider than the screen, the keyboard in every dialog and tab list. |
 
@@ -89,7 +93,10 @@ need the ports forwarded at the same numbers (`status` says).
   published on this workstation's **loopback only**, at the same numbers when
   they are free (the harness checks, and picks another block if not). So a
   project the suite serves at `http://<host>:8101` on a real machine is at
-  `http://localhost:8101` here.
+  `http://localhost:8101` here. **Its port 80**, where the panel's door
+  listens (D74), goes to the port just after the block, 8120 when the block
+  is 8099 to 8119; `status` names it. The harness declares `apps-host=localhost`,
+  so the panel links to the apps where this workstation reaches them.
 
 ## Keeping the workstation clean
 

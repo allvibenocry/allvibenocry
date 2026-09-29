@@ -78,9 +78,16 @@ const SETUP = [
 /** The recipe's hash names the image, so a changed recipe is a new image. */
 const IMAGE = `${IMAGE_REPO}:${createHash("sha256").update(`${BASE}\n${SETUP}`).digest("hex").slice(0, 12)}`;
 
-/** Where the suite's proxy listens on a host: the control panel on 8099 (D63), the projects from 8100 (D16); and how many the harness maps. */
+/** Where the suite's proxy listens on a host: the projects from 8100 (D16); and how many the harness maps. */
 const GUEST_PORT_BASE = 8099;
 const PORT_COUNT = 21;
+/**
+ * The control panel's door, port 80 (D74), forwarded to the port just after
+ * the block: http://allvibe.local:<that port>/ in a browser that maps the name
+ * to this workstation's loopback, as the browser checks do.
+ */
+const GUEST_PANEL_PORT = 80;
+const LOCAL_SPAN = PORT_COUNT + 1;
 
 const VOLUMES = [
   { name: `${NAME}-docker`, target: "/var/lib/docker", why: "Docker's data: it cannot live on the container's overlay root" },
@@ -155,14 +162,14 @@ function portFree(port, host) {
 
 /** The first block of free ports on this workstation, checked, not assumed. */
 async function freePortBlock() {
-  for (let base = GUEST_PORT_BASE; base < 9000; base += PORT_COUNT) {
+  for (let base = GUEST_PORT_BASE; base < 9000; base += LOCAL_SPAN) {
     let free = true;
-    for (let port = base; port < base + PORT_COUNT && free; port += 1) {
+    for (let port = base; port < base + LOCAL_SPAN && free; port += 1) {
       free = (await portFree(port, "127.0.0.1")) && (await portFree(port, "0.0.0.0"));
     }
     if (free) return base;
   }
-  throw new Error(`no block of ${PORT_COUNT} free ports between ${GUEST_PORT_BASE} and 9000 on this workstation`);
+  throw new Error(`no block of ${LOCAL_SPAN} free ports between ${GUEST_PORT_BASE} and 9000 on this workstation`);
 }
 
 /* ------------------------------------------------------------- image -- */
@@ -259,6 +266,7 @@ async function create({ portBase } = {}) {
     ...VOLUMES.flatMap((v) => ["-v", `${v.name}:${v.target}`]),
     // Loopback only: the test host is for this workstation, not the LAN.
     "-p", `127.0.0.1:${base}-${base + PORT_COUNT - 1}:${GUEST_PORT_BASE}-${GUEST_PORT_BASE + PORT_COUNT - 1}`,
+    "-p", `127.0.0.1:${base + PORT_COUNT}:${GUEST_PANEL_PORT}`,
     IMAGE,
   ];
   docker(args);
@@ -270,10 +278,13 @@ async function create({ portBase } = {}) {
   // virtual disk, so none of the three can be measured here: they are declared,
   // as an ordinary machine that passes every check. A test forces a warning by
   // changing one (override set memory-mb=4096, or system-disk=rotational).
-  const profile = ["memory-mb=16384", "system-disk=ssd", `external-backup-mount=${BACKUP_MOUNT}`];
+  // The workstation's browser reaches the apps through the forwarded ports on
+  // its own loopback, not at the test host's address (D74).
+  const profile = ["memory-mb=16384", "system-disk=ssd", `external-backup-mount=${BACKUP_MOUNT}`, "apps-host=localhost"];
   writeOverrides(profile);
   say(`overrides ${OVERRIDES}: ${profile.join(", ")}`);
   say(`ports     test host ${GUEST_PORT_BASE}-${GUEST_PORT_BASE + PORT_COUNT - 1} -> http://localhost:${base}-${base + PORT_COUNT - 1} on this workstation`);
+  say(`panel     test host ${GUEST_PANEL_PORT} -> http://${CMD}.local:${base + PORT_COUNT}/ (a browser mapping ${CMD}.local to 127.0.0.1), or http://localhost:${base + PORT_COUNT}/`);
   say(`ready     a fresh Debian 13 host. Next: node test/host/host.mjs shell`);
 }
 
@@ -433,6 +444,7 @@ function status() {
   say(`container ${NAME}: ${inspect("{{.State.Status}}")}, image ${inspect("{{.Config.Image}}")}`);
   say(`systemd   ${docker(["exec", NAME, "systemctl", "is-system-running"], { allowFail: true, quiet: true }).out || "unknown"}`);
   say(`ports     test host ${GUEST_PORT_BASE}-${GUEST_PORT_BASE + PORT_COUNT - 1} -> http://localhost:${base}-${base + PORT_COUNT - 1}`);
+  say(`panel     test host ${GUEST_PANEL_PORT} -> http://${CMD}.local:${base + PORT_COUNT}/ or http://localhost:${base + PORT_COUNT}/`);
   for (const volume of VOLUMES) say(`volume    ${volume.name} at ${volume.target} (${volume.why})`);
   const current = readOverrides();
   say(`overrides ${current.length ? current.join(", ") : "none"}`);

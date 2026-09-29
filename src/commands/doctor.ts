@@ -22,6 +22,7 @@ import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../l
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
 import { readOverrides } from "../lib/overrides.js";
 import { panelUrl } from "../lib/panel.js";
+import { lanAddress } from "../lib/project.js";
 import { POWER_SUPPLY_DIR, powerCheck, readPower } from "../lib/power.js";
 import { AuthStore } from "../engine/auth.js";
 import { tryRun } from "../lib/run.js";
@@ -273,6 +274,21 @@ export function checks(): Check[] {
       : panelState.exists
         ? `The control panel's container is ${panelState.status}, and ${url}health answered ${answered || "nothing"}: run install.sh again`
         : "The control panel is not installed: run install.sh again",
+  );
+
+  // Its name on the home network (D74): announced, and this machine's. A name
+  // another device has taken is worth a look, not a problem: the address works.
+  const mdnsActive = tryRun("systemctl", ["is-active", NAMES.mdnsService]).stdout.trim();
+  const resolved = mdnsActive === "active" ? /\s(\d+\.\d+\.\d+\.\d+)\s*$/.exec(tryRun("avahi-resolve", ["-4", "-n", NAMES.panelName]).stdout)?.[1] ?? "" : "";
+  const mine = lanAddress();
+  add(
+    "mdns",
+    resolved === mine ? "ok" : "warn",
+    resolved === mine
+      ? `The panel's name: ${NAMES.panelName} is announced on the home network, for ${mine}`
+      : mdnsActive !== "active"
+        ? `The panel's name ${NAMES.panelName} is not announced (${NAMES.mdnsService} is ${mdnsActive || "missing"}): use ${url}, or run install.sh again`
+        : `The panel's name ${NAMES.panelName} ${resolved ? `is another device's (${resolved})` : "is not found yet"}: use ${url} meanwhile. If another device on the home network has the name, rename or remove it there`,
   );
 
   const enabled = tryRun("systemctl", ["is-enabled", NAMES.backupTimer]).stdout.trim();

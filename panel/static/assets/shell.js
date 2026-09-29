@@ -67,7 +67,9 @@
     const days = Math.round(hours / 24);
     return `${days} day${days === 1 ? "" : "s"} ago`;
   };
-  const hostUrl = (port) => `${location.protocol}//${location.hostname}:${port}/`;
+  // An app's address: on the apps' host, which the engine gives, never the
+  // panel's own name, whose cookie the browser would send along (D74).
+  const hostUrl = (port) => `http://${S.detail?.appsHost ?? location.hostname}:${port}/`;
   const nextV = (d) => `v${d.next?.version?.replace(/^v/, "") ?? Number((d.live ?? "v0").replace(/^v/, "")) + 1}`;
   const jobKey = (app) => `panel-job-${app}`;
   const remember = (app, value) => { try { if (value) sessionStorage.setItem(jobKey(app), JSON.stringify(value)); else sessionStorage.removeItem(jobKey(app)); } catch {} };
@@ -206,7 +208,7 @@
   const CHECK_TITLES = {
     os: "The operating system", arch: "The processor", memory: "Memory", disk: "The computer's own disk", power: "Power",
     docker: "Docker", pools: "Docker's networks", ipv6: "IPv6", user: "The service user", dirs: "Folders", version: "The version",
-    proxy: "The doors", firewall: "The firewall", "keys-at-boot": "Keys at start-up", engine: "The engine", panel: "The control panel",
+    proxy: "The doors", firewall: "The firewall", "keys-at-boot": "Keys at start-up", engine: "The engine", panel: "The control panel", mdns: "The control panel's name",
     timer: "The nightly backup", target: "Backup disk", hostkey: "The key for restore tests", recovery: "Recovery key",
     overrides: "Test host settings", "overrides-unknown": "Test host settings",
   };
@@ -286,9 +288,15 @@
       slot.innerHTML = `<div class="tc-empty-frame"><p>${restarting ? "The test copy is starting. This takes a minute." : "The test copy is not running."}</p></div>`;
       return;
     }
+    // The test copy's code is the agent's, so it is not trusted (D66, D74): it
+    // runs, keeps its own origin and sends its forms, and may do nothing else:
+    // not navigate this window, not open another, not reach this page. And
+    // this page listens to no message from it.
     const frame = document.createElement("iframe");
     frame.className = "tc-frame";
     frame.title = `The test copy of ${d.name}`;
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+    frame.referrerPolicy = "no-referrer";
     frame.src = src;
     slot.replaceChildren(frame);
   }
@@ -340,7 +348,7 @@
   function fbarHTML() {
     const restarting = running() && S.jobKind === "startTestCopy";
     const up = S.detail.testCopy?.running;
-    return `<span class="tc">Test copy</span><span class="fmid">${restarting ? "Restarting the test copy…" : "Try anything here. The live app is not touched."}</span>${up && !running() ? '<button type="button" data-action="start-test">Restart the test copy</button>' : ""}`;
+    return `<span class="tc">Test copy</span><span class="fmid">${restarting ? "Restarting the test copy…" : "Try anything here. The live app is not touched."}</span>${up && !running() ? `<a class="fopen" href="${esc(hostUrl(S.detail.ports.testCopy))}" target="_blank" rel="noopener noreferrer">In a tab of its own</a><button type="button" data-action="start-test">Restart the test copy</button>` : ""}`;
   }
 
   /* --------------------------------------------------------- Live -- */

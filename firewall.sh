@@ -15,8 +15,9 @@
 #   machine routes: between two addresses of the pools, it is left to Docker's
 #   own rules (a container reaches its own network's containers and no other);
 #   from the pools to any private, link-local, shared or multicast range, where
-#   the home network, the router and every other device live, it is refused.
-#   The public internet stays reachable.
+#   the home network, the router and every other device live, it is refused,
+#   unless it is a reply to a connection opened from there (the panel's door,
+#   D74): a container opens nothing there. The public internet stays reachable.
 #
 #   <COMMAND>-IN, the first rule of INPUT, for traffic to the machine itself:
 #   every new connection from the pools is refused, whatever the port. Replies
@@ -50,8 +51,20 @@ ipt() { iptables -w 10 "$@"; }
 expected() {
   local pool to
   echo "-N $FWD"
+  # A port the machine publishes is the machine's own (D74: the panel's door,
+  # which Docker publishes for a container). A container that opens a
+  # connection to one is rewritten to that container, so it is refused here,
+  # by how it was opened, before the pools' own traffic is left to Docker.
+  for pool in $POOLS; do
+    echo "-A $FWD -s $pool -m conntrack --ctstate DNAT --ctdir ORIGINAL -j REJECT --reject-with icmp-admin-prohibited"
+  done
   for pool in $POOLS; do
     for to in $POOLS; do echo "-A $FWD -s $pool -d $to -j RETURN"; done
+  done
+  # Replies go back (D74): the panel's door answers devices on the home
+  # network from a network of the pools. A container still opens nothing there.
+  for pool in $POOLS; do
+    echo "-A $FWD -s $pool -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN"
   done
   for pool in $POOLS; do
     for to in $BLOCKED; do echo "-A $FWD -s $pool -d $to -j REJECT --reject-with icmp-admin-prohibited"; done

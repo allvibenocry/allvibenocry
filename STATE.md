@@ -112,8 +112,11 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
 - **The control panel** (D63, D64, D65). A container built on the machine from
   the pinned Node.js 24 image, as its own user, read-only, with no
   capabilities, on an internal network with no route out, with only the
-  engine's socket mounted; its door in the proxy at the home-network address,
-  port 8099, private sources and its own host names only. A one-time setup
+  engine's socket mounted; its door, a container of its own that Docker
+  publishes on port 80 of the home-network address, at `http://allvibe.local/`
+  (announced by multicast DNS) and at the address, private sources and its
+  own names only; its cookie never reaching an app, and the Preview frame
+  sandboxed (D74). A one-time setup
   code, then a password; a strict session cookie; cross-site requests refused;
   wrong tries paused. Its first slice, simple mode, in the demo's design: home
   with the nightly status and each app's next action; an app's plan, Preview
@@ -157,6 +160,7 @@ each with where it goes.
 | 1. Records | Recorded: the owner's try of steps 29 and 30 (below); the friction log's six entries; D66 to D70; TLS at home as the next security milestone in the roadmap. |
 | 2. The workstation's protections | Built and seen on the workstation (D71; the website's D34): in the owner's user settings, D61's 90 deny rules, 20 more against skipping commit hooks, and a hook that refuses heredocs and multi-line quoted text; the same in both repositories' project settings; the guard as pre-commit and commit-msg hooks in both clones. A heredoc, a multi-line `node -e` and a here-string refused by the hook; `--no-verify`, `-n`, `core.hooksPath` and a force push refused by deny rules; the guard's hooks 9 of 9 in a throwaway clone of each repository, each refusal with its control; ordinary commands and commits through. |
 | 3. Fixes | Built and probed on a fresh test host, each against the previous commit's bundle first: (a) one lock per app (D72), `lock-probe.mjs` 29 of 29, 13 WRONG on the control; (b) Machine health counts a release's and going back's restore checks, (c) the Preview frame keeps its text and reloads only for a new test copy, (d) nothing not yet run is green (D73), `panel-fixes.mjs` 19 of 19 in headless Edge, 10 WRONG on the control; (e) the walkthrough, one command per block and every project's name made free first, `walkthrough-blocks.mjs` 161 blocks, none wrong. |
+| 4. The Preview frame and host names | Built and probed on a fresh test host (D74): the panel at `allvibe.local` (Avahi) and the machine's address, on port 80 through a door container Docker publishes (a capability does not reach the proxy's unprivileged user, seen); the apps' doors taking out the panel's cookie and refusing its name; the frame sandboxed; the Origin check exact and required; two firewall rules for the door (D41, amended). `names-probe.mjs` 43 of 43 in headless Edge and on the host, each part with its control; `panel-probe.mjs` 62 of 62 (it found containers reaching the door, fixed); `app-isolation.sh` 59 of 59; `engine-probe.mjs` 54 of 54. |
 
 ## The sixth brief
 
@@ -281,6 +285,12 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   (rule 11), by the owner's decision (D67): the address is an example address
   in a test, from the owner's private list, and stays in `864be95`, as the
   website's first days stay in its history (its D14).
+- **An app's own cookies do not work inside Preview** when the panel is
+  reached by its name (D74): the frame is from another site, where a browser
+  sends only `SameSite=None` cookies, which need HTTPS. An app's own sign-in
+  is signed out in the frame; "In a tab of its own" works.
+- **Another device named `allvibe.local`** on the same network takes the name;
+  doctor then says so, and the machine's address still works (D74).
 - **A new project shows "no backup yet"** in Machine health until its first
   backup: the first night, its first release, or `allvibe backup <project>`.
   (A release's and going back's restore checks now count, D73.)
@@ -347,8 +357,8 @@ Debian's Node.js 20 is recorded as deliberate (D32).
 ## Next
 
 What is planned is in **[docs/roadmap.md](docs/roadmap.md)**: off-site backups,
-the recovery key in the web UI, a lost recovery key, the control panel at
-`allvibe.local`, an installer on a USB stick, disk health warnings, a monthly
+the recovery key in the web UI, a lost recovery key, the panel over TLS at
+home (the next security milestone, D66), an installer on a USB stick, disk health warnings, a monthly
 check-up, moving to a new computer, full disk encryption at install, the rest
 of the agent adapters with the MCP bridge next (D44), sign-in and invitations,
 two modes in the control panel, a bug report builder, the architect as a role
@@ -431,12 +441,16 @@ closes these. Each names the test override or stand-in used in the container.
   pasted back into it.
 - **The harness over SSH.** `exec`, `shell`, `push`, `pull` and `status` with
   `ALLVIBE_TEST_HOST` set have not run against a real machine.
-- **The control panel from another device on the home network** (D63). On the
-  test host the browser reached the panel through the harness's forwarded
-  ports on the workstation's loopback. On the laptop: from a phone and a
-  computer on the same network, at `http://<address>:8099/`; the door refusing
-  a public source address and another host name; and the Preview frame at the
-  test copy's port on that address.
+- **The control panel from another device on the home network** (D63, D74).
+  On the test host the browser reached the panel through the harness's
+  forwarded ports on the workstation's loopback, with `allvibe.local` mapped
+  there in the checks' own browser; another device was a network namespace
+  that asked for the name over multicast DNS. On the laptop: from a phone
+  (iOS and Android) and a computer on the same network, `http://allvibe.local/`
+  and the address; which devices find the `.local` name; the door refusing a
+  public source address and another host name; port 80 bound by Docker for
+  the door, where a real machine's own processes need a privilege below 1024;
+  and the Preview frame at the test copy's port on the address.
 - **An unplugged backup disk, as the engine sees it** (D65). The test host's
   mounts are private, so the browser checks unplug the disk in the engine's
   view as well. On the laptop, systemd shares mounts with its services: pull

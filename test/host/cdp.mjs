@@ -26,7 +26,10 @@ export async function launch() {
   const exe = CANDIDATES.find((c) => existsSync(c));
   if (!exe) throw new Error("no Edge or Chrome on this workstation (set BROWSER)");
   const profile = mkdtempSync(path.join(tmpdir(), "panel-browser-"));
-  const child = spawn(exe, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--hide-scrollbars", "--mute-audio", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  // The panel's own name (D74), which a home network resolves by multicast DNS,
+  // is this browser's loopback, where the harness forwards the test host's
+  // port 80. Nothing else is mapped.
+  const child = spawn(exe, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--hide-scrollbars", "--mute-audio", "--host-resolver-rules=MAP allvibe.local 127.0.0.1", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   const port = await new Promise((resolve, reject) => {
     let seen = "";
     child.stderr.on("data", (c) => {
@@ -51,6 +54,9 @@ export async function openPage(port, { width = 1280, height = 800, mobile = fals
   let id = 0;
   const pending = new Map();
   const handlers = new Map();
+  // A frame from another site runs in a process of its own, with a session of
+  // its own (flattened into this socket): its scripts are reached only there.
+  const frames = new Map();
   ws.addEventListener("message", (e) => {
     const m = JSON.parse(e.data);
     if (m.id) {
@@ -58,9 +64,14 @@ export async function openPage(port, { width = 1280, height = 800, mobile = fals
       pending.delete(m.id);
       if (m.error) p.reject(new Error(`${p.method}: ${m.error.message}`));
       else p.resolve(m.result);
-    } else for (const h of handlers.get(m.method) ?? []) h(m.params);
+    } else if (m.method === "Target.attachedToTarget") {
+      frames.set(m.params.sessionId, m.params.targetInfo);
+    } else if (m.method === "Target.detachedFromTarget") {
+      frames.delete(m.params.sessionId);
+    } else if (!m.sessionId) for (const h of handlers.get(m.method) ?? []) h(m.params);
   });
-  const send = (method, params = {}) => new Promise((resolve, reject) => { id += 1; pending.set(id, { resolve, reject, method }); ws.send(JSON.stringify({ id, method, params })); });
+  const sendTo = (sessionId, method, params = {}) => new Promise((resolve, reject) => { id += 1; pending.set(id, { resolve, reject, method }); ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) })); });
+  const send = (method, params = {}) => sendTo(null, method, params);
   const on = (method, h) => handlers.set(method, [...(handlers.get(method) ?? []), h]);
   const once = (method) => new Promise((resolve) => {
     const h = (p) => { handlers.set(method, (handlers.get(method) ?? []).filter((x) => x !== h)); resolve(p); };
@@ -82,15 +93,51 @@ export async function openPage(port, { width = 1280, height = 800, mobile = fals
   on("Network.requestWillBeSent", (p) => log.requests.push({ url: p.request.url, frame: p.frameId, main: p.frameId === mainFrame, type: p.type }));
   on("Network.responseReceived", (p) => { if (p.type === "Document" && p.frameId !== mainFrame) log.frames.push({ url: p.response.url, status: p.response.status }); });
   on("Page.frameNavigated", (p) => { if (!p.frame.parentId) mainFrame = p.frame.id; });
+  // Each frame's main world in this page's process, by frame.
+  const contexts = new Map();
+  on("Runtime.executionContextCreated", (p) => { if (p.context.auxData?.isDefault) contexts.set(p.context.auxData.frameId, p.context.id); });
 
   await send("Page.enable");
   await send("Runtime.enable");
   await send("Log.enable");
   await send("Network.enable");
   await send("Page.setBypassCSP", { enabled: false });
+  await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
 
   const page = {
     send, on, once, log,
+    /**
+     * Runs in the scripts of the frame from another site whose address starts
+     * with `urlPrefix` (the Preview's test copy), in its own main world, as
+     * its own code would. Null when there is no such frame.
+     */
+    async evalInFrame(urlPrefix, expression, { userGesture = false } = {}) {
+      const params = { expression, returnByValue: true, awaitPromise: true, userGesture };
+      // A frame is attached before it has navigated, so its recorded address may be blank: ask it.
+      let found = null;
+      for (const [sessionId, info] of frames) {
+        if (info.type !== "iframe") continue;
+        const where = await sendTo(sessionId, "Runtime.evaluate", { expression: "location.href", returnByValue: true }).catch(() => null);
+        if (String(where?.result?.value ?? "").startsWith(urlPrefix)) {
+          found = sessionId;
+          break;
+        }
+      }
+      let r;
+      if (found) r = await sendTo(found, "Runtime.evaluate", params);
+      else {
+        // A frame of the same site runs in this page's process: its own main world, found by its frame.
+        const { frameTree } = await send("Page.getFrameTree");
+        const child = (frameTree.childFrames ?? []).map((c) => c.frame).find((f) => f.url.startsWith(urlPrefix));
+        const contextId = child && contexts.get(child.id);
+        if (!contextId) return null;
+        r = await send("Runtime.evaluate", { ...params, contextId });
+      }
+      if (r.exceptionDetails) return `refused: ${(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text).split("\n")[0].slice(0, 80)}`;
+      return r.result.value;
+    },
+    /** The frames from other sites it has, by address. */
+    frameUrls: () => [...frames.values()].filter((i) => i.type === "iframe").map((i) => i.url),
     async size(w, h, isMobile = false) {
       await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: isMobile });
       await send("Emulation.setTouchEmulationEnabled", { enabled: isMobile });

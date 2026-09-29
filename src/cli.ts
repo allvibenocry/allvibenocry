@@ -9,6 +9,7 @@ import { backupCommands } from "./commands/backup.js";
 import { dev } from "./commands/dev.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
 import { key, keysUnlock } from "./commands/key.js";
+import { mdnsPublish } from "./commands/mdns.js";
 import { panel } from "./commands/panel.js";
 import { plan } from "./commands/plan.js";
 import { project } from "./commands/project.js";
@@ -62,6 +63,7 @@ Used by the installer and the timer:
   setup                        make the suite's own state what it should be
   scheduled-backup             the daily backup and restore test
   keys-unlock                  every key back in memory, at boot, before the apps start
+  mdns-publish                 the control panel's name on the home network, by multicast DNS
 `;
 
 type Handler = (args: string[]) => number | Promise<number>;
@@ -84,6 +86,7 @@ const COMMANDS: Record<string, Handler> = {
   },
   setup: () => setup(),
   "scheduled-backup": () => scheduledBackup(),
+  "mdns-publish": () => mdnsPublish(),
 };
 
 // Output piped into something that stops reading (`| head`) is not an error.

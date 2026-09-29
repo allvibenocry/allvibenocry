@@ -12,7 +12,7 @@
  */
 import { NAMES } from "../lib/brand.js";
 import { containerState, tryDocker, waitHealthy } from "../lib/docker.js";
-import { ensurePanel, panelUrl } from "../lib/panel.js";
+import { ensurePanel, panelWhere } from "../lib/panel.js";
 import { AuthStore, showCode } from "../engine/auth.js";
 
 const C = NAMES.command;
@@ -25,7 +25,7 @@ async function install(): Promise<number> {
 
 function showNew(code: string): void {
   process.stdout.write(
-    `The control panel: ${panelUrl()}\n` +
+    `The control panel: ${panelWhere()}\n` +
       `Its setup code, for your first visit: ${showCode(code)}\n` +
       "It works once. It is shown here, on the machine, and nowhere else.\n",
   );
@@ -35,12 +35,12 @@ function setupCode(ifNew: boolean): number {
   const store = new AuthStore(NAMES.panelAuth);
   const status = store.status();
   if (status.claimed) {
-    process.stdout.write(`The control panel: ${panelUrl()}, set up: sign in with its password.\n`);
+    process.stdout.write(`The control panel: ${panelWhere()}\nIt is set up: sign in with its password.\n`);
     return ifNew ? 0 : 1;
   }
   if (ifNew && status.hasCode) {
     process.stdout.write(
-      `The control panel: ${panelUrl()}\n` +
+      `The control panel: ${panelWhere()}\n` +
         `It waits for the setup code shown when it was made. A new one, which replaces it: sudo ${C} panel setup-code\n`,
     );
     return 0;
@@ -64,7 +64,7 @@ function status(): number {
   const auth = new AuthStore(NAMES.panelAuth).status();
   const state = containerState(NAMES.panelContainer);
   process.stdout.write(
-    `The control panel: ${panelUrl()}\n` +
+    `The control panel: ${panelWhere()}\n` +
       `  its container: ${state.exists ? `${state.status}, ${state.health}` : "not there"}\n` +
       `  ${auth.claimed ? "set up: sign in with its password" : auth.hasCode ? "waiting for its setup code" : `not set up, and no setup code: sudo ${C} panel setup-code`}` +
       `${auth.pausedFor ? `; signing in is paused for ${auth.pausedFor} seconds after wrong tries` : ""}\n`,

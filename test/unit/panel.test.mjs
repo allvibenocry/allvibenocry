@@ -24,7 +24,7 @@ function fakeEngine(state = { claimed: false }) {
         ? { status: 200, body: { ok: true, result: { signedIn: true } } }
         : { status: 403, body: { ok: false, error: { code: "refused", message: "that is not the password.", reason: "wrong" } } };
     }
-    if (op === "app.get") return { status: 200, body: { ok: true, result: { name: args.app, ports: { live: 8102, testCopy: 8103 } } } };
+    if (op === "app.get") return { status: 200, body: { ok: true, result: { name: args.app, ports: { live: 8102, testCopy: 8103 }, appsHost: state.appsHost ?? "192.0.2.10" } } };
     return { status: 200, body: { ok: true, result: { op, args } } };
   };
   return { engine, calls, state };
@@ -128,6 +128,10 @@ test("cross-site requests are refused, before anything reaches the engine", asyn
       [panel.post("/api/op/apps.list", {}, { cookie, token, origin: "http://evil.example" }), 403, "another origin"],
       [panel.post("/api/op/apps.list", {}, { cookie, token, origin: null }), 403, "no origin and no fetch metadata"],
       [panel.post("/api/op/apps.list", {}, { cookie, token, origin: null, extra: { "Sec-Fetch-Site": "cross-site" } }), 403, "cross-site fetch metadata"],
+      [panel.post("/api/op/apps.list", {}, { cookie, token, origin: null, extra: { "Sec-Fetch-Site": "same-origin" } }), 403, "no origin, even with same-origin fetch metadata (D74)"],
+      [panel.post("/api/op/apps.list", {}, { cookie, token, origin: "null" }), 403, "a sandboxed frame's origin"],
+      [panel.post("/api/op/apps.list", {}, { cookie, token, origin: panel.origin.replace(/:(\d+)$/, (_, p) => `:${Number(p) + 1}`) }), 403, "the same host, another port"],
+      [panel.post("/api/op/apps.list", {}, { cookie, token, origin: `${panel.origin}/` }), 403, "not exactly the origin"],
       [panel.post("/api/op/apps.list", "{}", { cookie, token, type: "text/plain" }), 415, "a form's content type"],
       [panel.post("/api/op/apps.list", "{}", { cookie, token, type: "application/x-www-form-urlencoded" }), 415, "a form post"],
       [panel.post("/api/sign-in", { password: "a long enough password" }, { origin: "http://evil.example" }), 403, "signing in from elsewhere"],
@@ -136,7 +140,6 @@ test("cross-site requests are refused, before anything reaches the engine", asyn
     assert.equal(fake.calls.length, before, "the engine was asked nothing");
     const ok = await panel.post("/api/op/apps.list", {}, { cookie, token });
     assert.equal(ok.status, 200);
-    assert.equal((await panel.post("/api/op/apps.list", {}, { cookie, token, origin: null, extra: { "Sec-Fetch-Site": "same-origin" } })).status, 200);
     const options = await panel.ask("OPTIONS", "/api/op/apps.list", { headers: { Origin: "http://evil.example", "Access-Control-Request-Method": "POST" } });
     assert.notEqual(options.status, 200);
     assert.equal(options.headers["access-control-allow-origin"], undefined, "no CORS");
@@ -200,17 +203,20 @@ test("its own files only, with its headers everywhere", async () => {
   }
 });
 
-test("an app's page may frame its test copy, on the host the browser used, and nothing else", async () => {
+test("an app's page may frame its test copy, on the apps' host the engine gives, and nothing else (D74)", async () => {
   const fake = fakeEngine({ claimed: true });
   const frames = testCopyFrame(fake.engine);
-  assert.deepEqual(await frames("guestbook", "machine.example:8099"), ["http://machine.example:8103"]);
-  assert.deepEqual(await frames("guestbook", "localhost:8099"), ["http://localhost:8103"]);
-  assert.deepEqual(await frames("guestbook", "evil.example/x"), []);
+  assert.deepEqual(await frames("guestbook"), ["http://192.0.2.10:8103"], "the machine's address, not the panel's name");
+  fake.state.appsHost = "localhost";
+  assert.deepEqual(await frames("guestbook"), ["http://localhost:8103"], "the test host's, as the harness declares it");
+  fake.state.appsHost = "evil.example/x";
+  assert.deepEqual(await frames("guestbook"), [], "nothing that is not a host name");
+  fake.state.appsHost = undefined;
   const panel = await serve({ engine: fake.engine, frames });
   try {
     const { cookie } = await signedIn(panel);
     const app = await panel.ask("GET", "/apps/guestbook", { cookie });
-    assert.match(app.headers["content-security-policy"], /frame-src http:\/\/127\.0\.0\.1:8103(;|$)/);
+    assert.match(app.headers["content-security-policy"], /frame-src http:\/\/192\.0\.2\.10:8103(;|$)/);
     const home = await panel.ask("GET", "/", { cookie });
     assert.doesNotMatch(home.headers["content-security-policy"], /frame-src/);
   } finally {

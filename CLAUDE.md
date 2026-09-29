@@ -53,8 +53,8 @@ directories use the same name.
 2. **No release without a fresh backup** on a target outside the machine's own
    disk, and that backup must have passed a restore test.
 3. **The control panel is never exposed directly to the internet.** It answers
-   only through the proxy, on the machine's home-network address, to private
-   source addresses (D63).
+   only through its door, on the machine's home-network address, by its own
+   names, to private source addresses (D63, D74).
 4. **Secrets never appear** on a command line, in output, in logs, in the repo or
    in a chat. Tools read them by name from the environment or from files with
    restricted permissions, and never prompt for a password. SSH is key-based
@@ -366,3 +366,17 @@ From the seventh brief, here:
     said WRONG about a panel that was right. *Here:* a probe makes the real
     event happen (a committed change, deployed) and checks that it did before
     judging what followed.
+49. **A frame from another site runs in another process.** Once the panel was
+    reached by its own name, the test copy's frame moved to a process of its
+    own, which the page's debugging session does not see; the probe's "inside
+    the frame" commands ran in the panel's page instead, which navigated
+    itself and opened windows, and the probe reported that as the frame's.
+    *Here:* a check that runs inside something first asks it where it is, and
+    says "no such frame" rather than run anywhere else (`cdp.mjs`,
+    `evalInFrame`).
+50. **Moving a service changes which rules apply to it.** The panel's door
+    moved from the proxy, on the host's network, into a container: D41's
+    rules for containers then dropped its replies to the home network, and
+    let the apps' containers reach it. The existing probes caught both.
+    *Here:* when something moves between the host and a container, every
+    isolation probe of both runs again before it counts as done.

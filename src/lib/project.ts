@@ -24,7 +24,7 @@ import { NAMES } from "./brand.js";
 import type { HostConfig } from "./config.js";
 import { containerState, docker, tryDocker, waitHealthy, type ContainerState } from "./docker.js";
 import { ensureFile, readJson, writeAtomic } from "./files.js";
-import { reloadProxy, writeServerConf } from "./proxy.js";
+import { APP_COOKIE, reloadProxy, writeServerConf } from "./proxy.js";
 import { run, tryRun } from "./run.js";
 import { runtimeFile, secretPath, unlockScope } from "./vault.js";
 
@@ -378,8 +378,14 @@ server {
     # IPv4 only: a global IPv6 address would put this on the internet (D18).
     listen 0.0.0.0:${listen};
 ${deny.join("\n")}${deny.length ? "\n" : ""}
+    # Never on the control panel's own name, whose cookie the browser would
+    # send here (D74).
+    if ($host = "${NAMES.panelName}") { return 421; }
+
     location / {
         proxy_pass http://127.0.0.1:${upstream};
+        # The browser's cookies, without the control panel's (D74).
+        proxy_set_header Cookie ${APP_COOKIE};
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -389,6 +395,13 @@ ${deny.join("\n")}${deny.length ? "\n" : ""}
     }
 }
 `;
+}
+
+/** Every project's doors, as this version writes them, after an upgrade that changed them (D74); the projects whose doors changed. */
+export function ensureAllServerBlocks(): string[] {
+  const changed = listProjects().filter((p) => ENVS.map((env) => writeServerConf(`${p.name}-${env}`, serverConf(p, env))).some(Boolean));
+  if (changed.length) reloadProxy();
+  return changed.map((p) => p.name);
 }
 
 export function ensureServerBlocks(project: Project): boolean {

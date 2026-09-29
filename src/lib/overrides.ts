@@ -5,8 +5,12 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 
-/** power-supply-dir: a stand-in for /sys/class/power_supply, for the tests of mains and battery (D59). */
-export const KNOWN_OVERRIDES = ["memory-mb", "system-disk", "external-backup-mount", "power-supply-dir"] as const;
+/**
+ * power-supply-dir: a stand-in for /sys/class/power_supply, for the tests of mains and battery (D59).
+ * apps-host: where the workstation's browser reaches the test host's apps, through the harness's
+ * forwarded ports, instead of the machine's own address, which it cannot reach (D74).
+ */
+export const KNOWN_OVERRIDES = ["memory-mb", "system-disk", "external-backup-mount", "power-supply-dir", "apps-host"] as const;
 export type OverrideKey = (typeof KNOWN_OVERRIDES)[number];
 
 export interface Overrides {

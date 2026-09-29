@@ -9,14 +9,14 @@ it, and what it can reach.*
 
 ```
  browser on the home network
-        |  http://<the machine's home-network address>:8099/
+        |  http://allvibe.local/ (or the machine's address, port 80)
         v
  +------------------------------------------------------------------+
  | the machine                                                      |
  |                                                                  |
- |  proxy (nginx, the one front door, D12)                          |
- |    answers on the home-network address only, to private          |
- |    source addresses only; everything else is refused             |
+ |  the panel's door (nginx from the proxy's image, D74), which     |
+ |    Docker publishes on port 80 of the home-network address;      |
+ |    private sources and the panel's own names only                |
  |        |                                                         |
  |        v  http, over the panel's internal network                |
  |  panel container (Node.js 24, pinned, D40)                       |
@@ -134,31 +134,35 @@ password and the setup code go in, and only "right" or "wrong" comes out.
   the setup code's hash and the count of failed attempts are the engine's, in
   `/var/lib/allvibe/panel/auth.json`, readable only by the service user.
 
-## Where it answers (D63)
+## Where it answers (D63, D74)
 
-- **The proxy is the door**: the same nginx that fronts every project (D12)
-  gets one more server, generated and checked with `nginx -t` like the others.
-- **Only on the machine's home-network address**, the address of its route to
-  the internet, as `install.sh` and `doctor` already find it, **on port 8099**,
-  the port just below the projects'. (Decided as port 80 at first; the proxy,
-  unprivileged and without capabilities, cannot listen below 1024, and each way
-  around that weakens something else: D63's amendment. Port 80 with
-  `allvibe.local` is Planned.) The engine writes the door at every start, so a
-  new address after a reboot is picked up; `doctor` says which address the
-  panel answers on.
-- **Only to private source addresses**: nginx allows 10.0.0.0/8, 172.16.0.0/12,
-  192.168.0.0/16 and the machine itself, and refuses the rest. The machine has
-  no public address on a home network, so this is a second fence, not the
-  first; rule 3 holds because nothing forwards the internet to it.
-- **Only by its own names**: a request whose `Host` is not the machine's
-  address (or, later, `allvibe.local`) is refused, so a web page that points a
-  name of its own at the machine's address (DNS rebinding) reaches nothing.
-- **Never to a project container or the agent**: D41's firewall already refuses
-  every project container, the agent and its gate the machine's own ports,
-  which include this one, and every private address, which includes the panel's
-  network. To be proved on the test host, from inside a dev app, a prod app and
-  the agent, by the machine's address, by each network's gateway, and by the
-  panel's own address.
+- **At `http://allvibe.local/`**, a name the machine announces on the home
+  network by multicast DNS (Avahi, `allvibe-mdns.service`), **and at the
+  machine's address**, for a device that cannot find `.local` names. The apps
+  keep the machine's address; the panel is never an app's host name (D74).
+- **Through a door of its own, on port 80**: a small nginx from the proxy's
+  pinned image, as its unprivileged user, which Docker publishes on port 80 of
+  the machine's home-network address only. The proxy could not take port 80:
+  it runs on the host's network, where Docker publishes nothing, and a
+  capability does not reach its unprivileged user (D74). The engine writes the
+  door at every start, so a new address after a reboot is picked up; `doctor`
+  says where the panel answers, and whether its name is announced.
+- **Only to private source addresses**: the door allows 10.0.0.0/8,
+  172.16.0.0/12, 192.168.0.0/16 and the machine itself, and refuses the rest;
+  Docker keeps a device's own address for a published port. The machine has no
+  public address on a home network, so this is a second fence, not the first;
+  rule 3 holds because nothing forwards the internet to it.
+- **Only by its own names**: a request whose `Host` is not `allvibe.local`, the
+  machine's address or the machine itself is refused (421), so a web page that
+  points a name of its own at the machine (DNS rebinding) reaches nothing.
+- **Never to a project container or the agent**: D41's firewall refuses them
+  every port of the machine, and, since D74, a port the machine publishes (the
+  door) too, and every private address. Probed from inside a dev app, a prod
+  app and the agent, by the machine's address, by the panel's and the door's
+  own addresses (`panel-probe.mjs`).
+- **Its cookie never reaches an app**: by its name, the browser does not send
+  it to the apps' host; by the machine's address, every app's door takes it
+  out of what it passes on, and no app's door answers on the panel's name.
 - **IPv4 only**, as the proxy (D41, D49).
 
 ## Signing in (D64)
@@ -204,10 +208,12 @@ passkeys, and MFA (with sign-in and invitations, D54).
 - **Load anything from another origin** for itself: its pages, scripts, styles,
   fonts and images are its own, and its Content-Security-Policy says so
   (`default-src 'none'`, then `'self'` for each kind it uses, `frame-ancestors
-  'none'`, `form-action 'self'`, `base-uri 'none'`). **The one exception**, named
-  below as an open question: the Preview shows the real test copy, which is the
+  'none'`, `form-action 'self'`, `base-uri 'none'`). **The one exception**
+  (D66, question 1): the Preview shows the real test copy, which is the
   person's own app at its own address on the same machine, in a frame the
-  policy allows for exactly those addresses.
+  policy allows for exactly that address, sandboxed so that it cannot navigate
+  the panel's window, open a window or reach the panel (D74).
+- **Trust a message from the frame**: it listens to none.
 - **Show a secret value**: the engine returns none.
 - **Run anything the engine does not offer**: it has no other way to act.
 - **Set any cookie but its session's**, or keep anything about the visitor
@@ -220,20 +226,25 @@ passkeys, and MFA (with sign-in and invitations, D54).
 
 | Threat | What answers it |
 |---|---|
-| Someone on the internet | Nothing forwards the internet to the machine (rule 3); the proxy also refuses non-private sources. |
+| Someone on the internet | Nothing forwards the internet to the machine (rule 3); the door also refuses non-private sources. |
+| The test copy's code (the agent's) acts on the panel from its frame | The sandbox: no top navigation, no windows; no message listened to; the exact `Origin` check refuses its port; the panel's cookie never reaches it (D74). |
 | Another device on the home network claims the panel first | The setup code, shown only on the machine. |
 | Another device guesses the password | The attempt limits; a password of 12 characters or more. |
 | Someone on the home network reads the traffic | **Not answered yet**: plain HTTP. TLS on the home network is Planned. |
 | A web page the person visits acts on the panel (cross-site request forgery) | `SameSite=Strict`, the token header, the `Origin` check, JSON only, no CORS. |
 | A web page rebinds its own name to the machine (DNS rebinding) | The `Host` check. |
-| A project's app, or the agent, reaches the panel | D41's firewall; to be proved. |
+| A project's app, or the agent, reaches the panel | D41's firewall, with D74's rule for published ports; probed from inside each. |
 | A flaw in the panel's code | The container: no route out, no capabilities, not root, read-only, one mount; and the engine, which offers only its list, validates every argument, and never returns a secret. |
 | A flaw in the engine | It runs as the service user, as the CLI does today, and parses only what the panel sends. The panel is its only client. |
-| Two operations at once | One long operation at a time in the engine; the CLI beside it is not locked out (D28), an open question. |
+| Two operations at once | One lock per app, taken by the engine and the CLI alike (D72). |
 
 ## Open questions
 
-For the owner and the architect; none blocks the first slice.
+**Answered by the architect in the review of the sixth brief (D66)**, each with
+where it is carried out: 1 and 7 in D74, 5 in D72, 6 in the engine's protocol
+(the seventh brief, item 6), 8 in the seventh brief's items 6 and 7, 3 as the
+roadmap's next security milestone; 2, 4 and 9 as recorded there. The questions
+as they were asked:
 
 1. **The Preview frame** loads the test copy from its own address, another
    origin than the panel's, allowed for exactly those addresses. The other way,

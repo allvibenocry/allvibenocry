@@ -69,8 +69,9 @@ You should see, after about twenty seconds:
 
 ```
 systemd   running
-overrides /etc/allvibe/test-overrides: memory-mb=16384, system-disk=ssd, external-backup-mount=/mnt/allvibe-backup
+overrides /etc/allvibe/test-overrides: memory-mb=16384, system-disk=ssd, external-backup-mount=/mnt/allvibe-backup, apps-host=localhost
 ports     test host 8099-8119 -> http://localhost:8099-8119 on this workstation
+panel     test host 80 -> http://allvibe.local:8120/ (a browser mapping allvibe.local to 127.0.0.1), or http://localhost:8120/
 ready     a fresh Debian 13 host. Next: node test/host/host.mjs shell
 ```
 
@@ -91,15 +92,16 @@ node test/host/host.mjs push bundle/allvibe-0.1.0 /root/
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
-You should see fifteen steps, `[1/15] This machine` to `[15/15] How the host
+You should see sixteen steps, `[1/16] This machine` to `[16/16] How the host
 is`, each with `changed:` lines, then `allvibe doctor` with only `✓` lines (and,
 on the test host, two `i` lines: that it has no battery, and that the test
 overrides are active), `All green.`, and last:
 
 ```
-Installed All vibe no cry 0.1.0+<commit>: 46 change(s).
+Installed All vibe no cry 0.1.0+<commit>: <n> change(s).
 
-The control panel: http://<address>:8099/
+The control panel: http://allvibe.local/
+  (from a device that cannot find .local names: http://<address>/)
 Its setup code, for your first visit: <four groups of four>
 It works once. It is shown here, on the machine, and nowhere else.
 ```
@@ -121,7 +123,8 @@ Every step now says `unchanged:`, and the last lines are:
 ```
 Nothing changed: this machine was already set up, and everything checked above is as it should be.
 
-The control panel: http://<address>:8099/
+The control panel: http://allvibe.local/
+  (from a device that cannot find .local names: http://<address>/)
 It waits for the setup code shown when it was made. A new one, which replaces it: sudo allvibe panel setup-code
 ```
 
@@ -1534,7 +1537,8 @@ need only steps 1, 2, 5 and 6.
 The install printed the panel's address and a setup code, last (step 2):
 
 ```
-The control panel: http://<address>:8099/
+The control panel: http://allvibe.local/
+  (from a device that cannot find .local names: http://<address>/)
 Its setup code, for your first visit: <four groups of four>
 It works once. It is shown here, on the machine, and nowhere else.
 ```
@@ -1542,9 +1546,13 @@ It works once. It is shown here, on the machine, and nowhere else.
 If you no longer have it, host: `allvibe panel setup-code` makes a new one,
 which replaces it. Open the panel in your browser:
 
-- **Test host:** http://localhost:8099/
-- **Real machine:** the address it printed, from a computer or phone on the
-  same network.
+- **Test host:** http://localhost:8120/ (the port the `panel` line of
+  `node test/host/host.mjs status` names; 8120 on a workstation where the
+  first ports were free). Your workstation cannot hear the test host's
+  multicast DNS, so this is the machine's address, the fallback.
+- **Real machine:** http://allvibe.local/, from a computer or phone on the
+  same network; or, from a device that does not find it, the address it
+  printed.
 
 It opens on **Set up your control panel**. Type the setup code, then a password
 of twelve characters or more, twice, and press **Set up and sign in**. You are

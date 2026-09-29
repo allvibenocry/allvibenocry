@@ -18,6 +18,7 @@ import { readNightly, summarise, type Check } from "../commands/doctor.js";
 import { markTried, planView, type PlanView } from "../commands/plan.js";
 import { releaseCommands } from "../commands/release.js";
 import { takeLock } from "../lib/lock.js";
+import { appsHost } from "../lib/panel.js";
 import { LOCK_OPERATION, type LongKind, type Suite } from "./operations.js";
 
 const state = (name: string) => {
@@ -52,6 +53,8 @@ function summary(project: Project) {
     next: nextAction(testCopy.running, plan, nextVersion(project)),
     addresses: { live: urlFor(project, "prod"), testCopy: urlFor(project, "dev") },
     ports: { live: project.ports.prod, testCopy: project.ports.dev },
+    // Where a browser reaches the apps: never the panel's own name (D74).
+    appsHost: appsHost(),
   };
 }
 

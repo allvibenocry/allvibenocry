@@ -53,8 +53,36 @@ http {
         ""      close;
     }
 
+${cookieMaps()}
     include /etc/nginx/conf.d/*.conf;
 }
+`;
+}
+
+/** The variable an app's door passes on as its Cookie header: the browser's, without the panel's cookie. */
+export const APP_COOKIE = `$${NAMES.command}_app_cookie`;
+
+/**
+ * The control panel's session cookie never reaches an app (D74). A browser
+ * sends a cookie to every port of the host it was set for, so where the panel
+ * and an app share a host name (a device that cannot find `.local` names uses
+ * the machine's address for both), the browser sends the panel's cookie to
+ * the app's door, and the door takes it out: two passes remove it wherever it
+ * is in the header, and a header that still holds one after them is dropped
+ * whole. The app's own cookies pass as they are.
+ */
+export function cookieMaps(cookie = NAMES.panelCookie, command = NAMES.command): string {
+  const pass = (from: string, to: string, n: number) => `    map ${from} ${to} {
+        default ${from};
+        "~^(?<pc${n}a>(?:[^;]*;[ ]*)*?)${cookie}=[^;]*(?:;[ ]*)?(?<pc${n}b>.*)$" "$pc${n}a$pc${n}b";
+    }
+`;
+  return `    # The control panel's session cookie never reaches an app (D74): each
+    # app's door passes the Cookie header on without it.
+${pass("$http_cookie", `$${command}_cookie_1`, 1)}${pass(`$${command}_cookie_1`, `$${command}_cookie_2`, 2)}    map $${command}_cookie_2 $${command}_app_cookie {
+        default $${command}_cookie_2;
+        "~(?:^|;[ ]*)${cookie}=" "";
+    }
 `;
 }
 

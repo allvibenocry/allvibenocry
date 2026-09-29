@@ -38,18 +38,19 @@ const verdict = (label, seen, want) => {
 };
 const sh = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", ...opts });
 const address = sh("ip", ["-4", "route", "get", "1.1.1.1"]).stdout.match(/\bsrc\s+(\S+)/)[1];
-const base = `http://${address}:8099`;
+// The panel's door, port 80 of the machine's address (D74).
+const base = `http://${address}`;
 
 /** One request, as a browser on the home network makes it; every header is the probe's own. */
 function ask(method, path, { body, cookie, token, origin = base, host, type = "application/json" } = {}) {
   const payload = body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
-  const headers = { Host: host ?? `${address}:8099` };
+  const headers = { Host: host ?? address };
   if (payload !== undefined) Object.assign(headers, { "Content-Type": type, "Content-Length": Buffer.byteLength(payload) });
   if (origin) headers.Origin = origin;
   if (cookie) headers.Cookie = cookie;
   if (token) headers["X-Allvibe-Token"] = token;
   return new Promise((resolve) => {
-    const request = http.request({ host: address, port: 8099, method, path, headers }, (response) => {
+    const request = http.request({ host: address, port: 80, method, path, headers }, (response) => {
       let text = "";
       response.on("data", (c) => (text += c));
       response.on("end", () => {
@@ -148,6 +149,23 @@ for (const [name, container] of [["the test copy", `${C}-${P}-dev-app`], ["the l
   verdict(`from ${name}, by the panel's own address`, statusFrom(["docker", "exec", container], `http://${panelIp}:8080/sign-in`), (s) => !/^\d+$/.test(s));
 }
 if (agentStarted) sh(C, ["agent", "stop", P]);
+
+/* --------------------------------------------------------- its door -- */
+console.log("its door (D74):");
+const DOOR = `${C}-panel-door`;
+const door = JSON.parse(sh("docker", ["inspect", DOOR]).stdout)[0];
+verdict("published: port 80 of the machine's address, and nothing else", JSON.stringify(door.HostConfig.PortBindings), JSON.stringify({ "8080/tcp": [{ HostIp: address, HostPort: "80" }] }));
+verdict("its networks: its own, and the panel's", Object.keys(door.NetworkSettings.Networks).sort().join(" "), [DOOR, PANEL].sort().join(" "));
+verdict("host networking", door.HostConfig.NetworkMode === "host", false);
+verdict("privileged", door.HostConfig.Privileged, false);
+verdict("capabilities dropped, none added", `${JSON.stringify(door.HostConfig.CapDrop)} ${JSON.stringify(door.HostConfig.CapAdd ?? [])}`, '["ALL"] []');
+verdict("read-only root, no-new-privileges", `${door.HostConfig.ReadonlyRootfs} ${door.HostConfig.SecurityOpt?.includes("no-new-privileges:true")}`, "true true");
+verdict("its user: the image's own, not root", sh("docker", ["exec", DOOR, "id", "-u"]).stdout.trim(), (s) => /^\d+$/.test(s) && s !== "0");
+verdict("its mounts: its configuration only, read-only", door.Mounts.map((m) => `${m.Destination}${m.RW ? "" : ":ro"}`).join(" "), "/etc/nginx/nginx.conf:ro");
+const doorIp = door.NetworkSettings.Networks[DOOR]?.IPAddress;
+for (const [name, container] of [["the test copy", `${C}-${P}-dev-app`], ["the live app", `${C}-${P}-prod-app`]]) {
+  verdict(`from ${name}, by the door's own address`, statusFrom(["docker", "exec", container], `http://${doorIp}:8080/sign-in`), (s) => !/^\d+$/.test(s));
+}
 
 /* ---------------------------------------------------------- container -- */
 console.log("its container:");

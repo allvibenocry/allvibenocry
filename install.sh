@@ -34,6 +34,7 @@ UNIT_FIREWALL=/etc/systemd/system/$CMD-firewall.service
 UNIT_FIREWALL_CHECK=/etc/systemd/system/$CMD-firewall-check.service
 UNIT_FIREWALL_TIMER=/etc/systemd/system/$CMD-firewall-check.timer
 UNIT_ENGINE=/etc/systemd/system/$CMD-engine.service
+UNIT_MDNS=/etc/systemd/system/$CMD-mdns.service
 PANEL_USER=$CMD-panel
 LOG=/var/log/$CMD-install.log
 
@@ -48,7 +49,7 @@ POOLS=(172.20.0.0/14 10.201.0.0/16)
 
 export DEBIAN_FRONTEND=noninteractive
 
-STEPS=15
+STEPS=16
 # Set when this run installs a different version: the engine then restarts on it.
 NEW_RELEASE=0
 N=0
@@ -171,7 +172,7 @@ esac
 # ---------------------------------------------------------------------------
 step "Packages from Debian" "the machine can reach Debian's package mirrors (apt-get update works)"
 
-debian_packages=(ca-certificates curl gnupg age git nodejs)
+debian_packages=(ca-certificates curl gnupg age git nodejs avahi-daemon avahi-utils)
 missing=()
 for package in "${debian_packages[@]}"; do
   dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed" || missing+=("$package")
@@ -666,7 +667,8 @@ note "it answers on $STATE_DIR/engine/engine.sock, for the service user and the 
 step "The control panel" "$CMD panel install succeeds (it prints its own reason when it does not)"
 
 # Its container, on an internal network with no route out, with only the
-# engine's socket; its door in the proxy, on the home network only (D63).
+# engine's socket; its door, which Docker publishes on port 80 of the home
+# network address, and every app's doors without its cookie (D63, D74).
 panel_output=$(mktemp)
 if ! "$WRAPPER" panel install >"$panel_output" 2>&1; then
   sed 's/^/    /' "$panel_output" >&2
@@ -677,6 +679,59 @@ sed -n 's/^       \(changed\|unchanged\): /      \1: /p' "$panel_output"
 panel_changes=$(grep -c '^       changed: ' "$panel_output" || true)
 CHANGES=$((CHANGES + panel_changes))
 rm -f "$panel_output"
+
+# ---------------------------------------------------------------------------
+step "The control panel's name on the home network" "systemd accepts the unit, and Avahi, Debian's multicast DNS, runs"
+
+# $CMD.local, announced by multicast DNS through Avahi, for the machine's
+# address, which the unit follows (D74). The panel's own name, never an app's,
+# so that its cookie never reaches one; a device that cannot find .local
+# names uses the address.
+mdns_content="[Unit]
+Description=$PRODUCT_NAME: the control panel's name, $CMD.local, on the home network (D74)
+Wants=network-online.target avahi-daemon.service
+After=network-online.target avahi-daemon.service
+
+[Service]
+User=$SERVICE_USER
+Group=$SERVICE_USER
+ExecStart=/usr/bin/node $INSTALL_DIR/current/dist/cli.js mdns-publish
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target"
+mdns=$(basename "$UNIT_MDNS")
+mdns_restart=$NEW_RELEASE
+if ! systemctl is-active --quiet avahi-daemon; then
+  quiet systemctl enable --now avahi-daemon
+  changed "avahi-daemon started"
+fi
+if [ "$(cat "$UNIT_MDNS" 2>/dev/null || true)" != "$mdns_content" ]; then
+  printf '%s\n' "$mdns_content" >"$UNIT_MDNS"
+  systemctl daemon-reload
+  mdns_restart=1
+  changed "$mdns"
+else
+  unchanged "$mdns"
+fi
+if [ "$(systemctl is-enabled "$mdns" 2>/dev/null || true)" != enabled ]; then
+  quiet systemctl enable "$mdns"
+  changed "$mdns enabled"
+fi
+if ! systemctl is-active --quiet "$mdns"; then
+  quiet systemctl start "$mdns"
+  changed "$mdns started"
+elif [ "$mdns_restart" = 1 ]; then
+  quiet systemctl restart "$mdns"
+  changed "$mdns restarted, on this version"
+else
+  unchanged "$mdns running"
+fi
+note "the panel: http://$CMD.local/, or its address for a device that cannot find .local names"
 
 # ---------------------------------------------------------------------------
 step "How the host is" "$CMD doctor finds no problem with the installation itself"
