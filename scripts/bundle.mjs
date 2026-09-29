@@ -5,7 +5,7 @@
  *   npm run bundle      # builds first
  *
  * It holds install.sh, firewall.sh, brand.conf, the compiled CLI, the templates, the agent's
- * image files (agent/), the licence,
+ * image files (agent/), the control panel's (panel/), the licence,
  * a package.json that marks the code as ES modules, and VERSION: the package
  * version and the exact commit, with "-dirty" when the working tree had
  * uncommitted changes, so an installed host always says what it runs.
@@ -22,7 +22,7 @@ const command = readFileSync(path.join(ROOT, "brand.conf"), "utf8").match(/^COMM
 
 const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 const commit = git("rev-parse", "--short=12", "HEAD");
-const dirty = git("status", "--porcelain", "--", "src", "install.sh", "firewall.sh", "brand.conf", "templates", "agent", "package.json") !== "";
+const dirty = git("status", "--porcelain", "--", "src", "install.sh", "firewall.sh", "brand.conf", "templates", "agent", "panel", "package.json") !== "";
 const version = `${pkg.version}+${commit}${dirty ? "-dirty" : ""}`;
 
 const out = path.join(ROOT, "bundle", `${command}-${pkg.version}`);
@@ -52,6 +52,7 @@ copyText(path.join(ROOT, "LICENSE"), path.join(out, "LICENSE"));
 copyTree(path.join(ROOT, "dist"), path.join(out, "dist"));
 if (existsSync(path.join(ROOT, "templates"))) copyTree(path.join(ROOT, "templates"), path.join(out, "templates"));
 copyTree(path.join(ROOT, "agent"), path.join(out, "agent"));
+copyTree(path.join(ROOT, "panel"), path.join(out, "panel"));
 writeFileSync(
   path.join(out, "package.json"),
   `${JSON.stringify({ name: pkg.name, version: pkg.version, private: true, type: "module", license: pkg.license }, null, 2)}\n`,

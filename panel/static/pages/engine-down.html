@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The control panel cannot reach its engine</title>
+<link rel="stylesheet" href="/assets/panel.css">
+</head>
+<body class="entry">
+<main class="entry-main" id="main">
+  <div class="entry-card">
+    <p class="entry-logo"><svg viewBox="0 0 26 32" aria-hidden="true"><path d="M13 2C13 2 2.5 14 2.5 20.5a10.5 10.5 0 0 0 21 0C23.5 14 13 2 13 2Z" fill="#fff" stroke="#1B1530" stroke-width="2.4" stroke-linejoin="round"/><path d="M7.8 20.8l3.6 3.6 6.8-7.6" fill="none" stroke="#00A650" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>{{PRODUCT}}</p>
+    <h1>The panel cannot reach its engine</h1>
+    <p class="muted">The panel only draws the screens; the engine on the machine does the work, and it is not answering. Nothing was changed.</p>
+    <p class="muted">On the machine: <span class="mono">sudo systemctl status {{COMMAND}}-engine</span> says why, and <span class="mono">sudo {{COMMAND}} doctor</span> checks the rest. Then reload this page.</p>
+  </div>
+</main>
+</body>
+</html>

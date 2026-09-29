@@ -8,6 +8,8 @@
  */
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { NAMES } from "../lib/brand.js";
+import { containerState } from "../lib/docker.js";
+import { ensurePanelDoor } from "../lib/panel.js";
 import { AuthStore } from "./auth.js";
 import { Jobs } from "./jobs.js";
 import { createEngineServer } from "./server.js";
@@ -28,6 +30,16 @@ const server = createEngineServer({ suite: realSuite, jobs: new Jobs(), auth: ne
 server.listen(NAMES.engineSocket, () => {
   chmodSync(NAMES.engineSocket, 0o660);
   log(`the engine listens on ${NAMES.engineSocket}`);
+  // The panel's door follows the machine's address, which a reboot may have
+  // changed (D63). Before install has made the panel, there is none to follow.
+  try {
+    if (containerState(NAMES.panelContainer).exists) {
+      const door = ensurePanelDoor();
+      log(`${door.changed ? "the panel's door moved to" : "the panel's door is"} ${door.what}`);
+    }
+  } catch (error) {
+    log(`the panel's door could not be written: ${error instanceof Error ? error.message : String(error)}`);
+  }
 });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {

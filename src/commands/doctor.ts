@@ -21,7 +21,9 @@ import { containerState, engineInfo, tryDocker } from "../lib/docker.js";
 import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../lib/hostfacts.js";
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
 import { readOverrides } from "../lib/overrides.js";
+import { panelUrl } from "../lib/panel.js";
 import { POWER_SUPPLY_DIR, powerCheck, readPower } from "../lib/power.js";
+import { AuthStore } from "../engine/auth.js";
 import { tryRun } from "../lib/run.js";
 import { writeAtomic } from "../lib/files.js";
 import { entries, lastRecord } from "../lib/steps.js";
@@ -251,6 +253,23 @@ export function checks(): Check[] {
     engineActive === "active" && engineSocket
       ? `Engine: running, for the control panel, on its socket only (${NAMES.engineSocket})`
       : `The engine the control panel calls is ${engineActive || "missing"}${engineSocket ? "" : ", and its socket is not there"}: run install.sh again`,
+  );
+
+  // The control panel (D63, D64): its container, and its door answering, end to end.
+  const panelState = containerState(NAMES.panelContainer);
+  const url = panelUrl();
+  const answered = panelState.exists
+    ? tryRun(process.execPath, ["-e", `fetch(${JSON.stringify(`${url}health`)},{signal:AbortSignal.timeout(5000)}).then(r=>process.stdout.write(String(r.status))).catch(e=>process.stdout.write("no answer: "+(e.cause?.code??e.name)))`]).stdout.trim()
+    : "";
+  const auth = new AuthStore(NAMES.panelAuth).status();
+  add(
+    "panel",
+    panelState.status === "running" && answered === "200" ? "ok" : "problem",
+    panelState.status === "running" && answered === "200"
+      ? `Control panel: ${url} answers, on the home network only; ${auth.claimed ? "set up" : `waiting for its setup code (a new one: sudo ${NAMES.command} panel setup-code)`}`
+      : panelState.exists
+        ? `The control panel's container is ${panelState.status}, and ${url}health answered ${answered || "nothing"}: run install.sh again`
+        : "The control panel is not installed: run install.sh again",
   );
 
   const enabled = tryRun("systemctl", ["is-enabled", NAMES.backupTimer]).stdout.trim();

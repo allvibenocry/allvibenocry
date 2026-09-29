@@ -48,7 +48,7 @@ POOLS=(172.20.0.0/14 10.201.0.0/16)
 
 export DEBIAN_FRONTEND=noninteractive
 
-STEPS=14
+STEPS=15
 # Set when this run installs a different version: the engine then restarts on it.
 NEW_RELEASE=0
 N=0
@@ -663,6 +663,22 @@ for _ in $(seq 1 30); do [ -S "$STATE_DIR/engine/engine.sock" ] && break; sleep 
 note "it answers on $STATE_DIR/engine/engine.sock, for the service user and the panel's user only"
 
 # ---------------------------------------------------------------------------
+step "The control panel" "$CMD panel install succeeds (it prints its own reason when it does not)"
+
+# Its container, on an internal network with no route out, with only the
+# engine's socket; its door in the proxy, on the home network only (D63).
+panel_output=$(mktemp)
+if ! "$WRAPPER" panel install >"$panel_output" 2>&1; then
+  sed 's/^/    /' "$panel_output" >&2
+  rm -f "$panel_output"
+  fail "$CMD panel install did not finish"
+fi
+sed -n 's/^       \(changed\|unchanged\): /      \1: /p' "$panel_output"
+panel_changes=$(grep -c '^       changed: ' "$panel_output" || true)
+CHANGES=$((CHANGES + panel_changes))
+rm -f "$panel_output"
+
+# ---------------------------------------------------------------------------
 step "How the host is" "$CMD doctor finds no problem with the installation itself"
 
 # Fails only on the installation's own checks. A host that needs a backup disk
@@ -682,3 +698,8 @@ fi
 if [ "$WARNINGS" -gt 0 ]; then
   printf '%d warning(s) above: worth reading, and nothing that stops the installation.\n' "$WARNINGS"
 fi
+
+# The control panel's setup code (D64): made once, while nobody has claimed the
+# panel, and shown here, on the machine, and nowhere else: not in the log.
+printf '\n'
+"$WRAPPER" panel setup-code --if-new

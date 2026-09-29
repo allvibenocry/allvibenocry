@@ -47,6 +47,7 @@ function summary(project: Project) {
     plan: { state: plan.state, title: plan.title, tried, steps: plan.steps.length, releasedIn: plan.releasedIn },
     next: nextAction(testCopy.running, plan, nextVersion(project)),
     addresses: { live: urlFor(project, "prod"), testCopy: urlFor(project, "dev") },
+    ports: { live: project.ports.prod, testCopy: project.ports.dev },
   };
 }
 

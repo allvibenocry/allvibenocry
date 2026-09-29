@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up your control panel</title>
+<link rel="stylesheet" href="/assets/panel.css">
+<script src="/assets/entry.js" defer></script>
+</head>
+<body class="entry">
+<main class="entry-main" id="main">
+  <div class="entry-card">
+    <p class="entry-logo"><svg viewBox="0 0 26 32" aria-hidden="true"><path d="M13 2C13 2 2.5 14 2.5 20.5a10.5 10.5 0 0 0 21 0C23.5 14 13 2 13 2Z" fill="#fff" stroke="#1B1530" stroke-width="2.4" stroke-linejoin="round"/><path d="M7.8 20.8l3.6 3.6 6.8-7.6" fill="none" stroke="#00A650" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>{{PRODUCT}}</p>
+    <h1>Set up your control panel</h1>
+    <p class="muted">When it was installed, the machine showed a setup code on its own screen. Type it here, and choose the password you will sign in with. The code works once.</p>
+    <form id="setup-form" data-action="/api/setup" novalidate>
+      <div class="field">
+        <label for="code">Setup code</label>
+        <input id="code" name="setupCode" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required aria-describedby="code-help">
+        <span id="code-help" class="hint">Four groups of four letters and digits, like ABCD-EFGH-JKLM-NPQR. Lost it? On the machine: <span class="mono">sudo {{COMMAND}} panel setup-code</span></span>
+      </div>
+      <div class="field">
+        <label for="password">Choose a password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required aria-describedby="password-help">
+        <span id="password-help" class="hint">12 characters or more. A few words you will remember work well.</span>
+      </div>
+      <div class="field">
+        <label for="again">The same password again</label>
+        <input id="again" name="again" type="password" autocomplete="new-password" required>
+      </div>
+      <p class="form-error" id="error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="btn pink" type="submit">Set up and sign in</button></div>
+    </form>
+    <p class="entry-note">This panel is only on your home network, over a plain connection: someone on the same network could read what is typed here. A secure connection is planned.</p>
+  </div>
+</main>
+</body>
+</html>

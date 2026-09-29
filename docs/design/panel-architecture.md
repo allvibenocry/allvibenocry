@@ -9,7 +9,7 @@ it, and what it can reach.*
 
 ```
  browser on the home network
-        |  http://<the machine's home-network address>/        (port 80)
+        |  http://<the machine's home-network address>:8099/
         v
  +------------------------------------------------------------------+
  | the machine                                                      |
@@ -139,10 +139,13 @@ password and the setup code go in, and only "right" or "wrong" comes out.
 - **The proxy is the door**: the same nginx that fronts every project (D12)
   gets one more server, generated and checked with `nginx -t` like the others.
 - **Only on the machine's home-network address**, the address of its route to
-  the internet, as `install.sh` and `doctor` already find it, **on port 80**, so
-  that the address alone, with no port, opens it (and `allvibe.local` later,
-  Planned). The engine writes the door at every start, so a new address after a
-  reboot is picked up; `doctor` says which address the panel answers on.
+  the internet, as `install.sh` and `doctor` already find it, **on port 8099**,
+  the port just below the projects'. (Decided as port 80 at first; the proxy,
+  unprivileged and without capabilities, cannot listen below 1024, and each way
+  around that weakens something else: D63's amendment. Port 80 with
+  `allvibe.local` is Planned.) The engine writes the door at every start, so a
+  new address after a reboot is picked up; `doctor` says which address the
+  panel answers on.
 - **Only to private source addresses**: nginx allows 10.0.0.0/8, 172.16.0.0/12,
   192.168.0.0/16 and the machine itself, and refuses the rest. The machine has
   no public address on a home network, so this is a second fence, not the
@@ -248,8 +251,9 @@ For the owner and the architect; none blocks the first slice.
    operation at a time, but the CLI can still run another beside it (D28).
 6. **The engine on Node.js 20** (above): accepted by the reasoning of D32 and D40,
    for the architect to confirm.
-7. **Port 80**: if another service on the machine already uses it, install
-   stops and says so. Should the panel then take another port, or ask?
+7. **Port 80 and `allvibe.local`**: the panel answers on 8099, because the
+   proxy cannot listen below 1024 without a capability or a machine-wide
+   change. Which of those, if any, is worth port 80?
 8. **What comes next into the engine's list**, each with its confirmations:
    going back with the data (`--restore-data`), creating and removing a
    project, keys, the agent, and work outside a plan.

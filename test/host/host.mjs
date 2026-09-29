@@ -78,9 +78,9 @@ const SETUP = [
 /** The recipe's hash names the image, so a changed recipe is a new image. */
 const IMAGE = `${IMAGE_REPO}:${createHash("sha256").update(`${BASE}\n${SETUP}`).digest("hex").slice(0, 12)}`;
 
-/** Where the suite's proxy listens on a host (D16), and how many the harness maps. */
-const GUEST_PORT_BASE = 8100;
-const PORT_COUNT = 20;
+/** Where the suite's proxy listens on a host: the control panel on 8099 (D63), the projects from 8100 (D16); and how many the harness maps. */
+const GUEST_PORT_BASE = 8099;
+const PORT_COUNT = 21;
 
 const VOLUMES = [
   { name: `${NAME}-docker`, target: "/var/lib/docker", why: "Docker's data: it cannot live on the container's overlay root" },
@@ -162,7 +162,7 @@ async function freePortBlock() {
     }
     if (free) return base;
   }
-  throw new Error("no block of 20 free ports between 8100 and 9000 on this workstation");
+  throw new Error(`no block of ${PORT_COUNT} free ports between ${GUEST_PORT_BASE} and 9000 on this workstation`);
 }
 
 /* ------------------------------------------------------------- image -- */

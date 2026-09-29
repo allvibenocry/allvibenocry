@@ -9,6 +9,7 @@ import { backupCommands } from "./commands/backup.js";
 import { dev } from "./commands/dev.js";
 import { doctor, suiteVersion } from "./commands/doctor.js";
 import { key, keysUnlock } from "./commands/key.js";
+import { panel } from "./commands/panel.js";
 import { plan } from "./commands/plan.js";
 import { project } from "./commands/project.js";
 import { releaseCommands } from "./commands/release.js";
@@ -34,6 +35,9 @@ const HELP = `${BRAND.product}: ${C} <command>
   agent stop <project>         the agent gone
   agent activity <project>     what the agent did: one line per tool call
   agent transcripts <project>  its kept conversations; --delete deletes them
+  panel status                 the control panel: where it answers, and whether it is set up
+  panel setup-code             a one-time code for the panel's first visit, shown here only
+  panel reset                  a forgotten panel password: a new setup code, everyone signed out
   plan <project>               the plan dev runs, and where each step stands
   plan tried <project> <step>  you tried this step in dev, and it works (only you can mark it)
   release <project>            dev's commit to prod, after a backup and a restore check; every step of its plan tried
@@ -72,6 +76,7 @@ const COMMANDS: Record<string, Handler> = {
   key: (args) => key(args),
   agent: (args) => agent(args),
   plan: (args) => plan(args),
+  panel: (args) => panel(args),
   "keys-unlock": () => keysUnlock(),
   version: () => {
     process.stdout.write(`${BRAND.product} ${suiteVersion()}\n`);

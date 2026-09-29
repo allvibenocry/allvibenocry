@@ -2314,6 +2314,21 @@ source address, which a Docker-published port may not. An internal network
 fences the panel by construction, with no rule of its own to get wrong. Port 80
 lets the address alone open the panel.
 
+#### Amendment, 2026-09-29 (the sixth brief, item 8): port 8099, not 80
+
+Found while building it: the proxy cannot listen on port 80. It is the
+unprivileged nginx image, running as its own user with every capability
+dropped (D12), and a port below 1024 needs a capability or a machine-wide
+change. The ways to port 80, each weaker than what it would buy: allowing every
+user of the machine low ports (`net.ipv4.ip_unprivileged_port_start`); giving
+the proxy a capability back; a redirect in the firewall, which D41 keeps for
+the containers; or publishing the panel's own container, which would take it
+off its internal network. So **the panel answers on port 8099**, the port just
+below the projects' (8100 and up), on the machine's home-network address:
+`http://<address>:8099/`. Port 80, with `allvibe.local`, stays Planned, with the
+roadmap's "The control panel at allvibe.local", and is an open question in
+docs/design/panel-architecture.md.
+
 ## D64. Signing in to the panel, even at home
 
 *2026-09-29. The sixth brief, item 6. Details in
