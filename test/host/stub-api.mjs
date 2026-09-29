@@ -12,18 +12,38 @@
 //   4. Bash: a command that fails
 //   5. the end of the turn, in words
 // Every request's method and path is logged, never its body.
+//
+// With STEPS_FILE, the script is that file's instead (a JSON list of tool
+// calls, { name, input }), and each tool result Claude Code sends back is
+// written to RESULTS_FILE, one JSON line per step, with the names of the tools
+// it offered: the deny rules' probe (deny-probe.mjs) reads them, to see
+// which commands were refused. Its commands are harmless test commands.
+import { appendFileSync, readFileSync } from "node:fs";
 import http from "node:http";
 
 const PORT = 8080;
 const CONTENT_MARKER = process.env.CONTENT_MARKER ?? "content-marker";
 const FAKE_KEY = process.env.FAKE_KEY ?? "";
+const STEPS_FILE = process.env.STEPS_FILE ?? "";
+const RESULTS_FILE = process.env.RESULTS_FILE ?? "";
 
-const SCRIPT = [
-  { name: "Bash", input: { command: "ls /workspace", description: "List the working copy" } },
-  { name: "Write", input: { file_path: "/workspace/stub-note.txt", content: `A note from the stub session: ${CONTENT_MARKER}\n` } },
-  { name: "Bash", input: { command: `echo ${FAKE_KEY} > /dev/null`, description: "A command holding a fake key" } },
-  { name: "Bash", input: { command: "ls /no-such-directory", description: "A command that fails" } },
-];
+const SCRIPT = STEPS_FILE
+  ? JSON.parse(readFileSync(STEPS_FILE, "utf8"))
+  : [
+      { name: "Bash", input: { command: "ls /workspace", description: "List the working copy" } },
+      { name: "Write", input: { file_path: "/workspace/stub-note.txt", content: `A note from the stub session: ${CONTENT_MARKER}\n` } },
+      { name: "Bash", input: { command: `echo ${FAKE_KEY} > /dev/null`, description: "A command holding a fake key" } },
+      { name: "Bash", input: { command: "ls /no-such-directory", description: "A command that fails" } },
+    ];
+
+/** The newest tool result in a request, as text, for RESULTS_FILE. */
+function lastResult(body) {
+  const results = (body.messages ?? []).flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((c) => c.type === "tool_result");
+  const last = results.at(-1);
+  if (!last) return null;
+  const text = Array.isArray(last.content) ? last.content.map((c) => c.text ?? "").join("") : String(last.content ?? "");
+  return { id: last.tool_use_id, isError: last.is_error === true, text: text.slice(0, 600) };
+}
 
 const log = (line) => process.stdout.write(`${new Date().toISOString()} ${line}\n`);
 const toolResults = (body) =>
@@ -32,6 +52,11 @@ const toolResults = (body) =>
 function reply(body) {
   const done = toolResults(body);
   const usesTools = Array.isArray(body.tools) && body.tools.length > 0;
+  if (RESULTS_FILE && usesTools) {
+    const result = lastResult(body);
+    if (result) appendFileSync(RESULTS_FILE, `${JSON.stringify({ step: done, ...result })}\n`);
+    else appendFileSync(RESULTS_FILE, `${JSON.stringify({ step: 0, tools: body.tools.map((t) => t.name) })}\n`);
+  }
   const step = usesTools ? SCRIPT[done] : undefined;
   const model = body.model ?? "stub";
   const content = step

@@ -2157,3 +2157,75 @@ the vault check finds no value in them. Against the previous bundle the new
 probe fails, 11 of 22 as they must be (the probe then had 22 checks).
 **Not verified**: a session with a real model, in either way of signing in:
 that is the owner's to try.
+
+## D61. Claude Code may not run the most dangerous commands in this repository
+
+*2026-09-29. The sixth brief, item 1, after mistake 41: text of the walkthrough
+ran as shell commands on the owner's workstation. Nothing was written or
+deleted, and that was luck, not protection. The same rules are in the
+website's repository (its D32).*
+
+**What.** `.claude/settings.json`, Claude Code's project settings, denies these
+commands to Claude Code's Bash and PowerShell tools, in any mode, even when a
+session allows the tool outright (a deny rule is checked first, and an allow
+rule cannot make an exception to it):
+
+- **Force-pushing and moving or deleting pushed refs** (rule 11): `git push`
+  with `--force`, `--force-with-lease`, `-f`, a `+` refspec, `--mirror`,
+  `--delete`, `-d`, or a `:ref` refspec, also written `git -C <dir> push`;
+  and `git tag -f` or `--force`.
+- **Losing uncommitted work**: `git reset --hard`, and `git clean` with `-f`
+  (which would take the owner's untracked `incoming/` with it).
+- **Every kind of Docker prune** (`docker system|container|image|volume|
+  network|builder|buildx prune`), **removing Docker volumes** (`docker volume
+  rm|remove`, `docker compose down -v` or `--volumes`, `docker rm -v`), with
+  or without global options before them.
+- **Recursive deletion outside the repository**: `rm` with `-r`, `-R` or
+  `--recursive` when a target starts with `/`, `~`, `..`, `$`, a quote, or a
+  drive letter (`C:`, `c:`), which is how a path outside the working copy is
+  written on this workstation; `find ... -delete`, `find ... -exec rm`, and
+  `xargs ... rm`. Recursive deletion of a plain relative path, inside the
+  repository (`rm -rf dist`), is left alone. In PowerShell, every recursive
+  `Remove-Item` (and its aliases, `rm -r` among them), and `cmd /c rd /s`.
+
+**Proved** with the real Claude Code, pinned at 2.1.283, on the test host
+(`test/host/deny-probe.mjs`): a scratch repository with a bare "remote", a tag,
+an untracked folder and folders outside it; the settings file as its project
+settings; one `claude -p` session against the stand-in for the model's API,
+which asks for one tool call per step; Bash and PowerShell allowed outright, so
+that only the deny rules can refuse. Every rule has at least one command it
+must refuse (every kind of prune its own), and there are controls that must run
+(`git push origin main`, a branch named `feature-fix`, `rm -rf dist` inside
+the repository, `git clean -n`, `git reset --soft`, a single `Remove-Item`).
+**201 of 201** with the PowerShell tool on (a pinned PowerShell 7.6.6, checked
+against its published SHA-256), for this repository's file and for the
+website's. **The control**, the same session without the settings file: every
+command ran, 110 of 110, so the probe does see a command run. Claude Code's own
+words for a refusal: "Permission to use Bash with command git push --force
+origin main has been denied."
+
+**Found on the way.** A pattern that ends in `:*` is Claude Code's old prefix
+form, so a rule meant for `C:` paths or `:ref` refspecs, written that way,
+matched nothing: the probe's first run said WRONG for all eight. They end in
+`**` now, which matches the same commands (a run of candidate forms showed that
+only the `:*` ending fails).
+
+**Limits, seen and recorded** (the documentation says a Bash pattern that
+constrains arguments "is guidance, not a boundary"):
+
+- A command inside `bash -c` or `sh -c` is not looked into.
+- A relative path after `cd` (`cd /x && rm -rf y`) is not seen as outside.
+- `-f` joined to another short flag (`git push -uf`) is not seen.
+- Anything a script runs is not seen: the rules see the command Claude Code is
+  given, not what it starts.
+- **They apply only to a session whose project is this repository**: Claude Code
+  run in this folder, or the editor opened on it. A session opened on a folder
+  above it reads that folder's settings instead. Seen on the owner's
+  workstation: a deny rule put here did not stop the same command in a session
+  opened on the parent folder. Putting the same rules in the settings of that
+  folder, or in the owner's own user settings, is the owner's decision.
+
+**Why these.** Each can lose work or data that nothing brings back (a
+rewritten history, a pruned volume, a deleted folder outside the repository),
+and each was within reach of the incident's text. Rules for commands, not a
+sandbox: they catch an accident, not a determined agent.
