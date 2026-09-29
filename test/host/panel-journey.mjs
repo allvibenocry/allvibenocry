@@ -232,14 +232,15 @@ try {
   const origin = new URL(URL_).origin;
   const frameOrigin = new URL(frameUrl).origin;
   const others = page.log.requests.filter((r) => !r.url.startsWith(`${origin}/`) && !r.url.startsWith(`${frameOrigin}/`) && !r.url.startsWith("data:"));
-  expect("console errors", page.log.errors.length, 0);
+  expect("console errors, and requests the browser logged as failed", page.log.errors.length + page.log.network.length, 0);
   expect("requests to other origins (the test copy's own, in its frame, aside)", others.map((r) => r.url).join(", ") || "none", "none");
   console.log(`\n${passed} checks passed. Screenshots: ${OUT}`);
 } catch (error) {
   console.log(`\nSTOPPED: ${error.message}`);
   if (page) {
     await shot("stopped").catch(() => {});
-    if (page.log.errors.length) console.log(`console errors:\n  ${page.log.errors.join("\n  ")}`);
+    const logged = [...page.log.errors, ...page.log.network.map((n) => `${n.text} (${n.url})`)];
+    if (logged.length) console.log(`console errors:\n  ${logged.join("\n  ")}`);
   }
   process.exitCode = 1;
 } finally {

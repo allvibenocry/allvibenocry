@@ -2356,3 +2356,64 @@ TLS at home, with passkeys"; MFA with sign-in and invitations, D54).
 **Why at home too.** Anyone on the home network can reach the address, and the
 panel can put a version live or go back. The setup code closes the first minute,
 when the panel would otherwise belong to whoever reached it first.
+
+## D65. The panel's first slice, and how it is checked in a browser
+
+*2026-09-29. The sixth brief, items 9 and 10.*
+
+**What it is.** Simple mode only, in the demo's design, words and colour roles
+(D51, D55), on the engine's data (D62): home, with the calm status line from
+the last nightly check and each app's next action; an app, with its plan on the
+left and, on the right, Preview (the real test copy in a frame, under its line)
+and Live; "It works", "Something is wrong", "Put vN live" and "Go back", all
+through the engine; More, with the app's backups; and Machine health. No chat,
+no advanced mode and no code view yet.
+
+**Choices made building it:**
+
+- **Going into or out of an app loads the page.** Only an app's own page may
+  frame that app's test copy: the server names it in that page's policy
+  (`frame-src`), for the host the browser used. Moving between home and Machine
+  health stays within the page.
+- **The demo's six safety checks are the CLI's steps, grouped by their names**,
+  not their numbers: a release has 16 steps and going back 14, and a name says
+  what a step is. A step the grouping does not know counts with the one before
+  it, so the progress never goes backwards.
+- **A refusal is shown in the engine's own words** (rule 5): the step it
+  stopped at, why, and what would have to be true, which names the CLI's
+  commands. For the one thing a person does in the panel itself, trying steps,
+  a line says where: "Here: try each step in Preview and press "It works"".
+  "Every check, as the machine ran it" opens the steps with what each found.
+- **The page looks for changes every fifteen seconds**, renders only when
+  something changed, and not while a dialog is open; focus stays on the same
+  control across every render. A page left open can still be stale when a
+  button is pressed: the engine's own gates then refuse, and the panel shows
+  why. That is how the refusal of an untried step is shown in the checks.
+- **The engine answers while it works.** The step runner gives the engine a
+  turn between steps, so the panel sees each one as it starts; doctor's checks
+  run in a worker thread. Found by the checks: on the engine's own thread,
+  doctor's check of the panel asked the panel, the panel's `/health` asked the
+  engine, and the engine waited for itself until the check timed out, so
+  Machine health showed the panel as a problem.
+
+**How it is checked** (`test/host/panel-checks.mjs`, `test/host/README.md`): a
+real headless Edge, driven over the DevTools protocol with real mouse and
+keyboard input, against the panel on the test host through the forwarded
+ports, at 1280 and 390 pixels wide, light and dark. **Each check is first seen
+failing on a deliberately broken copy of the panel**: `panel-fixture.mjs break`
+runs a copy of the installed panel with one thing broken, in the real one's
+place, with the real one's own arguments and the copy mounted over its files;
+`panel install` puts the real one back. A console error is anything the page's
+scripts or the browser's own checks report; a request the browser logs as
+failed is kept apart, and allowed only when the check asked for that refusal
+(a wrong password, the session asked for after signing out).
+
+**The test host's mounts are private** (Docker's default), so unmounting the
+backup disk there does not reach a service with a mount namespace of its own,
+as the engine has (`ProtectHome`): the fixture unplugs it in the engine's view
+too. On a real machine systemd shares mounts with its services, so an unplugged
+disk should reach the engine at once; that is to be seen on real hardware.
+
+**Why.** The brief's test is a person in a real browser, so the checks drive
+one, as a person would, and look at what a person sees. A check that has not
+been seen failing may be checking nothing (CLAUDE.md, mistakes 29 and 38).

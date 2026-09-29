@@ -7,13 +7,14 @@
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 import { listBackups } from "../lib/backup.js";
 import { readConfig } from "../lib/config.js";
 import { containerState } from "../lib/docker.js";
 import { writeAtomic } from "../lib/files.js";
 import { containerName, currentRelease, listProjects, nextVersion, projectDir, readProject, urlFor, type Project } from "../lib/project.js";
 import { dev } from "../commands/dev.js";
-import { checks, readNightly, summarise } from "../commands/doctor.js";
+import { readNightly, summarise, type Check } from "../commands/doctor.js";
 import { markTried, planView, type PlanView } from "../commands/plan.js";
 import { releaseCommands } from "../commands/release.js";
 import type { LongKind, Suite } from "./operations.js";
@@ -88,10 +89,13 @@ export const realSuite: Suite = {
     writeAtomic(path.join(dir, file), `Something is wrong, said in the control panel, ${new Date().toISOString()}:\n\n${text}\n`, 0o640);
     return { file: `reports/${file}` };
   },
-  machineStatus: () => {
-    const list = checks();
-    return { ...summarise(list), checks: list.map((c) => ({ id: c.id, status: c.status, text: c.text })) };
-  },
+  machineStatus: () =>
+    new Promise((resolve, reject) => {
+      const worker = new Worker(new URL("./doctor-worker.js", import.meta.url));
+      worker.once("message", (list: Check[]) => resolve({ ...summarise(list), checks: list.map((c) => ({ id: c.id, status: c.status, text: c.text })) }));
+      worker.once("error", reject);
+      worker.once("exit", (code) => reject(new Error(`doctor's checks stopped (${code})`)));
+    }),
   lastNight: () => {
     const last = readNightly();
     return last ? { at: last.at, summary: last.summary, problems: last.problems, warnings: last.warnings, checks: last.checks.map((c) => ({ id: c.id, status: c.status, text: c.text })) } : null;

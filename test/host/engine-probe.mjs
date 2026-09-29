@@ -145,6 +145,8 @@ verdict("a project that does not exist", `${missing.status} ${missing.error?.cod
 console.log("every operation:");
 const status = await ask("machine.status");
 verdict("machine.status: doctor's checks", status.ok && status.result.checks.length > 5 && status.result.checks.some((c) => c.id === "engine" && c.status === "ok"), true);
+// The panel's check asks the panel, which asks the engine: it must not wait for itself.
+if (existsSync(AUTH)) verdict("machine.status: the panel's check, asked from inside the engine", status.result?.checks.find((c) => c.id === "panel")?.status, "ok");
 const last = await ask("machine.lastNight");
 verdict("machine.lastNight", last.ok, true);
 const apps = await ask("apps.list");

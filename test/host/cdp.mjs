@@ -67,11 +67,18 @@ export async function openPage(port, { width = 1280, height = 800, mobile = fals
     on(method, h);
   });
 
-  const log = { errors: [], requests: [], frames: [] };
+  // errors: what the page's scripts and the browser's checks (a policy, a
+  // mixed request) reported; network: a response the browser logged as an
+  // error, kept apart, since a refusal the check asked for is one of them.
+  const log = { errors: [], network: [], requests: [], frames: [] };
   let mainFrame = null;
   on("Runtime.exceptionThrown", (p) => log.errors.push(`exception: ${p.exceptionDetails.exception?.description ?? p.exceptionDetails.text}`));
   on("Runtime.consoleAPICalled", (p) => { if (p.type === "error" || p.type === "assert") log.errors.push(`console.${p.type}: ${p.args.map((a) => a.value ?? a.description).join(" ")}`); });
-  on("Log.entryAdded", (p) => { if (p.entry.level === "error") log.errors.push(`${p.entry.source}: ${p.entry.text}${p.entry.url ? ` (${p.entry.url})` : ""}`); });
+  on("Log.entryAdded", (p) => {
+    if (p.entry.level !== "error") return;
+    if (p.entry.source === "network") log.network.push({ text: p.entry.text, url: p.entry.url ?? "" });
+    else log.errors.push(`${p.entry.source}: ${p.entry.text}${p.entry.url ? ` (${p.entry.url})` : ""}`);
+  });
   on("Network.requestWillBeSent", (p) => log.requests.push({ url: p.request.url, frame: p.frameId, main: p.frameId === mainFrame, type: p.type }));
   on("Network.responseReceived", (p) => { if (p.type === "Document" && p.frameId !== mainFrame) log.frames.push({ url: p.response.url, status: p.response.status }); });
   on("Page.frameNavigated", (p) => { if (!p.frame.parentId) mainFrame = p.frame.id; });
