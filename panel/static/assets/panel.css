@@ -615,3 +615,39 @@ body.appview main{max-width:none;padding:0}
 .form-error{margin:16px 0 0;padding:10px 14px;border-radius:12px;background:var(--stop-soft);border:1.5px solid var(--stop);color:var(--text);font-weight:700}
 .form-error:focus{outline:none}
 .entry-note{margin-top:20px;padding-top:14px;border-top:1.5px solid var(--line);font-size:.88rem;color:var(--muted)}
+
+/* The shell: a way past the side, signing out, the machine's links as links. */
+.skip{position:absolute;left:12px;top:-80px;z-index:70;background:var(--panel);color:var(--text);border:2px solid var(--line-strong);border-radius:999px;padding:8px 16px;font-weight:700;text-decoration:none}
+.skip:focus{top:12px}
+.signout{margin-top:10px;align-self:flex-start;background:none;border:0;padding:6px 10px;color:var(--side-muted);font-size:.9rem;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.signout:hover{color:var(--side-text)}
+@media (max-width:880px){.signout{display:none}.side.open .signout{display:block}}
+.nav-machine a{font-size:.9rem;font-weight:400;color:var(--side-muted)}
+.nav-machine a:hover,.nav-machine a[aria-current="page"]{color:var(--side-text)}
+.nav-empty{margin:0;padding:4px 10px;color:var(--side-muted);font-size:.9rem}
+.status-row.warn{background:var(--sun-soft);border-color:var(--sun)}
+.status-row.warn .led{background:var(--sun)}
+.ico.stop{background:var(--stop)}
+.ico.info{background:var(--panel);color:var(--text);font-weight:800}
+.check-row h3{font-size:1rem}
+
+/* The app view: the real test copy in the frame, what stopped, every check. */
+.tc-frame{display:block;flex:1 1 auto;width:100%;min-height:420px;border:0;border-radius:0 0 14px 14px;background:#FFFDF8}
+.tc-empty-frame{flex:1 1 auto;display:grid;place-items:center;padding:24px;color:#6E624D;text-align:center}
+.later-note{margin:4px 16px 16px;padding:10px 12px;border-radius:12px;border:1.5px dashed var(--line-strong);font-size:.86rem;color:var(--muted)}
+.stopbox{margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--stop-soft);border:1.5px solid var(--stop)}
+.lcard .stopbox p{margin:0;color:var(--text)}
+.lcard .stopbox p + p{margin-top:6px}
+.pane > .stopbox{margin-top:0}
+.pane > .stopbox p{color:var(--text)}
+.warncard{border-color:var(--stop)}
+.safety .failed .g{background:var(--stop);border-color:#1B1530}
+.every-checks{margin-top:14px;font-size:.9rem}
+.every-checks summary{cursor:pointer;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.every{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+.every li{overflow-wrap:anywhere}
+.every .st{display:inline-block;min-width:78px;font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.every .failed .st{color:var(--text);font-weight:600}
+.every .lines{display:block;margin-top:2px;padding-left:12px;border-left:2px solid var(--line);font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.lcard .every-checks p{font-size:.88rem}
+.backups-list{margin-top:14px}

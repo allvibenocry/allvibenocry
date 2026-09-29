@@ -82,6 +82,9 @@ export async function runSteps(steps: Step[], options: RunOptions): Promise<RunR
     const number = `${index + 1}/${steps.length}`;
     let outcome: StepOutcome;
     stepEvents.onStart?.(index + 1, steps.length, step.name);
+    // Many steps block while they run; between them, the engine answers what
+    // it was asked meanwhile, so the panel sees each step as it starts (D62).
+    await new Promise((resolve) => setImmediate(resolve));
     try {
       outcome = await step.run();
     } catch (error) {

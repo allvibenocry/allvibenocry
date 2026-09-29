@@ -52,6 +52,23 @@ sh /root/<script> allvibe <project> …`.
 | `power-fixtures.sh <command>` | Mains, battery and low battery, from stand-in power supply files, in doctor and the nightly result (D59). |
 | `app-isolation.sh <command> <project> [<device address> <port>]` | From inside dev's and prod's apps and databases: the machine's own ports, the router, a device on the home network and link-local refused; the public internet reached; each app reading its database; the doors answering the machine and the device (D41). The targets are tried from the machine first, where they must answer. Counts, and exits 1 if anything is wrong. |
 | `lan-fixtures.sh` | **Test host only.** Stand-ins for what a real machine has around it: an SSH server, a service on port 9999, and another device on the home network (a network namespace at 10.99.0.2, port 8080). Each is a unit, so it comes back after a restart. |
+| `panel-fixture.mjs <action>` | **Test host only.** What the browser checks need done on the host, as the builder or the machine would: a plan's steps built and deployed to the test copy (`plan`), the backup disk unplugged and back (`unplug`, `plug`, in the engine's view too, since the test host's mounts do not reach a service's own), a setup code (`setup-code`), the newest report (`report`), a broken copy of the panel in the real one's place and the real one back (`break`, `mend`). The two browser scripts below push and call it. |
+
+## In a real browser
+
+Scripts that run **on this workstation**, from the product repository, against
+the panel on the test host through the forwarded ports: a headless Edge (or
+Chrome, or `BROWSER`) driven over the DevTools protocol by `cdp.mjs`, with real
+mouse and keyboard input. They keep every console error and request the page
+made. They sign in with a fresh setup code and a password made up for the run,
+kept in memory and never printed. Run them on a fresh test host. The Preview
+frames the test copy at its own port on the host the browser used, so they
+need the ports forwarded at the same numbers (`status` says).
+
+| Script | What it shows |
+|---|---|
+| `panel-journey.mjs <folder>` | The first slice of the panel, from the first visit to signing out: a step ready to try, a report, steps tried, a step the builder added refused, an unplugged backup disk refused, a version put live with every safety check shown as it runs, and going back to the one before. Screenshots of each screen. |
+| `panel-checks.mjs <folder> [--broken <variants>\|none] [--configs <names>\|none]` | Every check, first seen failing on a deliberately broken copy of the panel (one per check), then passing on the real one, at 1280 and 390 px wide, light and dark: signing in and out, every flow and refusal, no console errors, no request to another origin, nothing wider than the screen, the keyboard in every dialog and tab list. |
 
 ## What it is
 
@@ -64,7 +81,7 @@ sh /root/<script> allvibe <project> …`.
   Docker cannot keep them on the container's overlay root), and a third that
   stands in for the **off-machine backup target**, mounted at
   `/mnt/allvibe-backup`.
-- **Ports 8100–8119** of the test host, where the suite's proxy listens,
+- **Ports 8099–8119** of the test host, where the suite's proxy listens,
   published on this workstation's **loopback only**, at the same numbers when
   they are free (the harness checks, and picks another block if not). So a
   project the suite serves at `http://<host>:8101` on a real machine is at

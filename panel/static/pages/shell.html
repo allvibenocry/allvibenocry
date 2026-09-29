@@ -5,16 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{PRODUCT}}</title>
 <link rel="stylesheet" href="/assets/panel.css">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <script src="/assets/shell.js" defer></script>
 </head>
-<body class="entry">
-<main class="entry-main" id="main">
-  <div class="entry-card">
-    <p class="entry-logo"><svg viewBox="0 0 26 32" aria-hidden="true"><path d="M13 2C13 2 2.5 14 2.5 20.5a10.5 10.5 0 0 0 21 0C23.5 14 13 2 13 2Z" fill="#fff" stroke="#1B1530" stroke-width="2.4" stroke-linejoin="round"/><path d="M7.8 20.8l3.6 3.6 6.8-7.6" fill="none" stroke="#00A650" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>{{PRODUCT}}</p>
-    <h1>You are signed in</h1>
-    <p class="muted">The home screen comes next.</p>
-    <div class="dialog-actions"><button class="btn line" type="button" id="sign-out">Sign out</button></div>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<div class="app">
+  <aside class="side" id="side">
+    <div class="side-top">
+      <a class="logo" href="/" data-link aria-label="{{PRODUCT}}, home">
+        <svg viewBox="0 0 26 32" aria-hidden="true"><path d="M13 2C13 2 2.5 14 2.5 20.5a10.5 10.5 0 0 0 21 0C23.5 14 13 2 13 2Z" fill="#fff" stroke="#1B1530" stroke-width="2.4" stroke-linejoin="round"/><path d="M7.8 20.8l3.6 3.6 6.8-7.6" fill="none" stroke="#00A650" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="machine-name">{{COMMAND}}</span>
+      </a>
+      <button class="menu-btn" id="menu-btn" type="button" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12"/></svg>Menu</button>
+    </div>
+    <nav class="nav" id="nav" aria-label="Control panel"></nav>
+    <div class="side-status" id="side-status" role="status"></div>
+    <button type="button" class="signout" id="sign-out">Sign out</button>
+  </aside>
+  <div class="main-wrap">
+    <main id="main" tabindex="-1"><p class="muted loading">Loading…</p></main>
   </div>
-</main>
+</div>
+<div class="modal" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" id="dialog"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sr" id="announce" role="status" aria-live="polite"></div>
 </body>
 </html>
