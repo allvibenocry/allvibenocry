@@ -12,8 +12,11 @@ import { listBackups } from "../lib/backup.js";
 import { readConfig } from "../lib/config.js";
 import { containerState } from "../lib/docker.js";
 import { writeAtomic } from "../lib/files.js";
-import { containerName, currentRelease, listProjects, nextVersion, projectDir, readProject, urlFor, type Project } from "../lib/project.js";
+import { containerName, currentRelease, listProjects, nameProblem, nextVersion, projectDir, readProject, urlFor, type Project } from "../lib/project.js";
+import { agentContainer, agentState, hasAgentKey, signInOf } from "../lib/agent.js";
+import { agent } from "../commands/agent.js";
 import { dev } from "../commands/dev.js";
+import { project } from "../commands/project.js";
 import { readNightly, summarise, type Check } from "../commands/doctor.js";
 import { markTried, planView, type PlanView } from "../commands/plan.js";
 import { releaseCommands } from "../commands/release.js";
@@ -106,13 +109,24 @@ export const realSuite: Suite = {
     const last = readNightly();
     return last ? { at: last.at, summary: last.summary, problems: last.problems, warnings: last.warnings, checks: last.checks.map((c) => ({ id: c.id, status: c.status, text: c.text })) } : null;
   },
-  run: (kind: LongKind, app: string) => {
+  run: (kind: LongKind, app: string, options = {}) => {
     if (kind === "putLive") return Promise.resolve(releaseCommands.release([app]));
     if (kind === "goBack") return Promise.resolve(releaseCommands.rollback([app]));
+    // The agent and a new app (D76): the CLI's own commands, as `allvibe` runs them.
+    if (kind === "agentStart") return agent(["start", app, "--sign-in", options.signIn ?? "key"]);
+    if (kind === "agentStop") return agent(["stop", app]);
+    if (kind === "createApp") return project(["create", app]);
     return dev(["deploy", app]);
   },
   lock: (app, kind) => {
-    const taken = takeLock(app, LOCK_OPERATION[kind]);
+    const operation = LOCK_OPERATION[kind];
+    if (!operation) return { ok: true, release: () => {} };
+    const taken = takeLock(app, operation);
     return taken.ok ? { ok: true, release: taken.release } : { ok: false, message: taken.message };
   },
+  agentStatus: (app) => {
+    const running = agentState(app).status === "running";
+    return { running, signIn: running ? signInOf(agentContainer(app)) : null, hasKey: hasAgentKey(app) };
+  },
+  nameProblem: (name) => nameProblem(name),
 };

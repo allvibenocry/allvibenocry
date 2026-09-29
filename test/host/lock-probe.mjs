@@ -15,7 +15,7 @@
 // Every line ends with its verdict; the last counts what is not as it must be.
 import { spawn, spawnSync } from "node:child_process";
 import { chownSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import http from "node:http";
+import net from "node:net";
 
 const C = process.argv[2] ?? "allvibe";
 const APP = "lockprobe";
@@ -52,17 +52,16 @@ async function until(check, ms, what) {
   }
 }
 
-/** The engine, as the panel asks it, over its socket. */
+/** The engine, as the panel asks it, over its socket: one JSON line each way (D76). */
 function engine(operation, args = {}) {
   return new Promise((resolve) => {
-    const body = JSON.stringify(args);
-    const req = http.request({ socketPath: SOCKET, method: "POST", path: `/v1/${operation}`, headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } }, (res) => {
-      let data = "";
-      res.on("data", (c) => (data += c));
-      res.on("end", () => resolve(JSON.parse(data)));
-    });
-    req.on("error", (e) => resolve({ ok: false, error: { code: "socket", message: e.message } }));
-    req.end(body);
+    const client = net.createConnection(SOCKET);
+    let data = "";
+    client.setEncoding("utf8");
+    client.on("connect", () => client.write(`${JSON.stringify({ op: operation, args })}\n`));
+    client.on("data", (c) => (data += c));
+    client.on("end", () => resolve(JSON.parse(data.split("\n")[0])));
+    client.on("error", (e) => resolve({ ok: false, error: { code: "socket", message: e.message } }));
   });
 }
 const jobEnded = async (id) => until(async () => { const j = await engine("job.get", { job: id }); return j.ok && j.result.state === "finished" ? j.result : null; }, 300_000);

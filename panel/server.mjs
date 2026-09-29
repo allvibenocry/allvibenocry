@@ -19,8 +19,10 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { handshake, refuseUpgrade, WebSocketConnection } from "./ws.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const COOKIE = process.env.PANEL_COOKIE ?? "allvibe_panel";
@@ -89,30 +91,87 @@ const HEADERS = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 
-/** Asks the engine, over its socket: { status, body }. */
+/** The HTTP status the panel answers with, for each of the engine's refusals. */
+export const STATUS = { unknown_operation: 404, bad_arguments: 400, not_found: 404, busy: 409, refused: 403, failed: 500 };
+const ENGINE_DOWN = { ok: false, error: { code: "engine", message: "The engine is not answering. On the machine: sudo systemctl status allvibe-engine" } };
+
+/**
+ * A line-by-line connection to the engine (D76): one JSON message per line,
+ * each way. `first` is its first answer; then `onLine` gets each line it
+ * sends, `send` sends one, `close` ends it.
+ */
+export function engineConnection(socketPath, request) {
+  const socket = net.createConnection(socketPath);
+  let buffer = "";
+  let settle;
+  let listener = () => {};
+  let ended = () => {};
+  const first = new Promise((resolve) => (settle = resolve));
+  let answered = false;
+  socket.setEncoding("utf8");
+  socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
+  socket.on("data", (chunk) => {
+    buffer += chunk;
+    for (;;) {
+      const nl = buffer.indexOf("\n");
+      if (nl === -1) break;
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        message = { ok: false, error: { code: "engine", message: "the engine answered something that is not JSON" } };
+      }
+      if (!answered) {
+        answered = true;
+        settle(message);
+      } else listener(message);
+    }
+  });
+  socket.on("error", () => {
+    if (!answered) {
+      answered = true;
+      settle(ENGINE_DOWN);
+    }
+  });
+  socket.on("close", () => {
+    if (!answered) {
+      answered = true;
+      settle(ENGINE_DOWN);
+    }
+    ended();
+  });
+  return {
+    first,
+    onLine: (fn) => (listener = fn),
+    onEnd: (fn) => (ended = fn),
+    send: (message) => {
+      if (!socket.destroyed) socket.write(`${JSON.stringify(message)}\n`);
+    },
+    close: () => socket.end(),
+  };
+}
+
+/** Asks the engine, over its socket, one question: { status, body }. */
 export function engineOver(socketPath = ENGINE) {
   return (operation, args = {}) =>
     new Promise((resolve) => {
-      const body = JSON.stringify(args);
-      const request = http.request(
-        { socketPath, method: "POST", path: `/v1/${operation}`, headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }, timeout: 30_000 },
-        (response) => {
-          let data = "";
-          response.on("data", (c) => (data += c));
-          response.on("end", () => {
-            try {
-              resolve({ status: response.statusCode ?? 500, body: JSON.parse(data) });
-            } catch {
-              resolve({ status: 502, body: { ok: false, error: { code: "engine", message: "the engine answered something that is not JSON" } } });
-            }
-          });
-        },
-      );
-      request.on("timeout", () => request.destroy(new Error("timeout")));
-      request.on("error", () => resolve({ status: 503, body: { ok: false, error: { code: "engine", message: "The engine is not answering. On the machine: sudo systemctl status allvibe-engine" } } }));
-      request.end(body);
+      const connection = engineConnection(socketPath, { op: operation, args });
+      const timer = setTimeout(() => {
+        connection.close();
+        resolve({ status: 504, body: { ok: false, error: { code: "engine", message: "The engine did not answer in time." } } });
+      }, 30_000);
+      connection.first.then((body) => {
+        clearTimeout(timer);
+        connection.close();
+        resolve({ status: body.ok ? 200 : body.error?.code === "engine" ? 503 : STATUS[body.error?.code] ?? 500, body });
+      });
     });
 }
+
+/** The agent's terminal, as a stream from the engine (D76). */
+export const terminalOver = (socketPath = ENGINE) => (args) => engineConnection(socketPath, { op: "agent.terminal", args });
 
 /**
  * The Preview's one allowed frame: the app's test copy, at its own port on the
@@ -133,9 +192,11 @@ export function testCopyFrame(engine) {
  * The panel's request handler. `engine(operation, args)` answers as the engine
  * does; `frames(app)` gives the Preview's allowed origin for an app's page.
  */
-export function createPanel({ engine = engineOver(), staticDir = path.join(HERE, "static"), now = () => Date.now(), frames = async () => [] } = {}) {
+export function createPanel({ engine = engineOver(), staticDir = path.join(HERE, "static"), now = () => Date.now(), frames = async () => [], terminal = terminalOver(), pingMs = 30_000 } = {}) {
   const files = readStatic(staticDir);
   const sessions = new Map();
+  /** Each session's open terminals, so that signing out closes them. */
+  const terminals = new Map();
 
   const cookieOf = (request) => {
     for (const part of String(request.headers.cookie ?? "").split(";")) {
@@ -223,7 +284,75 @@ export function createPanel({ engine = engineOver(), staticDir = path.join(HERE,
       });
     });
 
-  return async (request, response) => {
+  /**
+   * The agent's terminal (D76): `/api/terminal/<app>`, a WebSocket, only for a
+   * signed-in browser, from the panel's own origin exactly (a WebSocket is
+   * not held back by the same-origin rules, so the Origin is the check), and
+   * only once its first message carries the session's own token. Then the
+   * engine's stream, both ways: what Claude Code shows, as binary; what the
+   * person types and the window's size, as JSON. Nothing of it is logged or
+   * kept here.
+   */
+  const upgrade = (request, socket, head) => {
+    const app = /^\/api\/terminal\/([a-z][a-z0-9-]{1,29})$/.exec(new URL(String(request.url), "http://panel").pathname)?.[1];
+    const key = request.headers["sec-websocket-key"];
+    if (!app || String(request.headers.upgrade ?? "").toLowerCase() !== "websocket" || typeof key !== "string" || request.headers["sec-websocket-version"] !== "13") return refuseUpgrade(socket, 400, "Bad Request");
+    const s = sessionOf(request);
+    if (!s) return refuseUpgrade(socket, 401, "Unauthorized");
+    if (!fromHere(request)) return refuseUpgrade(socket, 403, "Forbidden");
+    handshake(socket, key);
+    const ws = new WebSocketConnection(socket, head);
+    const open = terminals.get(s.id) ?? new Set();
+    open.add(ws);
+    terminals.set(s.id, open);
+    let stream = null;
+    let alive = true;
+    const hello = setTimeout(() => ws.close(4401, "no token"), 5000);
+    const pinger = setInterval(() => {
+      if (!alive) return ws.close(1001, "no answer");
+      alive = false;
+      ws.ping();
+    }, pingMs);
+    ws.on("pong", () => (alive = true));
+    ws.on("close", () => {
+      clearTimeout(hello);
+      clearInterval(pinger);
+      open.delete(ws);
+      stream?.close();
+    });
+    ws.on("message", async (data, text) => {
+      if (!text) return;
+      let m;
+      try {
+        m = JSON.parse(data.toString("utf8"));
+      } catch {
+        return;
+      }
+      if (!stream) {
+        if (m?.t !== "hello" || !tokenMatches({ headers: { "x-allvibe-token": m.token } }, s)) return ws.close(4401, "not signed in");
+        clearTimeout(hello);
+        const args = { app, cols: m.cols, rows: m.rows, start: m.start === true };
+        stream = terminal(args);
+        const answer = await stream.first;
+        if (ws.closed) return stream.close();
+        if (!answer.ok) {
+          ws.sendText(JSON.stringify({ t: "refused", code: answer.error?.code, message: answer.error?.message }));
+          return ws.close(4000, "refused");
+        }
+        ws.sendText(JSON.stringify({ t: "ready", session: answer.result?.session }));
+        stream.onLine((line) => {
+          if (line?.t === "out" && typeof line.d === "string") ws.sendBinary(Buffer.from(line.d, "base64"));
+          else if (line?.t === "taken" || line?.t === "ended") ws.sendText(JSON.stringify(line));
+        });
+        stream.onEnd(() => ws.close(1000, "ended"));
+        return;
+      }
+      if (m?.t === "in" && typeof m.d === "string" && m.d.length <= 16 * 1024) stream.send({ t: "in", d: m.d });
+      else if (m?.t === "resize" && Number.isInteger(m.cols) && Number.isInteger(m.rows)) stream.send({ t: "resize", cols: m.cols, rows: m.rows });
+    });
+  };
+
+  const handler = async (request, response) => {
     const url = new URL(String(request.url), "http://panel");
     const p = url.pathname;
     const method = request.method;
@@ -289,6 +418,8 @@ export function createPanel({ engine = engineOver(), staticDir = path.join(HERE,
 
       if (p === "/api/sign-out") {
         sessions.delete(s.id);
+        for (const ws of terminals.get(s.id) ?? []) ws.close(4401, "signed out");
+        terminals.delete(s.id);
         return send(response, 200, { ok: true, result: { signedIn: false } }, { "Set-Cookie": cookie("", 0) });
       }
       const op = /^\/api\/op\/([a-zA-Z.]{1,40})$/.exec(p)?.[1];
@@ -299,6 +430,8 @@ export function createPanel({ engine = engineOver(), staticDir = path.join(HERE,
 
     return send(response, 404, "not found\n");
   };
+  handler.upgrade = upgrade;
+  return handler;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -309,6 +442,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       response.end("the panel could not answer\n");
     });
   });
+  server.on("upgrade", handler.upgrade);
   server.headersTimeout = 20_000;
   server.requestTimeout = 60_000;
   server.listen(PORT, "0.0.0.0", () => process.stdout.write(`the control panel answers on ${PORT}\n`));

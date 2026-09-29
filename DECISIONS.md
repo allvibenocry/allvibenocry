@@ -2917,3 +2917,89 @@ Open the app"; exactly one pink thing on the screen at every stage, and it the
 button; the test copy in view while trying; Live by itself after the last
 step; the ending's words and three choices; every tab still showing what it
 shows; "Start something new" back at Plan with no pink; no console errors.
+
+## D76. The engine: JSON lines, the agent, a new app, and the terminal's stream
+
+*2026-09-29. The seventh brief, item 6, carrying out D66's condition for the
+engine (question 6) and the first two of its next operations (question 8).*
+
+**No HTTP in the engine** (D66, question 6: it "reads only JSON with a size
+limit, and has no HTTP server and no TLS"). The engine spoke HTTP/1.1 over its
+socket (D62), which is an HTTP server in all but a network port, and Node's
+HTTP parser is where many of its security fixes land. Now it reads **JSON, one
+message per line, each at most 16 kB**, parsed by `JSON.parse` alone: a
+request is `{"op", "args"}` on one line, the answer one line back. The panel
+maps the engine's refusals to its own HTTP statuses. Seen: an HTTP request, a
+line of 17 kB and a line that never ends are each refused, and every operation
+answers as before (`engine-probe.mjs`).
+
+**New operations**, each with its arguments checked, and each change needing
+`confirm: true`, which the panel sends only after the person confirmed it
+(D66, question 8):
+
+- **`app.create`**: `allvibe project create`, as a job; the CLI's rule for
+  names, and a name that is taken refused in plain words. A new app starts in
+  planning: no plan yet.
+- **`agent.status`**, **`agent.start`** (`signIn: "key"` or `"account"`, as
+  `allvibe agent start --sign-in`), **`agent.stop`**: the CLI's own commands,
+  as jobs, with their steps.
+
+**The terminal**: `agent.terminal`, the one **stream**, which answers its first
+line and then carries lines both ways. Through Docker's own exec API on its
+socket, as the engine's user, it starts `claude` in the agent with a terminal
+of its own, and passes the person's keystrokes in and Claude Code's screen out.
+
+- **Opened only when the person asks** (`start: true`, which the panel sends
+  only on a press of theirs): a browser that comes to a running Claude Code
+  joins it, and one that comes when none runs is told so and gets a button.
+  The suite never types into it (D48, rule 17).
+- **One browser at a time, and a second takes over** (the brief left refusing
+  or taking over to the implementer): the first is told "This terminal was
+  opened in another window." and let go, and the second joins the same Claude
+  Code, which draws itself again for the new window's size. There is one
+  person; a window left open on another device must not lock them out, and
+  refusing would.
+- **Idle**: after 30 minutes with nothing typed and nothing shown, Claude Code
+  is hung up on, as a closed terminal hangs up on a program, and the browser
+  is told; its conversation stays in Claude Code's own records (D60). A test
+  host may declare a shorter time (`terminal-idle-seconds`), as its probe does.
+- **Resizing** follows the window.
+- **Nothing of it is kept**: what passes is handed on; what Claude Code shows
+  while no browser is attached is dropped, not kept for the next window; the
+  engine logs only that a terminal opened, never what passed.
+
+**In the panel**, `/api/terminal/<app>` is a WebSocket (a small one of the
+panel's own, `panel/ws.mjs`, Node's standard library only): only for a
+signed-in browser, only from the panel's own origin exactly (a WebSocket is
+not held back by the same-origin rules, so the Origin is the check), and only
+once its first message carries the session's own token; signing out closes it.
+The door passes it through and the panel pings it, so that it stays open while
+the terminal is in use.
+
+**Found on the way**: on a take-over, the new window was made the terminal's
+before the engine had written its answer, so Claude Code's redraw could reach
+the panel ahead of it, and the panel took that for the answer. A stream now
+sends nothing of its own until its answer is written (`start`), and a unit
+test joins a second window while Claude Code draws.
+
+**Probed** on the test host: `engine-probe.mjs` 71 of 71 (the protocol, and
+every new operation for real: an app made, the agent started with a key and
+stopped); `terminal-probe.mjs` 26 of 26, in two real browsers: an attach
+without a session (401), from another site, another port of the panel's name
+or no Origin (403), with a wrong token (closed), and from the test copy's own
+page by the fallback address, where the browser sends the panel's cookie (the
+Origin refuses it), each refused, with the control, the session and its
+origin, let through; Claude Code's first start, gone through as a person does
+(its text style, its security notes, and trusting the working copy, whose
+default is "No, exit"); a marker typed into its prompt and shown there, never
+sent; a second browser, signed in on its own, taking over, the first told and
+let go; the idle time ending it, and the browser told; and the marker found in
+none of the journal, the suite's folders, its settings, the machine's
+temporary folders, every container's log and every file a container wrote, or
+the agent's own files, while the same search finds a marker put there on
+purpose. Unit tests: the engine's 24, the panel's 10.
+
+**Limits.** A restart of the engine lets go of its terminals; a Claude Code it
+started keeps running in the agent until the agent stops, and opening the
+terminal again starts another. The terminal is Claude Code's alone; the
+agent's shell stays on the machine (`allvibe agent shell`).

@@ -3,7 +3,7 @@
 # and nothing from npm. It runs as the panel's own user, which `docker run`
 # gives it, on an internal network, with only the engine's socket mounted.
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
-COPY server.mjs /panel/server.mjs
+COPY server.mjs ws.mjs /panel/
 COPY static /panel/static
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=4s --start-period=5s --retries=3 \

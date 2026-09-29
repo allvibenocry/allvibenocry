@@ -380,3 +380,11 @@ From the seventh brief, here:
     let the apps' containers reach it. The existing probes caught both.
     *Here:* when something moves between the host and a container, every
     isolation probe of both runs again before it counts as done.
+51. **A stream must not speak before it has answered.** When a second window
+    took the terminal over, the engine made it the terminal's before writing
+    its answer, and Claude Code's redraw reached the panel first; the panel
+    read the redraw as the answer, and refused the window. *Here:* a stream
+    sends nothing of its own until its answer is written, and the test for it
+    has the other side talking while it joins. (And the probe of it pressed
+    Enter at Claude Code's "No, exit", mistake 35 again: a probe waits for each
+    screen before it answers it.)

@@ -4,14 +4,16 @@
 // host (test/host/engine-probe.mjs).
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
-import http from "node:http";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Duplex, PassThrough } from "node:stream";
 import { test } from "node:test";
 import { AuthStore, CODE_ALPHABET, isCodeShape, normaliseCode, showCode } from "../../dist/engine/auth.js";
 import { Jobs, readLines } from "../../dist/engine/jobs.js";
-import { OPERATIONS, perform } from "../../dist/engine/operations.js";
-import { createEngineServer, MAX_BODY } from "../../dist/engine/server.js";
+import { OPERATIONS, perform, STREAMS, terminalStream } from "../../dist/engine/operations.js";
+import { createEngineServer, MAX_LINE } from "../../dist/engine/server.js";
+import { Terminals } from "../../dist/engine/terminal.js";
 import { nextAction } from "../../dist/engine/suite.js";
 import { runSteps, ok, fail } from "../../dist/lib/steps.js";
 
@@ -37,7 +39,9 @@ function fakeSuite(calls = []) {
     report: (app, text) => (calls.push(`report ${app} ${text.length}`), { file: "reports/x.txt" }),
     machineStatus: () => (calls.push("status"), { summary: "All green.", checks: [] }),
     lastNight: () => (calls.push("last"), null),
-    run: async (kind, app) => (calls.push(`run ${kind} ${app}`), 0),
+    run: async (kind, app, options = {}) => (calls.push(`run ${kind} ${app} ${options.signIn ?? "-"}`), 0),
+    agentStatus: () => ({ running: true, signIn: "key", hasKey: true }),
+    nameProblem: (name) => (name === "reserved" ? "that name is reserved" : null),
   };
 }
 
@@ -59,11 +63,13 @@ const waitFor = async (check, ms = 3000) => {
 
 /* ------------------------------------------------------------ the list -- */
 
-test("the allow-list is exactly the operations the architecture names", () => {
+test("the allow-list is exactly the operations the architecture names, and one stream (D76)", () => {
   assert.deepEqual(Object.keys(OPERATIONS).sort(), [
-    "app.backups", "app.get", "app.goBack", "app.markTried", "app.plan", "app.putLive", "app.report", "app.startTestCopy",
+    "agent.start", "agent.status", "agent.stop",
+    "app.backups", "app.create", "app.get", "app.goBack", "app.markTried", "app.plan", "app.putLive", "app.report", "app.startTestCopy",
     "apps.list", "auth.check", "auth.claim", "auth.status", "job.get", "machine.lastNight", "machine.status",
   ]);
+  assert.deepEqual([...STREAMS], ["agent.terminal"]);
 });
 
 test("every read and change operation answers from the suite", async () => {
@@ -328,45 +334,230 @@ test("the next thing to do, as the home screen shows it", () => {
 
 const socketPath = () => (process.platform === "win32" ? `\\\\.\\pipe\\allvibe-engine-test-${process.pid}-${Math.random().toString(16).slice(2)}` : path.join(tmp(), "engine.sock"));
 
-function ask(socket, method, url, body, headers = {}) {
+/** One line to the engine's socket, and the lines it answers with until it closes. */
+function lines(socket, raw, { keep = 0 } = {}) {
   return new Promise((resolve, reject) => {
-    const request = http.request({ socketPath: socket, method, path: url, headers: { "Content-Type": "application/json", ...headers } }, (response) => {
-      let data = "";
-      response.on("data", (c) => (data += c));
-      response.on("end", () => resolve({ status: response.statusCode, body: data ? JSON.parse(data) : null, type: response.headers["content-type"] }));
+    const client = net.createConnection(socket);
+    let data = "";
+    client.setEncoding("utf8");
+    client.on("connect", () => client.write(raw));
+    client.on("data", (c) => {
+      data += c;
+      if (keep && data.split("\n").filter(Boolean).length >= keep) client.end();
     });
-    request.on("error", reject);
-    if (body !== undefined) request.end(typeof body === "string" ? body : JSON.stringify(body));
-    else request.end();
+    client.on("end", () => resolve(data.split("\n").filter(Boolean).map((l) => JSON.parse(l))));
+    client.on("error", reject);
   });
 }
+const ask = async (socket, op, args) => (await lines(socket, `${JSON.stringify(args === undefined ? { op } : { op, args })}\n`))[0];
 
-test("the server: POST /v1/<operation> with JSON, and every other request refused", async () => {
+test("the server: one JSON line in, one out, no HTTP; every other request refused (D76)", async () => {
   const socket = socketPath();
   const server = createEngineServer(context());
   await new Promise((r) => server.listen(socket, r));
   try {
-    const good = await ask(socket, "POST", "/v1/apps.list", {});
-    assert.equal(good.status, 200);
-    assert.match(good.type, /application\/json/);
-    assert.deepEqual(good.body, { ok: true, result: [{ name: "guestbook" }] });
-    assert.equal((await ask(socket, "POST", "/v1/apps.list")).status, 200, "no body is no arguments");
-    const get = await ask(socket, "GET", "/v1/apps.list");
-    assert.equal(get.status, 405);
-    assert.equal(get.body.error.code, "unknown_operation");
-    assert.equal((await ask(socket, "POST", "/v1/shell", {})).status, 404);
-    assert.equal((await ask(socket, "POST", "/", {})).status, 404);
-    assert.equal((await ask(socket, "POST", "/v1/../etc/passwd", {})).status, 404);
-    const notJson = await ask(socket, "POST", "/v1/apps.list", "{not json");
-    assert.equal(notJson.status, 400);
-    assert.equal(notJson.body.error.code, "bad_arguments");
-    const big = await ask(socket, "POST", "/v1/app.report", JSON.stringify({ app: "guestbook", text: "x".repeat(MAX_BODY) }));
-    assert.equal(big.status, 413);
-    const badArgs = await ask(socket, "POST", "/v1/app.get", { app: "../x" });
-    assert.equal(badArgs.status, 400);
-    const missing = await ask(socket, "POST", "/v1/app.get", { app: "nosuchapp" });
-    assert.equal(missing.status, 404);
-    assert.equal(missing.body.error.code, "not_found");
+    assert.deepEqual(await ask(socket, "apps.list", {}), { ok: true, result: [{ name: "guestbook" }] });
+    assert.equal((await ask(socket, "apps.list")).ok, true, "no arguments is none");
+    assert.equal((await ask(socket, "shell", {})).error.code, "unknown_operation");
+    assert.equal((await ask(socket, "../etc/passwd", {})).error.code, "unknown_operation");
+    const http11 = await lines(socket, "POST /v1/apps.list HTTP/1.1\r\nHost: x\r\n\r\n");
+    assert.equal(http11[0].error.code, "bad_arguments", "an HTTP request is not JSON");
+    assert.equal((await lines(socket, "{not json\n"))[0].error.code, "bad_arguments");
+    assert.equal((await lines(socket, "[1,2]\n"))[0].error.code, "bad_arguments");
+    const big = await lines(socket, `${JSON.stringify({ op: "app.report", args: { app: "guestbook", text: "x".repeat(MAX_LINE) } })}\n`);
+    assert.equal(big[0].error.code, "bad_arguments");
+    assert.match(big[0].error.message, /longer than 16 kB/);
+    const noLine = await lines(socket, "x".repeat(MAX_LINE + 10));
+    assert.equal(noLine[0].error.code, "bad_arguments", "a line that never ends is cut off at 16 kB");
+    assert.equal((await ask(socket, "app.get", { app: "../x" })).error.code, "bad_arguments");
+    assert.equal((await ask(socket, "app.get", { app: "nosuchapp" })).error.code, "not_found");
+    const two = await lines(socket, `${JSON.stringify({ op: "apps.list" })}\n${JSON.stringify({ op: "machine.status" })}\n`);
+    assert.equal(two.length, 1, "one request, one answer, and the connection closes");
+  } finally {
+    server.close();
+  }
+});
+
+/* --------------------------------------------- the agent, a new app (D76) -- */
+
+test("the agent's operations and a new app: arguments checked, and each change confirmed", async () => {
+  const ctx = context();
+  const bad = async (op, args) => (await perform(op, args, ctx)).error;
+  assert.equal((await bad("agent.start", { app: "guestbook", signIn: "key" })).code, "bad_arguments", "no confirm");
+  assert.equal((await bad("agent.start", { app: "guestbook", signIn: "key", confirm: "yes" })).code, "bad_arguments", "confirm is true, not a word");
+  assert.equal((await bad("agent.start", { app: "guestbook", signIn: "password", confirm: true })).code, "bad_arguments");
+  assert.equal((await bad("agent.start", { app: "nosuchapp", signIn: "key", confirm: true })).code, "not_found");
+  assert.equal((await bad("agent.stop", { app: "guestbook" })).code, "bad_arguments", "no confirm");
+  assert.equal((await bad("app.create", { app: "newapp" })).code, "bad_arguments", "no confirm");
+  assert.equal((await bad("app.create", { app: "New App", confirm: true })).code, "bad_arguments");
+  assert.equal((await bad("app.create", { app: "guestbook", confirm: true })).message, "there is already an app called guestbook");
+  assert.equal((await bad("app.create", { app: "reserved", confirm: true })).message, "that name is reserved");
+  assert.equal((await bad("app.create", { app: "newapp", confirm: true, extra: 1 })).code, "bad_arguments");
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), [], "nothing ran");
+
+  const started = await perform("agent.start", { app: "guestbook", signIn: "account", confirm: true }, ctx);
+  assert.equal(started.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  const made = await perform("app.create", { app: "newapp", confirm: true }, ctx);
+  assert.equal(made.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  const stopped = await perform("agent.stop", { app: "guestbook", confirm: true }, ctx);
+  assert.equal(stopped.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), ["run agentStart guestbook account", "run createApp newapp -", "run agentStop guestbook -"]);
+  assert.deepEqual(ctx.suite.locks, [], "none of them takes an app's lock, and none is left");
+  const status = await perform("agent.status", { app: "guestbook" }, ctx);
+  assert.deepEqual(status.result, { running: true, signIn: "key", hasKey: true, terminal: { open: false, attached: false } });
+});
+
+/** A stand-in for Docker's exec API: each start is a pair of streams, one the test holds. */
+function fakeExec() {
+  const made = [];
+  const resizes = [];
+  const hangups = [];
+  return {
+    made,
+    resizes,
+    hangups,
+    async start(container, cols, rows) {
+      const inner = new PassThrough();
+      const outer = new PassThrough();
+      const stream = Duplex.from({ readable: outer, writable: inner });
+      const typed = [];
+      inner.on("data", (c) => typed.push(c.toString("utf8")));
+      made.push({ container, cols, rows, show: (text) => outer.write(text), end: () => outer.end(), typed });
+      return { id: `exec${made.length}`, stream };
+    },
+    async resize(id, cols, rows) {
+      resizes.push(`${id} ${cols}x${rows}`);
+    },
+    async hangUp(id) {
+      hangups.push(id);
+    },
+  };
+}
+const client = () => {
+  const got = [];
+  return { got, closed: false, send(m) { got.push(m); }, close() { this.closed = true; } };
+};
+
+test("the terminal: opened only when the person asks, one browser at a time, the second taking over", async () => {
+  const exec = fakeExec();
+  let running = false;
+  const terminals = new Terminals(exec, () => running, (app) => `allvibe-${app}-agent`);
+  const a = client();
+  assert.deepEqual(await terminals.attach("guestbook", a, 80, 24, true), { ok: false, code: "refused", message: "Your AI is not running. Start it first." });
+  running = true;
+  const none = await terminals.attach("guestbook", a, 80, 24, false);
+  assert.equal(none.code, "not_found", "not started without the person asking");
+  assert.equal(exec.made.length, 0);
+  const first = await terminals.attach("guestbook", a, 80, 24, true);
+  assert.equal(first.result.session, "started");
+  assert.deepEqual([exec.made[0].container, exec.made[0].cols, exec.made[0].rows], ["allvibe-guestbook-agent", 80, 24]);
+  exec.made[0].show("before its answer");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(a.got.length, 0, "nothing for the window before the server has written its answer");
+  first.handle.start();
+  exec.made[0].show("Claude Code, drawing");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(Buffer.from(a.got.at(-1).d, "base64").toString(), "Claude Code, drawing");
+  first.handle.message({ t: "in", d: "hello" });
+  first.handle.message({ t: "in", d: "x".repeat(16 * 1024 + 1) });
+  first.handle.message({ t: "resize", cols: 100, rows: 30 });
+  first.handle.message({ t: "resize", cols: 5000, rows: 30 });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(exec.made[0].typed, ["hello"], "what is typed goes in; too much does not");
+  assert.deepEqual(exec.resizes, ["exec1 100x30"], "a size it can take");
+
+  const b = client();
+  const second = await terminals.attach("guestbook", b, 90, 20, false);
+  assert.equal(second.result.session, "joined", "a second browser joins the same Claude Code");
+  assert.deepEqual(a.got.at(-1), { t: "taken", message: "This terminal was opened in another window." });
+  assert.equal(a.closed, true, "and the first is let go");
+  exec.made[0].show("a redraw too early");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(b.got.length, 0, "the new window gets nothing before its answer either");
+  second.handle.start();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(exec.resizes.slice(-2), ["exec1 90x19", "exec1 90x20"], "and it draws itself again for the new window");
+  first.handle.message({ t: "in", d: "from the old window" });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(exec.made[0].typed, ["hello"], "the old window types nothing any more");
+  assert.deepEqual(terminals.status("guestbook"), { open: true, attached: true });
+
+  second.handle.closed();
+  exec.made[0].show("while nobody looks");
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(terminals.status("guestbook"), { open: true, attached: false });
+  assert.equal(b.got.filter((m) => m.t === "out").length, 0, "what is shown while nobody looks is dropped, not kept");
+  const c = client();
+  (await terminals.attach("guestbook", c, 80, 24, false)).handle.start();
+  assert.equal(c.got.filter((m) => m.t === "out").length, 0, "and not replayed to the next window");
+
+  exec.made[0].end();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(c.got.at(-1), { t: "ended", why: "exit" });
+  assert.deepEqual(terminals.status("guestbook"), { open: false, attached: false });
+});
+
+test("the terminal: hung up on after the idle time, with nothing typed and nothing shown", async () => {
+  const exec = fakeExec();
+  let now = 0;
+  const terminals = new Terminals(exec, () => true, (app) => app, () => 60_000, () => now);
+  const a = client();
+  const opened = await terminals.attach("guestbook", a, 80, 24, true);
+  opened.handle.start();
+  now = 50_000;
+  opened.handle.message({ t: "in", d: "still here" });
+  now = 100_000;
+  assert.deepEqual(await terminals.sweep(), [], "typing keeps it open");
+  now = 111_000;
+  assert.deepEqual(await terminals.sweep(), ["guestbook"]);
+  assert.deepEqual(exec.hangups, ["exec1"]);
+  exec.made[0].end();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(a.got.at(-1), { t: "ended", why: "idle" });
+});
+
+test("the terminal's stream through the server: arguments checked, then lines both ways", async () => {
+  const socket = socketPath();
+  const exec = fakeExec();
+  const ctx = context();
+  const terminals = new Terminals(exec, () => true, (app) => app);
+  const server = createEngineServer(ctx, () => {}, { "agent.terminal": terminalStream(ctx, terminals) });
+  await new Promise((r) => server.listen(socket, r));
+  try {
+    assert.equal((await ask(socket, "agent.terminal", { app: "guestbook", cols: 80, rows: 24, start: true, shell: "sh" })).error.code, "bad_arguments");
+    assert.equal((await ask(socket, "agent.terminal", { app: "guestbook", cols: 1, rows: 24 })).error.code, "bad_arguments");
+    assert.equal((await ask(socket, "agent.terminal", { app: "nosuchapp", cols: 80, rows: 24 })).error.code, "not_found");
+    const conn = net.createConnection(socket);
+    conn.setEncoding("utf8");
+    let got = "";
+    conn.on("data", (c) => (got += c));
+    await new Promise((r) => conn.on("connect", r));
+    conn.write(`${JSON.stringify({ op: "agent.terminal", args: { app: "guestbook", cols: 80, rows: 24, start: true } })}\n`);
+    await waitFor(() => got.includes("\n"));
+    assert.deepEqual(JSON.parse(got.split("\n")[0]), { ok: true, result: { session: "started" } });
+    conn.write(`${JSON.stringify({ t: "in", d: "ls\r" })}\n`);
+    exec.made[0].show("an answer");
+    await waitFor(() => exec.made[0].typed.length === 1 && got.split("\n").filter(Boolean).length === 2);
+    assert.deepEqual(exec.made[0].typed, ["ls\r"]);
+    assert.equal(Buffer.from(JSON.parse(got.split("\n")[1]).d, "base64").toString(), "an answer");
+    // A second window joins while Claude Code is drawing: its first line is still its answer.
+    const conn2 = net.createConnection(socket);
+    conn2.setEncoding("utf8");
+    let got2 = "";
+    conn2.on("data", (c) => (got2 += c));
+    await new Promise((r) => conn2.on("connect", r));
+    const drawing = setInterval(() => exec.made[0].show("drawing"), 1);
+    conn2.write(`${JSON.stringify({ op: "agent.terminal", args: { app: "guestbook", cols: 80, rows: 24 } })}\n`);
+    await waitFor(() => got2.includes("\n"));
+    clearInterval(drawing);
+    assert.deepEqual(JSON.parse(got2.split("\n")[0]), { ok: true, result: { session: "joined" } }, "the answer first, then the drawing");
+    await waitFor(() => got.includes('"taken"'));
+    conn2.end();
+    conn.end();
+    await waitFor(() => !terminals.status("guestbook").attached);
   } finally {
     server.close();
   }

@@ -33,6 +33,7 @@ function fakeEngine(state = { claimed: false }) {
 async function serve(options) {
   const handler = createPanel(options);
   const server = http.createServer((q, r) => handler(q, r));
+  server.on("upgrade", handler.upgrade);
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
   const origin = `http://127.0.0.1:${port}`;
@@ -219,6 +220,129 @@ test("an app's page may frame its test copy, on the apps' host the engine gives,
     assert.match(app.headers["content-security-policy"], /frame-src http:\/\/192\.0\.2\.10:8103(;|$)/);
     const home = await panel.ask("GET", "/", { cookie });
     assert.doesNotMatch(home.headers["content-security-policy"], /frame-src/);
+  } finally {
+    panel.close();
+  }
+});
+
+/* ------------------------------------------------- the terminal (D76) -- */
+
+/** A browser's WebSocket, by hand: the upgrade, masked frames out, frames in. */
+function openSocket(panel, path, headers) {
+  const port = Number(new URL(panel.origin).port);
+  return new Promise((resolve) => {
+    const request = http.request({ host: "127.0.0.1", port, path, headers: { Connection: "Upgrade", Upgrade: "websocket", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==", "Sec-WebSocket-Version": "13", ...headers } });
+    request.on("response", (response) => resolve({ refused: response.statusCode }));
+    request.on("upgrade", (response, socket) => {
+      const got = [];
+      let buffer = Buffer.alloc(0);
+      let closedWith = null;
+      socket.on("data", (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        while (buffer.length >= 2) {
+          const opcode = buffer[0] & 0x0f;
+          let length = buffer[1] & 0x7f;
+          let at = 2;
+          if (length === 126) { length = buffer.readUInt16BE(2); at = 4; }
+          if (buffer.length < at + length) break;
+          const payload = buffer.subarray(at, at + length);
+          buffer = buffer.subarray(at + length);
+          if (opcode === 0x8) closedWith = payload.readUInt16BE(0);
+          else got.push(opcode === 0x1 ? JSON.parse(payload.toString()) : { binary: payload.toString() });
+        }
+      });
+      const send = (message) => {
+        const data = Buffer.from(JSON.stringify(message));
+        const mask = Buffer.from([1, 2, 3, 4]);
+        const head = data.length < 126 ? Buffer.from([0x81, 0x80 | data.length]) : Buffer.from([0x81, 0x80 | 126, data.length >> 8, data.length & 255]);
+        socket.write(Buffer.concat([head, mask, Buffer.from(data.map((b, i) => b ^ mask[i & 3]))]));
+      };
+      resolve({ accept: response.headers["sec-websocket-accept"], got, send, closed: () => closedWith, socket });
+    });
+    request.end();
+  });
+}
+
+/** The engine's side of a terminal, as the panel sees it. */
+function fakeTerminal(answer = { ok: true, result: { session: "started" } }) {
+  const t = { asked: [], sent: [], closed: false };
+  t.open = (args) => {
+    t.asked.push(args);
+    let listener = () => {};
+    let ended = () => {};
+    t.show = (text) => listener({ t: "out", d: Buffer.from(text).toString("base64") });
+    t.take = () => listener({ t: "taken", message: "This terminal was opened in another window." });
+    t.end = () => ended();
+    return { first: Promise.resolve(answer), onLine: (fn) => (listener = fn), onEnd: (fn) => (ended = fn), send: (m) => t.sent.push(m), close: () => (t.closed = true) };
+  };
+  return t;
+}
+
+test("the terminal: refused without a session, from another origin, or without the session's token", async () => {
+  const fake = fakeEngine({ claimed: true });
+  const term = fakeTerminal();
+  const panel = await serve({ engine: fake.engine, terminal: term.open });
+  try {
+    const { cookie, token } = await signedIn(panel);
+    assert.equal((await openSocket(panel, "/api/terminal/guestbook", { Origin: panel.origin })).refused, 401, "no session");
+    assert.equal((await openSocket(panel, "/api/terminal/guestbook", { Cookie: cookie, Origin: "http://evil.example" })).refused, 403, "another site");
+    const otherPort = panel.origin.replace(/:(\d+)$/, (_, p) => `:${Number(p) + 1}`);
+    assert.equal((await openSocket(panel, "/api/terminal/guestbook", { Cookie: cookie, Origin: otherPort })).refused, 403, "another port of the same host");
+    assert.equal((await openSocket(panel, "/api/terminal/guestbook", { Cookie: cookie })).refused, 403, "no origin");
+    assert.equal((await openSocket(panel, "/api/terminal/../shell", { Cookie: cookie, Origin: panel.origin })).refused, 400);
+    const noToken = await openSocket(panel, "/api/terminal/guestbook", { Cookie: cookie, Origin: panel.origin });
+    assert.ok(noToken.accept, "the upgrade itself is answered");
+    noToken.send({ t: "hello", token: "x".repeat(43), cols: 80, rows: 24 });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(noToken.closed(), 4401, "a wrong token closes it");
+    assert.deepEqual(term.asked, [], "and the engine was never asked");
+    void token;
+  } finally {
+    panel.close();
+  }
+});
+
+test("the terminal: with the token, the engine's stream both ways; signing out closes it", async () => {
+  const fake = fakeEngine({ claimed: true });
+  const term = fakeTerminal();
+  const panel = await serve({ engine: fake.engine, terminal: term.open });
+  try {
+    const { cookie, token } = await signedIn(panel);
+    const ws = await openSocket(panel, "/api/terminal/guestbook", { Cookie: cookie, Origin: panel.origin });
+    ws.send({ t: "hello", token, cols: 100, rows: 30, start: true });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(term.asked, [{ app: "guestbook", cols: 100, rows: 30, start: true }]);
+    assert.deepEqual(ws.got[0], { t: "ready", session: "started" });
+    term.show("Claude Code, drawing");
+    ws.send({ t: "in", d: "hello\r" });
+    ws.send({ t: "resize", cols: 90, rows: 20 });
+    ws.send({ t: "shell", d: "rm -rf /" });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(ws.got[1], { binary: "Claude Code, drawing" });
+    assert.deepEqual(term.sent, [{ t: "in", d: "hello\r" }, { t: "resize", cols: 90, rows: 20 }], "only input and a size go on");
+    term.take();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(ws.got.at(-1).t, "taken");
+    await panel.post("/api/sign-out", {}, { cookie, token });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(ws.closed(), 4401, "signing out closes the terminal");
+    assert.equal(term.closed, true, "and its stream to the engine");
+  } finally {
+    panel.close();
+  }
+});
+
+test("the terminal: the engine's refusal reaches the browser in its words", async () => {
+  const fake = fakeEngine({ claimed: true });
+  const term = fakeTerminal({ ok: false, error: { code: "refused", message: "Your AI is not running. Start it first." } });
+  const panel = await serve({ engine: fake.engine, terminal: term.open });
+  try {
+    const { cookie, token } = await signedIn(panel);
+    const ws = await openSocket(panel, "/api/terminal/guestbook", { Cookie: cookie, Origin: panel.origin });
+    ws.send({ t: "hello", token, cols: 80, rows: 24 });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(ws.got[0], { t: "refused", code: "refused", message: "Your AI is not running. Start it first." });
+    assert.equal(ws.closed(), 4000);
   } finally {
     panel.close();
   }

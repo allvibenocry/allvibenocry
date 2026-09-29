@@ -161,7 +161,18 @@ async function create(name: string | undefined): Promise<number> {
         name: "both answer through the front door",
         run: async () => {
           const p = project as Project;
-          const checks = await Promise.all(ENVS.map(async (env) => ({ env, result: await smoke(p, env) })));
+          // nginx takes its new doors a moment after it is told to reload (the
+          // step before), so a door that is not there yet is asked again, for
+          // up to ten seconds; one that answers wrongly is not.
+          const ask = async (env: Env) => {
+            let result = await smoke(p, env);
+            for (let i = 0; i < 20 && !result.ok && /fetch failed|ECONNREFUSED/.test(result.said); i += 1) {
+              await new Promise((r) => setTimeout(r, 500));
+              result = await smoke(p, env);
+            }
+            return { env, result };
+          };
+          const checks = await Promise.all(ENVS.map(ask));
           const bad = checks.filter((c) => !c.result.ok);
           if (bad.length) return fail(bad.map((c) => `${c.env}: ${c.result.said}`).join("; "));
           return ok(checks.map((c) => `${c.env}: ${c.result.said}`).join("\n"));

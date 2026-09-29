@@ -10,6 +10,8 @@
 import { refusal } from "../lib/lock.js";
 import { AuthStore, isCodeShape, PASSWORD_MAX } from "./auth.js";
 import type { Job, Jobs } from "./jobs.js";
+import type { StreamStart } from "./server.js";
+import { validSize, type Terminals } from "./terminal.js";
 
 export type ErrorCode = "unknown_operation" | "bad_arguments" | "not_found" | "busy" | "refused" | "failed";
 
@@ -19,7 +21,8 @@ export class EngineError extends Error {
   }
 }
 
-export type LongKind = "putLive" | "goBack" | "startTestCopy";
+export type LongKind = "putLive" | "goBack" | "startTestCopy" | "agentStart" | "agentStop" | "createApp";
+export type SignIn = "key" | "account";
 
 /** What the operations need from the suite. */
 export interface Suite {
@@ -33,18 +36,24 @@ export interface Suite {
   machineStatus(): unknown;
   lastNight(): unknown;
   /** Runs the CLI's command for a long operation, printing as it does; its exit code. */
-  run(kind: LongKind, app: string): Promise<number>;
+  run(kind: LongKind, app: string, options?: { signIn?: SignIn }): Promise<number>;
   /** The app's lock for a long operation, shared with the CLI (D72), or why not, in plain words. */
   lock(app: string, kind: LongKind): { ok: true; release: () => void } | { ok: false; message: string };
+  /** The agent of an app (D76): whether it runs, how it signs in, whether the vault has its key. */
+  agentStatus(app: string): { running: boolean; signIn: SignIn | null; hasKey: boolean };
+  /** Why a new app may not have this name, in the CLI's words, or null. */
+  nameProblem(name: string): string | null;
 }
 
-/** Each long operation, as the lock names it (src/lib/lock.ts). */
-export const LOCK_OPERATION: Record<LongKind, string> = { putLive: "release", goBack: "rollback", startTestCopy: "dev-deploy" };
+/** The long operations the app's lock covers, as the lock names them (src/lib/lock.ts). */
+export const LOCK_OPERATION: Partial<Record<LongKind, string>> = { putLive: "release", goBack: "rollback", startTestCopy: "dev-deploy" };
 
 export interface Context {
   suite: Suite;
   jobs: Jobs;
   auth: AuthStore;
+  /** The agents' terminals (D76), for their state. */
+  terminals?: { status(app: string): { open: boolean; attached: boolean } };
 }
 
 type Args = Record<string, unknown>;
@@ -103,32 +112,55 @@ export interface Operation {
 }
 
 const KIND_OF: Record<string, LongKind> = { "app.putLive": "putLive", "app.goBack": "goBack", "app.startTestCopy": "startTestCopy" };
+/** How the other long operations are said, when one of them is the job that runs. */
+const SAID: Record<string, (app: string) => string> = {
+  "agent.start": (app) => `Starting the AI of ${app}`,
+  "agent.stop": (app) => `Stopping the AI of ${app}`,
+  "app.create": (app) => `Making the app ${app}`,
+};
 
 /** The engine runs one long operation at a time: the one that runs, in the lock's words. */
 function busyError(busy: Job): EngineError {
   const kind = KIND_OF[busy.operation];
-  const message = refusal({ operation: kind ? LOCK_OPERATION[kind] : busy.operation, app: busy.app, from: "the panel", pid: 0, since: null, started: busy.startedAt });
+  const said = SAID[busy.operation];
+  const message = said
+    ? `${said(busy.app)} is already running, started from the panel. Wait for it to end, then try again.`
+    : refusal({ operation: (kind && LOCK_OPERATION[kind]) || busy.operation, app: busy.app, from: "the panel", pid: 0, since: null, started: busy.startedAt });
   return new EngineError("busy", message, { job: busy.id });
 }
 
 /**
- * A long operation, as a job: only when no other job runs, and only with the
- * app's lock, which the CLI takes too (D72), held until the job ends.
+ * A long operation, as a job: only when no other job runs, and, for those
+ * that change an app, only with the app's lock, which the CLI takes too
+ * (D72), held until the job ends.
  */
-const long = (kind: LongKind, operation: string) => (args: Args, ctx: Context): { job: string } => {
-  only(args, ["app"]);
-  const name = app(args, ctx);
+function startJob(ctx: Context, kind: LongKind, operation: string, name: string, options: { signIn?: SignIn } = {}): { job: string } {
   if (ctx.jobs.busy) throw busyError(ctx.jobs.busy);
-  const lock = ctx.suite.lock(name, kind);
+  const lock = LOCK_OPERATION[kind] ? ctx.suite.lock(name, kind) : { ok: true as const, release: () => {} };
   if (!lock.ok) throw new EngineError("busy", lock.message);
-  const job = ctx.jobs.start(operation, name, () => Promise.resolve().then(() => ctx.suite.run(kind, name)).finally(() => lock.release()));
+  const job = ctx.jobs.start(operation, name, () => Promise.resolve().then(() => ctx.suite.run(kind, name, options)).finally(() => lock.release()));
   if (!job) {
     lock.release();
     const running = (ctx.jobs as { busy: Job | null }).busy;
     throw running ? busyError(running) : new EngineError("busy", "another operation started meanwhile: try again");
   }
   return { job: job.id };
+}
+
+const long = (kind: LongKind, operation: string) => (args: Args, ctx: Context): { job: string } => {
+  only(args, ["app"]);
+  return startJob(ctx, kind, operation, app(args, ctx));
 };
+
+/** A change the person confirmed in the panel (D66, question 8): the panel says so, or nothing runs. */
+function confirmed(args: Args): void {
+  if (args.confirm !== true) throw new EngineError("bad_arguments", "confirm: true, once the person has confirmed it");
+}
+
+function signIn(args: Args): SignIn {
+  if (args.signIn !== "key" && args.signIn !== "account") throw new EngineError("bad_arguments", 'signIn: "key" (the key in the vault) or "account" (the person\'s own Claude account)');
+  return args.signIn;
+}
 
 export const OPERATIONS: Record<string, Operation> = {
   "machine.status": { kind: "read", args: [], run: (a, ctx) => (only(a, []), ctx.suite.machineStatus()) },
@@ -160,6 +192,53 @@ export const OPERATIONS: Record<string, Operation> = {
   "app.startTestCopy": { kind: "long", args: ["app"], run: long("startTestCopy", "app.startTestCopy") },
   "app.putLive": { kind: "long", args: ["app"], run: long("putLive", "app.putLive") },
   "app.goBack": { kind: "long", args: ["app"], run: long("goBack", "app.goBack") },
+  // A new app, from the panel (D76): `allvibe project create`, confirmed.
+  "app.create": {
+    kind: "long",
+    args: ["app", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "confirm"]);
+      const name = a.app;
+      if (typeof name !== "string" || !APP.test(name)) throw new EngineError("bad_arguments", "app: a name of 2 to 30 lowercase letters, digits and dashes, starting with a letter");
+      const problem = ctx.suite.nameProblem(name);
+      if (problem) throw new EngineError("refused", problem);
+      if (ctx.suite.exists(name)) throw new EngineError("refused", `there is already an app called ${name}`);
+      confirmed(a);
+      return startJob(ctx, "createApp", "app.create", name);
+    },
+  },
+  // The agent (D76): its state, starting it in either way of signing in, and
+  // stopping it, each confirmed. Its terminal is a stream (engine/terminal.ts).
+  "agent.status": {
+    kind: "read",
+    args: ["app"],
+    run: (a, ctx) => {
+      only(a, ["app"]);
+      const name = app(a, ctx);
+      return { ...ctx.suite.agentStatus(name), terminal: ctx.terminals?.status(name) ?? { open: false, attached: false } };
+    },
+  },
+  "agent.start": {
+    kind: "long",
+    args: ["app", "signIn", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "signIn", "confirm"]);
+      const name = app(a, ctx);
+      const how = signIn(a);
+      confirmed(a);
+      return startJob(ctx, "agentStart", "agent.start", name, { signIn: how });
+    },
+  },
+  "agent.stop": {
+    kind: "long",
+    args: ["app", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "confirm"]);
+      const name = app(a, ctx);
+      confirmed(a);
+      return startJob(ctx, "agentStop", "agent.stop", name);
+    },
+  },
   "job.get": {
     kind: "read",
     args: ["job"],
@@ -211,6 +290,34 @@ export const OPERATIONS: Record<string, Operation> = {
 };
 
 export type Answer = { ok: true; result: unknown } | { ok: false; error: { code: ErrorCode; message: string } & Record<string, unknown> };
+
+/** The operations that are streams (D76): the agent's terminal. */
+export const STREAMS = ["agent.terminal"] as const;
+
+/**
+ * `agent.terminal {app, cols, rows, start}`: a browser, through the panel,
+ * attached to the agent's Claude Code, which is started only when `start`
+ * says the person asked for it (D48). Its lines, both ways, are the terminal's
+ * (engine/terminal.ts).
+ */
+export function terminalStream(ctx: Context, terminals: Pick<Terminals, "attach">): StreamStart {
+  return async (args, peer) => {
+    try {
+      if (args === null || typeof args !== "object" || Array.isArray(args)) throw new EngineError("bad_arguments", "the arguments are a JSON object");
+      const a = args as Args;
+      only(a, ["app", "cols", "rows", "start"]);
+      const name = app(a, ctx);
+      if (!validSize(a.cols, a.rows)) throw new EngineError("bad_arguments", "cols and rows: the terminal's size, 20 to 500 columns and 5 to 300 rows");
+      if (a.start !== undefined && typeof a.start !== "boolean") throw new EngineError("bad_arguments", "start: true when the person asked for Claude Code to be opened");
+      const attached = await terminals.attach(name, peer, a.cols as number, a.rows as number, a.start === true);
+      if (!attached.ok) return { ok: false, answer: { ok: false, error: { code: attached.code, message: attached.message } } };
+      return { ok: true, handle: attached.handle, result: attached.result };
+    } catch (error) {
+      if (error instanceof EngineError) return { ok: false, answer: { ok: false, error: { code: error.code, message: error.message, ...error.details } } };
+      throw error;
+    }
+  };
+}
 
 /** One request, from its operation's name and its arguments, to its answer. */
 export async function perform(name: string, args: unknown, ctx: Context): Promise<Answer> {

@@ -25,7 +25,7 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import http from "node:http";
+import net from "node:net";
 
 const C = process.argv[2] ?? "allvibe";
 const P = "enginecheck";
@@ -36,6 +36,8 @@ const REPO = `${STATE}/projects/${P}/repo`;
 let total = 0;
 let wrong = 0;
 const answers = [];
+// This run's only: an earlier run's project of the same name left its backups (mistake 28).
+const SINCE = new Date().toISOString();
 
 const verdict = (label, seen, want) => {
   total += 1;
@@ -46,19 +48,19 @@ const verdict = (label, seen, want) => {
 const sh = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", ...opts });
 const cli = (...args) => sh(C, args);
 
+/** The engine, as the panel asks it: one JSON line out, one back (D76). */
 function ask(op, args = {}, socket = SOCK) {
   return new Promise((resolve) => {
-    const body = JSON.stringify(args);
-    const request = http.request({ socketPath: socket, method: "POST", path: `/v1/${op}`, headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } }, (response) => {
-      let data = "";
-      response.on("data", (c) => (data += c));
-      response.on("end", () => {
-        answers.push(data);
-        resolve({ status: response.statusCode, ...JSON.parse(data) });
-      });
+    const client = net.createConnection(socket);
+    let data = "";
+    client.setEncoding("utf8");
+    client.on("connect", () => client.write(`${JSON.stringify({ op, args })}\n`));
+    client.on("data", (c) => (data += c));
+    client.on("end", () => {
+      answers.push(data);
+      resolve(JSON.parse(data.split("\n")[0]));
     });
-    request.on("error", (error) => resolve({ status: 0, ok: false, error: { code: error.code } }));
-    request.end(body);
+    client.on("error", (error) => resolve({ ok: false, error: { code: error.code } }));
   });
 }
 
@@ -87,6 +89,8 @@ if (!existsSync(`${STATE}/projects/${P}`)) {
   if (made.status !== 0) { console.log(made.stdout.slice(-800), made.stderr); process.exit(2); }
 }
 for (const env of ["dev", "prod"]) sh(C, ["key", "set", P, env, "PROBE_KEY"], { input: values[env] });
+// A stand-in for the agent's key, so that it can start: it never talks to a model here.
+sh(C, ["key", "set", P, "agent", "ANTHROPIC_API_KEY"], { input: randomBytes(24).toString("base64") });
 const plan = {
   title: "The engine's probe",
   steps: [
@@ -124,7 +128,7 @@ verdict("the engine's folder, inside the live app's container", inProd.stdout.tr
 console.log("refusals:");
 for (const op of ["shell", "exec", "app.remove", "constructor", "__proto__"]) {
   const a = await ask(op, {});
-  verdict(`an unknown operation, ${op}`, `${a.status} ${a.error?.code}`, "404 unknown_operation");
+  verdict(`an unknown operation, ${op}`, a.error?.code, "unknown_operation");
 }
 for (const [op, args] of [
   ["app.get", { app: "../../etc" }],
@@ -136,10 +140,10 @@ for (const [op, args] of [
   ["job.get", { job: "../../../etc/shadow" }],
 ]) {
   const a = await ask(op, args);
-  verdict(`malformed: ${op} ${JSON.stringify(args).slice(0, 30)}`, `${a.status} ${a.error?.code}`, "400 bad_arguments");
+  verdict(`malformed: ${op} ${JSON.stringify(args).slice(0, 30)}`, a.error?.code, "bad_arguments");
 }
 const missing = await ask("app.get", { app: "nosuchproject" });
-verdict("a project that does not exist", `${missing.status} ${missing.error?.code}`, "404 not_found");
+verdict("a project that does not exist", missing.error?.code, "not_found");
 
 /* ------------------------------------------------------ every operation -- */
 console.log("every operation:");
@@ -186,12 +190,49 @@ verdict("app.putLive, every step tried", live ? `${live.ok}, ${live.phases[0].st
 verdict("the live version after it", (await ask("app.get", { app: P })).result?.live, "v2");
 const busyJob = await ask("app.goBack", { app: P });
 const busy = await ask("app.startTestCopy", { app: P });
-verdict("a second long operation while one runs: busy", `${busy.status} ${busy.error?.code}`, "409 busy");
+verdict("a second long operation while one runs: busy", busy.error?.code, "busy");
 const back = await until(busyJob.result?.job);
 verdict("app.goBack: behind a fresh backup", back ? `${back.ok}, ${back.phases[0].steps.length} steps` : "no job", "true, 14 steps");
 verdict("the live version after it", (await ask("app.get", { app: P })).result?.live, "v1");
 const backups = await ask("app.backups", { app: P });
-verdict("app.backups: the one going back took", backups.ok ? backups.result.filter((b) => b.kind === "rollback").length : "?", 1);
+verdict("app.backups: the one going back took", backups.ok ? backups.result.filter((b) => b.kind === "rollback" && b.created >= SINCE).length : "?", 1);
+
+console.log("its protocol: JSON, one message a line, no HTTP (D66, D76):");
+const raw = (text) => new Promise((resolve) => {
+  const client = net.createConnection(SOCK);
+  let data = "";
+  client.setEncoding("utf8");
+  client.on("connect", () => client.write(text));
+  client.on("data", (c) => (data += c));
+  client.on("end", () => resolve(data));
+  client.on("error", (e) => resolve(e.code));
+});
+const firstLine = async (text) => { try { return JSON.parse((await raw(text)).split("\n")[0]); } catch { return {}; } };
+verdict("an HTTP request, as a browser would send one", (await firstLine("POST /v1/apps.list HTTP/1.1\r\nHost: engine\r\nContent-Length: 2\r\n\r\n{}\n")).error?.code, "bad_arguments");
+verdict("a line of more than 16 kB", (await firstLine(`${JSON.stringify({ op: "app.report", args: { app: P, text: "x".repeat(17000) } })}\n`)).error?.message, (s) => /longer than 16 kB/.test(String(s)));
+verdict("a line that never ends", (await firstLine("x".repeat(20000))).error?.code, "bad_arguments");
+
+console.log("the agent, and a new app (D76), each confirmed:");
+const NEW = "enginenew";
+cli("project", "remove", NEW, "--delete-everything");
+verdict("app.create, without confirm", (await ask("app.create", { app: NEW })).error?.code, "bad_arguments");
+verdict("app.create, a name that is taken", (await ask("app.create", { app: P, confirm: true })).error?.message, `there is already an app called ${P}`);
+verdict("app.create, a name made of the forbidden word", (await ask("app.create", { app: `my${["no", "cry"].join("")}`, confirm: true })).error?.code, "refused");
+const created = await until((await ask("app.create", { app: NEW, confirm: true })).result?.job);
+verdict("app.create, confirmed: the CLI's own steps", created ? `${created.ok}, ${created.phases[0]?.steps.length} steps` : "no job", (s) => /^true, \d+ steps$/.test(s));
+verdict("the new app, as the engine lists it", (await ask("apps.list")).result?.some((a) => a.name === NEW), true);
+verdict("its plan: none yet, so it starts in planning", (await ask("app.plan", { app: NEW })).result?.state, "none");
+cli("project", "remove", NEW, "--delete-everything");
+verdict("agent.start, without confirm", (await ask("agent.start", { app: P, signIn: "key" })).error?.code, "bad_arguments");
+verdict("agent.start, another way of signing in", (await ask("agent.start", { app: P, signIn: "password", confirm: true })).error?.code, "bad_arguments");
+verdict("agent.stop, without confirm", (await ask("agent.stop", { app: P })).error?.code, "bad_arguments");
+verdict("agent.status, before", JSON.stringify((await ask("agent.status", { app: P })).result), JSON.stringify({ running: false, signIn: null, hasKey: true, terminal: { open: false, attached: false } }));
+const agentStarted = await until((await ask("agent.start", { app: P, signIn: "key", confirm: true })).result?.job);
+verdict("agent.start, confirmed, with the key in the vault", agentStarted ? `${agentStarted.ok}, ${agentStarted.phases[0]?.steps.length} steps` : "no job", "true, 8 steps");
+verdict("agent.status, after", JSON.stringify((await ask("agent.status", { app: P })).result), JSON.stringify({ running: true, signIn: "key", hasKey: true, terminal: { open: false, attached: false } }));
+const agentStopped = await until((await ask("agent.stop", { app: P, confirm: true })).result?.job);
+verdict("agent.stop, confirmed", agentStopped?.ok, true);
+verdict("agent.status, once stopped", (await ask("agent.status", { app: P })).result?.running, false);
 
 console.log("signing in:");
 rmSync(AUTH, { force: true });

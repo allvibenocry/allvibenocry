@@ -57,9 +57,14 @@ listens on no network, and parses only what the panel sends it, over a socket
 nobody else can open. That is the CLI's situation, which D32 accepts, not a web
 server's. What any browser sends is parsed by the panel, on Node.js 24.
 
-**The protocol.** HTTP/1.1 over the socket, JSON in and out:
+**The protocol** (D76; it was HTTP/1.1 over the socket until the architect's
+condition for Node.js 20, D66): JSON, one message per line, no HTTP and no TLS:
 
-- `POST /v1/<operation>` with a JSON body of arguments, at most 16 kB.
+- `{"op": "<operation>", "args": {...}}` on one line, at most 16 kB; one
+  answer line back, and the engine closes the connection. A line that is not a
+  JSON object, or is longer, is refused.
+- A **stream** (the agent's terminal) answers its first line the same way,
+  then keeps the connection for lines both ways, each at most 16 kB.
 - An answer is `{ "ok": true, "result": ... }` or `{ "ok": false, "error":
   { "code", "message", ... } }`, where `code` is one of `unknown_operation`,
   `bad_arguments`, `not_found`, `busy`, `refused`, `failed` and `message` is in
@@ -92,18 +97,26 @@ arguments validated before anything runs; anything else is `unknown_operation`.
 | `auth.status` | none | whether the panel has been claimed, and how long sign-in is paused | panel |
 | `auth.claim` | `setupCode`, `password` | the first visit: the one-time code, and the password the person chooses | panel |
 | `auth.check` | `password` | signing in | panel |
+| `app.create` | `app`, `confirm` | `allvibe project create`: a new app, which starts in planning (D76) | long |
+| `agent.status` | `app` | whether its agent runs, how it signs in, whether the vault has its key, and whether its terminal is open | read |
+| `agent.start` | `app`, `signIn`, `confirm` | `allvibe agent start --sign-in key\|account` (D76) | long |
+| `agent.stop` | `app`, `confirm` | `allvibe agent stop` (D76) | long |
+| `agent.terminal` | `app`, `cols`, `rows`, `start` | Claude Code's own interface in the agent, with a terminal of its own, streamed to one browser at a time; started only when the person asks (`start`) (D76) | stream |
 
 Arguments: `app` is a project's name (the CLI's rule for names) and must
-exist; `step` is a whole number from 1 to 50; `text` is 1 to 4,000 characters,
-with no control characters but line breaks and tabs; `password` is 12 to 200
-characters; `setupCode` is the code's own shape; `job` is a job's id.
+exist (for `app.create`, must not); `step` is a whole number from 1 to 50;
+`text` is 1 to 4,000 characters, with no control characters but line breaks
+and tabs; `password` is 12 to 200 characters; `setupCode` is the code's own
+shape; `job` is a job's id; `confirm` is `true`, once the person confirmed it
+in the panel; `signIn` is `key` or `account`; `cols` and `rows` are the
+terminal's size.
 
 **What the engine never offers**, in this version: a shell or any free-form
-command; any key's value, the recovery key, or anything from the key vault;
-`--restore-data` (going back with the data, which loses data and needs its own
-confirmation, rule 8); `--outside-plan`; creating or removing a project;
-starting the agent. Each is a decision for a later slice, with its own words
-and confirmations.
+command (the terminal runs Claude Code and nothing else); any key's value, the
+recovery key, or anything from the key vault; `--restore-data` (going back
+with the data, which loses data and needs its own confirmation, rule 8);
+`--outside-plan`; removing a project. Each is a decision for a later slice,
+with its own words and confirmations (D66, question 8, gives their order).
 
 **Secrets.** No operation returns a secret value. The CLI's step lines are
 written never to hold one (rule 4); the engine adds nothing to them. The

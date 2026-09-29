@@ -104,11 +104,13 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   <project> [--delete]`. Neither is in backups.
 - **The engine the control panel calls** (D62). `allvibe-engine.service`, as
   the service user, on a Unix socket only the panel's group may open, with no
-  network port: an allow-list of operations, each with its arguments checked,
-  calling the CLI's own code; releasing, going back and starting the test copy
-  as jobs, one at a time, with the CLI's steps as progress; signing in to the
-  panel kept here. It answers while it works: doctor's checks run off its
-  thread (D65).
+  network port, speaking JSON one message a line and no HTTP (D76): an
+  allow-list of operations, each with its arguments checked, calling the CLI's
+  own code; releasing, going back, starting the test copy, making an app and
+  starting and stopping the agent as jobs, one at a time, with the CLI's steps
+  as progress, each change confirmed; the agent's terminal as a stream, one
+  browser at a time; signing in to the panel kept here. It answers while it
+  works: doctor's checks run off its thread (D65).
 - **The control panel** (D63, D64, D65). A container built on the machine from
   the pinned Node.js 24 image, as its own user, read-only, with no
   capabilities, on an internal network with no route out, with only the
@@ -162,6 +164,7 @@ each with where it goes.
 | 3. Fixes | Built and probed on a fresh test host, each against the previous commit's bundle first: (a) one lock per app (D72), `lock-probe.mjs` 29 of 29, 13 WRONG on the control; (b) Machine health counts a release's and going back's restore checks, (c) the Preview frame keeps its text and reloads only for a new test copy, (d) nothing not yet run is green (D73), `panel-fixes.mjs` 19 of 19 in headless Edge, 10 WRONG on the control; (e) the walkthrough, one command per block and every project's name made free first, `walkthrough-blocks.mjs` 161 blocks, none wrong. |
 | 4. The Preview frame and host names | Built and probed on a fresh test host (D74): the panel at `allvibe.local` (Avahi) and the machine's address, on port 80 through a door container Docker publishes (a capability does not reach the proxy's unprivileged user, seen); the apps' doors taking out the panel's cookie and refusing its name; the frame sandboxed; the Origin check exact and required; two firewall rules for the door (D41, amended). `names-probe.mjs` 43 of 43 in headless Edge and on the host, each part with its control; `panel-probe.mjs` 62 of 62 (it found containers reaching the door, fixed); `app-isolation.sh` 59 of 59; `engine-probe.mjs` 54 of 54. |
 | 5. The guided path | Built and seen in headless Edge (D75): Plan, Try, Live, Done, and one pink next-action button at the top of an app's page; `guided-probe.mjs` 69 of 69 at 1280 and 390 pixels, from "Try step 1" to "v2 is live" by that button alone, never a tab, one pink thing at every stage, the tabs still working. Walkthrough step 30 still tells the panel before it: rewritten in item 9. |
+| 6. The engine: the agent and a new app | Built and probed on the test host (D76): the engine's protocol is JSON lines, no HTTP (D66's condition); `app.create`, `agent.status`, `agent.start`, `agent.stop`, each change confirmed; `agent.terminal`, a stream through Docker's exec API, one browser at a time (a second takes over), 30 minutes idle, resizing, nothing kept; the panel's WebSocket for it. `engine-probe.mjs` 71 of 71; `terminal-probe.mjs` 26 of 26 in two real browsers, refusals with their control, a marker typed and shown found nowhere on the host; a race on take-over found and fixed. |
 
 ## The sixth brief
 
@@ -290,6 +293,9 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   reached by its name (D74): the frame is from another site, where a browser
   sends only `SameSite=None` cookies, which need HTTPS. An app's own sign-in
   is signed out in the frame; "In a tab of its own" works.
+- **A restart of the engine lets go of the agents' terminals** (D76): a Claude
+  Code it started keeps running in the agent until the agent stops, and
+  opening the terminal again starts another beside it.
 - **Another device named `allvibe.local`** on the same network takes the name;
   doctor then says so, and the machine's address still works (D74).
 - **A new project shows "no backup yet"** in Machine health until its first
