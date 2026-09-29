@@ -27,10 +27,17 @@ On your workstation, in this repository, with Node 22 and Docker:
 
 ```sh
 npm ci
+```
+
+```sh
 npm run bundle
 ```
 
 You should see `bundle: bundle/allvibe-0.1.0 (0.1.0+<commit>)`.
+
+**One command per block.** Every block below holds one command: paste it, and
+press Enter if your terminal waits for it. A block of output (no `sh` on it)
+is what you should see, not something to type.
 
 **Two kinds of command.** Lines marked **workstation** run in this repository
 on your workstation (PowerShell or Git Bash). Lines marked **host** run in a
@@ -78,6 +85,9 @@ Workstation:
 
 ```sh
 node test/host/host.mjs push bundle/allvibe-0.1.0 /root/
+```
+
+```sh
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
@@ -122,7 +132,13 @@ Declare an old machine instead. Workstation:
 
 ```sh
 node test/host/host.mjs override set memory-mb=4096
+```
+
+```sh
 node test/host/host.mjs override set system-disk=rotational
+```
+
+```sh
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
@@ -138,6 +154,9 @@ reading, and nothing that stops the installation.` Put the declarations back:
 
 ```sh
 node test/host/host.mjs override set memory-mb=16384
+```
+
+```sh
 node test/host/host.mjs override set system-disk=ssd
 ```
 
@@ -151,10 +170,14 @@ volume mounted at `/mnt/allvibe-backup`. **On a real machine**, it is where your
 USB disk or NAS share is mounted, for example `/mnt/backup`: use that path
 instead in this step.
 
-Host (`node test/host/host.mjs shell`):
+Host (`node test/host/host.mjs shell`), a folder on the machine's own disk
+first:
 
 ```sh
-mkdir -p /var/backups/not-a-disk && chown allvibe:allvibe /var/backups/not-a-disk
+install -d -o allvibe -g allvibe /var/backups/not-a-disk
+```
+
+```sh
 allvibe backup-target set /var/backups/not-a-disk
 ```
 
@@ -169,6 +192,9 @@ Now the real one. The disk's directory has to belong to the service user:
 
 ```sh
 chown allvibe:allvibe /mnt/allvibe-backup
+```
+
+```sh
 allvibe backup-target set /mnt/allvibe-backup
 ```
 
@@ -213,7 +239,24 @@ ok   1/1 your copy is this machine's recovery key
 
 ## 7. A project
 
-Host:
+**A name of its own.** Every project in this walkthrough is made on a name
+that is first made free: if a project with that name is already on this host,
+from an earlier run, it is removed, with everything in it. On a fresh host
+there is none, and the removal says `there is no project called guestbook`,
+which is fine. Host:
+
+```sh
+allvibe project remove guestbook --delete-everything
+```
+
+Check that it is gone:
+
+```sh
+allvibe project list
+```
+
+guestbook is not in the list (on a fresh host: `No projects yet.`). Now make
+it:
 
 ```sh
 allvibe project create guestbook
@@ -236,7 +279,8 @@ In your browser, open **prod** and **dev**:
 
 - **Test host:** http://localhost:8100/ and http://localhost:8101/ (the address
   the command prints is the container's own; your workstation reaches it on
-  localhost).
+  localhost). The ports in this walkthrough are a fresh host's; on a host with
+  other projects, use the ports `project create` printed.
 - **Real machine:** the two addresses it printed, from any computer or phone on
   the same network.
 
@@ -247,7 +291,6 @@ entry. They share nothing.
 Host, to see the same from the machine's side:
 
 ```sh
-allvibe project list
 allvibe project status guestbook
 ```
 
@@ -260,6 +303,11 @@ Host:
 
 ```sh
 allvibe backup guestbook
+```
+
+Then the restore check:
+
+```sh
 allvibe restore-check guestbook
 ```
 
@@ -280,13 +328,22 @@ Host:
 
 ```sh
 systemctl list-timers allvibe-backup.timer
-systemctl start allvibe-backup.service
-allvibe runs
 ```
 
 The timer is listed with its next run (every night between 03:30 and 04:00).
-`start` runs tonight's job now: a backup and a restore check of that backup.
-`allvibe runs` lists every run so far, the last one `scheduled-backup … ok`.
+Run tonight's job now, a backup and a restore check of that backup:
+
+```sh
+systemctl start allvibe-backup.service
+```
+
+Then:
+
+```sh
+allvibe runs
+```
+
+It lists every run so far, the last one `scheduled-backup … ok`.
 `allvibe doctor` now shows a line for the project:
 `guestbook: last backup less than an hour ago; last restore check … passed`.
 
@@ -296,15 +353,25 @@ Change the heading, as the service user, who owns the project. Host:
 
 ```sh
 runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>Sign our guestbook <span|' /var/lib/allvibe/projects/guestbook/repo/server.js
+```
+
+Then deploy dev:
+
+```sh
 allvibe dev deploy guestbook
 ```
 
 Reload **dev** in your browser: the heading says "Sign our guestbook". Reload
 **prod**: it still says "Guestbook". A release is a commit, and dev has to run
-exactly that commit, so commit it and deploy dev once more:
+exactly that commit, so commit it:
 
 ```sh
 allvibe dev commit guestbook "A friendlier heading"
+```
+
+and deploy dev once more:
+
+```sh
 allvibe dev deploy guestbook
 ```
 
@@ -350,13 +417,29 @@ In your browser, sign the **prod** guestbook twice with **the same name**, say
 "Fredrik". Now make a change that works in dev and not in prod: a migration
 that allows each name only once. Dev has one entry per name; prod now has two
 with the same name. A new constraint is a breaking change (D35), so the file
-says it is agreed, on a line of its own. Host:
+says it is agreed, on a line of its own. Host, the migration:
 
 ```sh
 printf -- '-- One entry per name.\n-- breaking: one entry per name, which older entries may not meet\nalter table entries add constraint entries_name_unique unique (name);\n' | runuser -u allvibe -- tee /var/lib/allvibe/projects/guestbook/repo/migrations/002_unique_names.sql
+```
+
+Dev, then the commit, then dev again on that commit:
+
+```sh
 allvibe dev deploy guestbook
+```
+
+```sh
 allvibe dev commit guestbook "One entry per name"
+```
+
+```sh
 allvibe dev deploy guestbook
+```
+
+And the release:
+
+```sh
 allvibe release guestbook --outside-plan "one entry per name, by hand"
 ```
 
@@ -423,11 +506,22 @@ Reload **prod**: the heading is "Guestbook" again, and every entry is there.
 ## 15. A release with the backup disk gone
 
 Take the backup disk away. **Test host**, host: `umount /mnt/allvibe-backup`.
-**Real machine**: unmount or unplug the USB disk. Then, host:
+**Real machine**: unmount or unplug the USB disk. Then, host, what prod runs
+now:
 
 ```sh
 allvibe project status guestbook
+```
+
+The release:
+
+```sh
 allvibe release guestbook --outside-plan "a release with the backup disk gone, on purpose"
+```
+
+And what prod runs after it:
+
+```sh
 allvibe project status guestbook
 ```
 
@@ -455,10 +549,15 @@ node test/host/host.mjs restart
 
 ```sh
 systemctl is-active allvibe-backup.timer
+```
+
+`active`. And:
+
+```sh
 allvibe doctor
 ```
 
-`active`, and `doctor` shows the proxy, the firewall, the backup target and the
+`doctor` shows the proxy, the firewall, the backup target and the
 project again
 (give the apps half a minute to become healthy after a restart).
 
@@ -467,10 +566,25 @@ project again
 The second brief's steps use a second project, `moods`, so that they start
 from a clean prod. Every release now records the database's schema, and a
 rollback asks the database which changes the older version does not know
-(D35). Host:
+(D35). A name of its own first, as in step 7. Host:
+
+```sh
+allvibe project remove moods --delete-everything
+```
+
+```sh
+allvibe project list
+```
+
+moods is not in the list. Make it:
 
 ```sh
 allvibe project create moods
+```
+
+and sign its prod twice:
+
+```sh
 for n in Ada Bo; do curl -s -o /dev/null -d "name=$n&message=hello" http://127.0.0.1:8102/entries; done
 ```
 
@@ -479,15 +593,33 @@ for n in Ada Bo; do curl -s -o /dev/null -d "name=$n&message=hello" http://127.0
 address `project create` printed.)
 
 Now a change that only adds: a new column for how the writer felt, and the
-code that fills it in.
+code that fills it in. The migration:
 
 ```sh
-R=/var/lib/allvibe/projects/moods/repo
-printf -- '-- How the writer felt.\nalter table entries add column mood text;\n' | runuser -u allvibe -- tee $R/migrations/002_add_mood.sql
-runuser -u allvibe -- sed -i "s|insert into entries (name, message) values (\$1, \$2)|insert into entries (name, message, mood) values (\$1, \$2, 'happy')|" $R/server.js
+printf -- '-- How the writer felt.\nalter table entries add column mood text;\n' | runuser -u allvibe -- tee /var/lib/allvibe/projects/moods/repo/migrations/002_add_mood.sql
+```
+
+The code:
+
+```sh
+runuser -u allvibe -- sed -i "s|insert into entries (name, message) values (\$1, \$2)|insert into entries (name, message, mood) values (\$1, \$2, 'happy')|" /var/lib/allvibe/projects/moods/repo/server.js
+```
+
+Dev, the commit, dev on that commit, and the release:
+
+```sh
 allvibe dev deploy moods
+```
+
+```sh
 allvibe dev commit moods "Remember the mood"
+```
+
+```sh
 allvibe dev deploy moods
+```
+
+```sh
 allvibe release moods --outside-plan "remember the mood, by hand"
 ```
 
@@ -498,10 +630,15 @@ ok   3/16 the migrations since v1 only add, or are marked breaking
        migrations/002_add_mood.sql: only adds
 ```
 
-and it ends `moods v2 is live.` Sign it once more on v2, then go back to v1:
+and it ends `moods v2 is live.` Sign it once more on v2:
 
 ```sh
 curl -s -o /dev/null -d "name=Cy&message=on v2" http://127.0.0.1:8102/entries
+```
+
+then go back to v1:
+
+```sh
 allvibe rollback moods
 ```
 
@@ -522,14 +659,33 @@ all three entries are there, and Cy's mood is still in the database.
 ## 18. A change that breaks, and why it needs your word
 
 Renaming a column is a breaking change: the version before it still reads
-the old name. Host:
+the old name. Host, the migration:
 
 ```sh
-printf -- '-- The writer is the author.\nalter table entries rename column name to author;\n' | runuser -u allvibe -- tee $R/migrations/003_name_to_author.sql
-runuser -u allvibe -- sed -i -e 's|insert into entries (name, message, mood)|insert into entries (author, message, mood)|' -e 's|select name, message, created_at from entries|select author as name, message, created_at from entries|' $R/server.js
+printf -- '-- The writer is the author.\nalter table entries rename column name to author;\n' | runuser -u allvibe -- tee /var/lib/allvibe/projects/moods/repo/migrations/003_name_to_author.sql
+```
+
+The code:
+
+```sh
+runuser -u allvibe -- sed -i -e 's|insert into entries (name, message, mood)|insert into entries (author, message, mood)|' -e 's|select name, message, created_at from entries|select author as name, message, created_at from entries|' /var/lib/allvibe/projects/moods/repo/server.js
+```
+
+Dev, the commit, dev on that commit, and the release:
+
+```sh
 allvibe dev deploy moods
+```
+
+```sh
 allvibe dev commit moods "The writer is the author"
+```
+
+```sh
 allvibe dev deploy moods
+```
+
+```sh
 allvibe release moods --outside-plan "the writer is the author, by hand"
 ```
 
@@ -544,18 +700,34 @@ FAIL 3/16 the migrations since v1 only add, or are marked breaking
 ```
 
 `allvibe project status moods` shows prod still on v1: no backup, no image, no
-tag. Agree to it, in the file, and release:
+tag. Agree to it, in the file:
 
 ```sh
-printf -- '-- The writer is the author.\n-- breaking: renames name to author, and versions before it still read name\nalter table entries rename column name to author;\n' | runuser -u allvibe -- tee $R/migrations/003_name_to_author.sql
+printf -- '-- The writer is the author.\n-- breaking: renames name to author, and versions before it still read name\nalter table entries rename column name to author;\n' | runuser -u allvibe -- tee /var/lib/allvibe/projects/moods/repo/migrations/003_name_to_author.sql
+```
+
+Commit it, deploy dev on that commit, and release:
+
+```sh
 allvibe dev commit moods "Agree that renaming the writer is breaking"
+```
+
+```sh
 allvibe dev deploy moods
+```
+
+```sh
 allvibe release moods --outside-plan "the writer is the author, marked breaking"
-curl -s -o /dev/null -d "name=Di&message=on v3" http://127.0.0.1:8102/entries
 ```
 
 The release says the migration is `breaking, and marked so`, and v3 goes
-live. Now try to go back by code alone:
+live. Sign it once more, on v3:
+
+```sh
+curl -s -o /dev/null -d "name=Di&message=on v3" http://127.0.0.1:8102/entries
+```
+
+Now try to go back by code alone:
 
 ```sh
 allvibe rollback moods
@@ -574,13 +746,17 @@ back too, which says first what it loses:
 
 ```sh
 allvibe rollback moods --restore-data
+```
+
+It says prod's data goes back to just before v3 (`prod has 4 entries now; the
+backup has 3`), and changes nothing. Confirm it:
+
+```sh
 allvibe rollback moods --restore-data --confirm-data-loss
 ```
 
-The first says prod's data goes back to just before v3 (`prod has 4 entries
-now; the backup has 3`) and changes nothing; the second takes a backup of
-prod as it is, restores the one from before v3, and ends `moods is back on
-v1, with its data as it was before v3.` Di's entry is gone from prod, and is
+It takes a backup of prod as it is, restores the one from before v3, and ends
+`moods is back on v1, with its data as it was before v3.` Di's entry is gone from prod, and is
 in the backup taken first.
 
 ## 19. The key vault
@@ -588,12 +764,31 @@ in the backup taken first.
 Apps get keys, such as an API key for a weather service, from the vault: set
 from a file, never typed into a command, encrypted on disk, and handed to the
 app as a file (D37). Make two stand-in keys, one for dev and one for prod, in
-files only root can read. Host:
+files only root can read. Host, dev's:
 
 ```sh
-umask 077; head -c 24 /dev/urandom | base64 > /root/weather-dev; head -c 24 /dev/urandom | base64 > /root/weather-prod; umask 022
+head -c 24 /dev/urandom | base64 | install -m 600 /dev/stdin /root/weather-dev
+```
+
+and prod's:
+
+```sh
+head -c 24 /dev/urandom | base64 | install -m 600 /dev/stdin /root/weather-prod
+```
+
+Put each in the vault, from its file:
+
+```sh
 allvibe key set moods dev WEATHER_API_KEY < /root/weather-dev | tee /root/key-set-dev.out
+```
+
+```sh
 allvibe key set moods prod WEATHER_API_KEY < /root/weather-prod | tee /root/key-set-prod.out
+```
+
+And list them:
+
+```sh
 allvibe key list moods
 ```
 
@@ -609,6 +804,9 @@ everywhere they must not be, and from inside dev. Workstation:
 
 ```sh
 node test/host/host.mjs push test/host/vault-check.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/vault-check.sh allvibe moods /root/weather-dev /root/weather-prod
 ```
 
@@ -622,6 +820,9 @@ the restore check proves it comes back. Host:
 
 ```sh
 allvibe backup moods
+```
+
+```sh
 allvibe restore-check moods
 ```
 
@@ -636,11 +837,15 @@ Then, host:
 
 ```sh
 systemctl is-active allvibe-keys.service
+```
+
+`active`: the unit put every key back before Docker started the apps. And:
+
+```sh
 allvibe project status moods
 ```
 
-`active`: the unit put every key back before Docker started the apps, and both
-of moods' apps are `running, healthy`.
+Both of moods' apps are `running, healthy`.
 
 ## 20. The key check before every commit
 
@@ -651,6 +856,9 @@ plants it, and commits it both ways. Workstation:
 
 ```sh
 node test/host/host.mjs push test/host/key-check.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/key-check.sh allvibe moods
 ```
 
@@ -689,6 +897,9 @@ namespace of its own at `10.99.0.2`, with a service on port 8080). Workstation:
 
 ```sh
 node test/host/host.mjs push test/host/lan-fixtures.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/lan-fixtures.sh
 ```
 
@@ -700,6 +911,9 @@ Now probe it. Workstation:
 
 ```sh
 node test/host/host.mjs push test/host/app-isolation.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/app-isolation.sh allvibe moods
 ```
 
@@ -749,11 +963,21 @@ reach dev and the model's API, and nothing else (D39). It needs an Anthropic
 API key, in the vault's `agent` scope, from a file. With a key of your own, put
 it in a file on the host that only root can read, say `/root/anthropic-key`;
 without one, a stand-in lets everything below run except talking to the model.
-Host:
+Host, only without a real key, the stand-in:
 
 ```sh
-umask 077; head -c 24 /dev/urandom | base64 > /root/anthropic-key; umask 022   # only without a real key
+head -c 24 /dev/urandom | base64 | install -m 600 /dev/stdin /root/anthropic-key
+```
+
+The key into the agent's scope of the vault:
+
+```sh
 allvibe key set moods agent ANTHROPIC_API_KEY < /root/anthropic-key
+```
+
+And the agent:
+
+```sh
 allvibe agent start moods
 ```
 
@@ -773,6 +997,9 @@ Now probe it from inside. Workstation:
 
 ```sh
 node test/host/host.mjs push test/host/agent-isolation.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/agent-isolation.sh allvibe moods /root/weather-prod /root/weather-dev /root/anthropic-key
 ```
 
@@ -818,14 +1045,30 @@ new, and never runs Claude Code for you (D48). You need a Claude plan that
 includes Claude Code (Pro, Max, Team or Enterprise), a browser, and about
 fifteen minutes.
 
-A scratch project, so nothing else is touched, and the agent in it. Host:
+A scratch project, so nothing else is touched, on a name made free first, as
+in step 7. Host:
+
+```sh
+allvibe project remove scratch --delete-everything
+```
+
+```sh
+allvibe project list
+```
+
+scratch is not in the list. Make it:
 
 ```sh
 allvibe project create scratch
-allvibe agent start scratch --sign-in account
 ```
 
 `project create` ends with the scratch project's two addresses; note **dev**'s.
+Then the agent in it:
+
+```sh
+allvibe agent start scratch --sign-in account
+```
+
 The agent's start ends:
 
 ```
@@ -895,7 +1138,13 @@ it. Host:
 
 ```sh
 allvibe agent stop scratch
+```
+
+```sh
 allvibe agent start scratch --sign-in account
+```
+
+```sh
 allvibe agent shell scratch
 ```
 
@@ -934,23 +1183,51 @@ it would put live, and goes ahead only when you have tried every step of it in
 dev. Only you can mark a step as tried: the marks live beside the project,
 outside the working copy, where the agent cannot reach. Here you write the plan
 yourself, as the agent would, with a change to go with it, in a new project
-whose history is short. Host:
+whose history is short, on a name made free first, as in step 7. Host:
+
+```sh
+allvibe project remove ideas --delete-everything
+```
+
+```sh
+allvibe project list
+```
+
+ideas is not in the list. Make it:
 
 ```sh
 allvibe project create ideas
-R=/var/lib/allvibe/projects/ideas/repo
-runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>How are you? <span|' $R/server.js
-runuser -u allvibe -- tee $R/plan.json > /dev/null <<'END'
-{
-  "title": "Ask how people are",
-  "steps": [
-    { "id": 1, "title": "A new heading", "check": "Open dev: the heading says How are you?", "built": true },
-    { "id": 2, "title": "Writing still works", "check": "Sign the guestbook in dev: your entry is listed.", "built": true }
-  ]
-}
-END
+```
+
+The change, a new heading:
+
+```sh
+runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>How are you? <span|' /var/lib/allvibe/projects/ideas/repo/server.js
+```
+
+The plan is a file in this repository. Workstation:
+
+```sh
+node test/host/host.mjs push docs/walkthrough-files/ask-how-people-are.json /root/
+```
+
+Host, the plan into the working copy, as the agent would write it:
+
+```sh
+install -o allvibe -g allvibe -m 644 /root/ask-how-people-are.json /var/lib/allvibe/projects/ideas/repo/plan.json
+```
+
+Commit, deploy dev on that commit, and look at the plan:
+
+```sh
 allvibe dev commit ideas "Ask how people are"
+```
+
+```sh
 allvibe dev deploy ideas
+```
+
+```sh
 allvibe plan ideas
 ```
 
@@ -986,12 +1263,18 @@ mark each one you tried:
 
 ```sh
 allvibe plan tried ideas 1
-allvibe plan tried ideas 2
 ```
 
 ```
 step 1, "A new heading": marked as tried by you, in dev at <commit>.
 Still to try: step 2, "Writing still works".
+```
+
+```sh
+allvibe plan tried ideas 2
+```
+
+```
 step 2, "Writing still works": marked as tried by you, in dev at <commit>.
 Every step of "Ask how people are" is tried. It can be put live: allvibe release ideas
 ```
@@ -1073,8 +1356,10 @@ Run tonight's now, then read it back. Host:
 
 ```sh
 systemctl start allvibe-backup.service
+```
+
+```sh
 allvibe doctor --last
-ls /var/lib/allvibe/doctor
 ```
 
 ```
@@ -1087,7 +1372,13 @@ All vibe no cry on this machine, as the nightly check found it at <time> UTC
 All green.
 ```
 
-and the directory holds `latest.json` and one dated file for each night so far
+And where it is kept:
+
+```sh
+ls /var/lib/allvibe/doctor
+```
+
+The directory holds `latest.json` and one dated file for each night so far
 (step 9's run made the first).
 
 ## 27. Mains and battery
@@ -1110,6 +1401,9 @@ only a test host accepts. Workstation:
 
 ```sh
 node test/host/host.mjs push test/host/power-fixtures.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/power-fixtures.sh allvibe
 ```
 
@@ -1146,6 +1440,9 @@ files in this project, and tell me what server.js does", and leave with
 
 ```sh
 allvibe agent start moods --sign-in account     # or without --sign-in, with a real key
+```
+
+```sh
 allvibe agent shell moods
 ```
 
@@ -1155,8 +1452,17 @@ and checks the log and the conversations. Workstation:
 
 ```sh
 node test/host/host.mjs exec -- allvibe agent start moods
+```
+
+```sh
 node test/host/host.mjs push test/host/stub-api.mjs /root/
+```
+
+```sh
 node test/host/host.mjs push test/host/agent-activity.sh /root/
+```
+
+```sh
 node test/host/host.mjs exec -- sh /root/agent-activity.sh allvibe moods /root/weather-prod /root/weather-dev /root/anthropic-key
 ```
 
@@ -1185,12 +1491,18 @@ Stop the agent. The login goes with it; the log and the conversations stay:
 
 ```sh
 allvibe agent stop moods
-allvibe agent transcripts moods
 ```
 
 ```
 ok   1/1 the agent, its egress gate and its activity logger
        removed allvibe-moods-agent, allvibe-moods-agent-egress, allvibe-moods-agent-activity, network allvibe-moods-agent-egress
+```
+
+```sh
+allvibe agent transcripts moods
+```
+
+```
 The conversations of the agent of moods, oldest first, kept in /var/lib/allvibe/projects/moods/agent/transcripts (only on this machine, not in backups):
   <time> UTC     136 kB  <session>.jsonl
 …
@@ -1256,13 +1568,27 @@ panel reset`: a new setup code, and everyone signed out.
 ## 30. The control panel: a step tried, put live, and back
 
 The same as steps 24 and 25, from the browser. The plan and its change are
-written by hand again, as the agent would. A new project, and a new heading for
-it. Host:
+written by hand again, as the agent would. A new project, on a name made free
+first, as in step 7: this step needs a hello that nobody has used. Host:
+
+```sh
+allvibe project remove hello --delete-everything
+```
+
+```sh
+allvibe project list
+```
+
+hello is not in the list. Make it:
 
 ```sh
 allvibe project create hello
-R=/var/lib/allvibe/projects/hello/repo
-runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>Hello, how are you? <span|' $R/server.js
+```
+
+A new heading for it:
+
+```sh
+runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>Hello, how are you? <span|' /var/lib/allvibe/projects/hello/repo/server.js
 ```
 
 The plan is a file in this repository. Workstation:
@@ -1271,11 +1597,19 @@ The plan is a file in this repository. Workstation:
 node test/host/host.mjs push docs/walkthrough-files/say-hello-2.json /root/
 ```
 
-Host:
+Host, the plan into the working copy:
 
 ```sh
-install -o allvibe -g allvibe -m 644 /root/say-hello-2.json $R/plan.json
+install -o allvibe -g allvibe -m 644 /root/say-hello-2.json /var/lib/allvibe/projects/hello/repo/plan.json
+```
+
+Commit it, and deploy dev on that commit:
+
+```sh
 allvibe dev commit hello "Say hello"
+```
+
+```sh
 allvibe dev deploy hello
 ```
 
@@ -1314,12 +1648,25 @@ fifteen seconds, except while a dialog is open, so open **More**, then
 node test/host/host.mjs push docs/walkthrough-files/say-hello-3.json /root/
 ```
 
-Host:
+Host, the button's new words:
 
 ```sh
-runuser -u allvibe -- sed -i 's|>Sign the guestbook</button>|>Say hello</button>|' $R/server.js
-install -o allvibe -g allvibe -m 644 /root/say-hello-3.json $R/plan.json
+runuser -u allvibe -- sed -i 's|>Sign the guestbook</button>|>Say hello</button>|' /var/lib/allvibe/projects/hello/repo/server.js
+```
+
+The plan with its third step:
+
+```sh
+install -o allvibe -g allvibe -m 644 /root/say-hello-3.json /var/lib/allvibe/projects/hello/repo/plan.json
+```
+
+Commit, and deploy dev on that commit:
+
+```sh
 allvibe dev commit hello "A friendlier button"
+```
+
+```sh
 allvibe dev deploy hello
 ```
 
@@ -1341,6 +1688,9 @@ again to see the change):
 
 ```sh
 umount /mnt/allvibe-backup
+```
+
+```sh
 systemctl restart allvibe-engine
 ```
 
@@ -1388,11 +1738,11 @@ Reload the live app: "Guestbook" again, and the entry you wrote on v2 is still
 there. Host, the same from the machine's side: `allvibe project status hello`
 says prod runs v1, with 1 entry.
 
-**Machine health** lists hello's backups as a problem until a restore check of
-its own has run: `no backup yet`, or, after the release, `no backup has been
-restore-checked yet`, although the release checked the one it took (STATE.md,
-Known). The nightly backup clears it, or, host: `allvibe backup hello` and
-`allvibe restore-check hello`.
+**Machine health**, **Run the checks again**: hello's backups are fine, with
+the restore check that going back ran: `hello: last backup less than an hour
+ago; last restore check <time> UTC passed, in going back (1 entry)`. A release
+and going back each restore-check the backup they take, and Machine health
+counts it (D73; friction log 4).
 
 Everything the panel did, it did through the engine, with the same steps as the
 commands: `ls /var/lib/allvibe/runs/` lists the release and the rollback.

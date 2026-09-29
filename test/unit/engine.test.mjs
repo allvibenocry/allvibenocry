@@ -18,7 +18,16 @@ import { runSteps, ok, fail } from "../../dist/lib/steps.js";
 const tmp = () => mkdtempSync(path.join(tmpdir(), "engine-"));
 
 function fakeSuite(calls = []) {
+  const locks = [];
   return {
+    calls,
+    locks,
+    // The app's lock, as the real one keeps it: one holder per app (D72).
+    lock: (app) => {
+      if (locks.includes(app)) return { ok: false, message: `${app} is locked` };
+      locks.push(app);
+      return { ok: true, release: () => locks.splice(locks.indexOf(app), 1) };
+    },
     exists: (app) => app === "guestbook",
     apps: () => (calls.push("apps"), [{ name: "guestbook" }]),
     app: (app) => (calls.push(`app ${app}`), { name: app }),
@@ -148,10 +157,12 @@ test("a long operation is a job; a second while it runs is refused as busy", asy
   assert.match(first.result.job, /^[0-9a-f]{16}$/);
   const second = await perform("app.goBack", { app: "guestbook" }, ctx);
   assert.equal(second.error.code, "busy");
-  assert.match(second.error.message, /app.putLive for guestbook/);
+  assert.match(second.error.message, /^A release of guestbook is already running, started from the panel just now\./);
+  assert.deepEqual(ctx.suite.locks, ["guestbook"], "the first holds the app's lock, and the second took none");
   await waitFor(() => typeof release === "function");
   release(0);
   await waitFor(() => ctx.jobs.get(first.result.job).state === "finished");
+  assert.deepEqual(ctx.suite.locks, [], "the lock is let go when the job ends");
   const job = (await perform("job.get", { job: first.result.job }, ctx)).result;
   assert.equal(job.ok, true);
   assert.equal(job.exitCode, 0);
@@ -162,6 +173,30 @@ test("a long operation is a job; a second while it runs is refused as busy", asy
     assert.equal(answer.ok, true, name);
     await waitFor(() => !ctx.jobs.busy);
   }
+});
+
+test("the app's lock, held by the command line, refuses a long operation with its words, and starts no job (D72)", async () => {
+  const ctx = context();
+  const message = "A release of guestbook is already running, started from the command line 2 minutes ago. Wait for it to end, then try again.";
+  ctx.suite.lock = () => ({ ok: false, message });
+  const answer = await perform("app.putLive", { app: "guestbook" }, ctx);
+  assert.equal(answer.ok, false);
+  assert.equal(answer.error.code, "busy");
+  assert.equal(answer.error.message, message);
+  assert.equal(ctx.jobs.busy, null);
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), []);
+});
+
+test("a job that throws still lets the app's lock go", async () => {
+  const ctx = context();
+  ctx.suite.run = async () => {
+    throw new Error("the command broke");
+  };
+  const answer = await perform("app.startTestCopy", { app: "guestbook" }, ctx);
+  assert.equal(answer.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  assert.deepEqual(ctx.suite.locks, []);
+  assert.equal(ctx.jobs.get(answer.result.job).ok, false);
 });
 
 test("a job reads the CLI's steps as they run, and gives the output back", async () => {

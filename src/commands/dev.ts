@@ -6,6 +6,7 @@
  * running in dev, and commit it, because a release is a commit (D25).
  */
 import { NAMES } from "../lib/brand.js";
+import { withLock } from "../lib/lock.js";
 import { buildDev, containerName, deployEnv, gitHead, readProject, repoDir, smoke, urlFor } from "../lib/project.js";
 import { run } from "../lib/run.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
@@ -77,7 +78,8 @@ async function commit(name: string | undefined, message: string | undefined): Pr
 
 export async function dev(args: string[]): Promise<number> {
   const [sub, name, ...rest] = args;
-  if (sub === "deploy") return deploy(name);
+  // A new start of the test copy, under the app's lock (D72).
+  if (sub === "deploy") return withLock(name, "dev-deploy", () => deploy(name));
   if (sub === "commit") return commit(name, rest.join(" ") || undefined);
   process.stderr.write(`usage: ${C} dev deploy <project> | dev commit <project> "<what changed>"\n`);
   return 2;

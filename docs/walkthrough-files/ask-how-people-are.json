@@ -1,0 +1,7 @@
+{
+  "title": "Ask how people are",
+  "steps": [
+    { "id": 1, "title": "A new heading", "check": "Open dev: the heading says How are you?", "built": true },
+    { "id": 2, "title": "Writing still works", "check": "Sign the guestbook in dev: your entry is listed.", "built": true }
+  ]
+}

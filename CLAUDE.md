@@ -356,3 +356,13 @@ From the fifth brief, here and in the website:
     engine: only a timeout ended it, and it was reported as the panel's
     problem. *Here:* the engine does blocking work off its thread, and the
     engine probe checks the panel's line as the engine sees it.
+
+From the seventh brief, here:
+
+48. **A trigger that did not happen looks like a fix that does not work.**
+    The Preview frame's probe deployed the test copy with nothing changed, and
+    the frame rightly stayed as it was: the deploy had left the container
+    running as before, so there was no new test copy to reload for. The probe
+    said WRONG about a panel that was right. *Here:* a probe makes the real
+    event happen (a committed change, deployed) and checks that it did before
+    judging what followed.

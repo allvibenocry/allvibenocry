@@ -48,6 +48,7 @@ import { lockProject } from "../lib/vault.js";
 import { ensureHook } from "../lib/keycheck.js";
 import { agentContainer, agentState, signInOf, stopAgent } from "../lib/agent.js";
 import { fail, ok, runSteps } from "../lib/steps.js";
+import { withLock } from "../lib/lock.js";
 
 const TEMPLATE = "guestbook";
 const GIT_IDENTITY = ["-c", `user.name=${BRAND.product}`, "-c", `user.email=${NAMES.command}@localhost`];
@@ -343,7 +344,8 @@ export async function project(args: string[]): Promise<number> {
   if (sub === "create") return create(name);
   if (sub === "list") return list();
   if (sub === "status") return status(name);
-  if (sub === "remove") return remove(name, args.slice(2));
+  // Not while a release, going back or a backup of it runs (D72).
+  if (sub === "remove") return withLock(name, "project-remove", () => remove(name, args.slice(2)));
   process.stderr.write(`usage: ${NAMES.command} project create <name> | list | status <name> | remove <name>\n`);
   return 2;
 }

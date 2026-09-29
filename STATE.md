@@ -156,6 +156,7 @@ each with where it goes.
 |---|---|
 | 1. Records | Recorded: the owner's try of steps 29 and 30 (below); the friction log's six entries; D66 to D70; TLS at home as the next security milestone in the roadmap. |
 | 2. The workstation's protections | Built and seen on the workstation (D71; the website's D34): in the owner's user settings, D61's 90 deny rules, 20 more against skipping commit hooks, and a hook that refuses heredocs and multi-line quoted text; the same in both repositories' project settings; the guard as pre-commit and commit-msg hooks in both clones. A heredoc, a multi-line `node -e` and a here-string refused by the hook; `--no-verify`, `-n`, `core.hooksPath` and a force push refused by deny rules; the guard's hooks 9 of 9 in a throwaway clone of each repository, each refusal with its control; ordinary commands and commits through. |
+| 3. Fixes | Built and probed on a fresh test host, each against the previous commit's bundle first: (a) one lock per app (D72), `lock-probe.mjs` 29 of 29, 13 WRONG on the control; (b) Machine health counts a release's and going back's restore checks, (c) the Preview frame keeps its text and reloads only for a new test copy, (d) nothing not yet run is green (D73), `panel-fixes.mjs` 19 of 19 in headless Edge, 10 WRONG on the control; (e) the walkthrough, one command per block and every project's name made free first, `walkthrough-blocks.mjs` 161 blocks, none wrong. |
 
 ## The sixth brief
 
@@ -280,16 +281,9 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   (rule 11), by the owner's decision (D67): the address is an example address
   in a test, from the owner's private list, and stays in `864be95`, as the
   website's first days stay in its history (its D14).
-- **Machine health says a backup is not restore-checked right after a
-  release**, although the release checked the one it took: doctor counts only
-  the restore checks it runs on its own (the nightly one, or `allvibe
-  restore-check`), not those inside a release or going back. A new project
-  shows "no backup yet" the same way. Both clear with the first night, or with
-  `allvibe backup <project>` and `allvibe restore-check <project>`. Found with
-  the panel (the sixth brief); not changed.
-- **The Preview frame loads the test copy again** whenever the pane is drawn
-  again: switching between Preview and Live, a step marked tried, a job ending.
-  Anything half typed in the test copy is lost then.
+- **A new project shows "no backup yet"** in Machine health until its first
+  backup: the first night, its first release, or `allvibe backup <project>`.
+  (A release's and going back's restore checks now count, D73.)
 - **The panel's home line is the last nightly check**, so a fresh machine says
   "The nightly checks have not run yet." until the first night; Machine health
   runs them on demand. Signing in lives in the panel's memory: restarting it,
@@ -302,7 +296,9 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   `$CLAUDE_PROJECT_DIR`, not yet seen in a session opened on a repository on
   Windows.
 
-- Nothing locks one operation against another yet (D28).
+- **One lock per app** (D72) keeps the suite's own operations apart, from the
+  panel, the command line and the nightly backup; it does not stop `docker` or
+  a hand in the app's folder.
 - Release images and release backups are never pruned yet (D28).
 - `doctor` shows the timer's calendar time; `systemctl list-timers` shows the
   actual next run, up to 30 minutes later (the random delay).

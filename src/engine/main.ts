@@ -9,6 +9,7 @@
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { NAMES } from "../lib/brand.js";
 import { containerState } from "../lib/docker.js";
+import { setLockOrigin } from "../lib/lock.js";
 import { ensurePanelDoor } from "../lib/panel.js";
 import { AuthStore } from "./auth.js";
 import { Jobs } from "./jobs.js";
@@ -18,6 +19,9 @@ import { realSuite } from "./suite.js";
 // Taken now, before any job can take the process's output for itself.
 const write = process.stderr.write.bind(process.stderr);
 const log = (line: string) => write(`${line}\n`);
+
+// What this process starts, it starts for the panel: the lock says so (D72).
+setLockOrigin("the panel");
 
 // The CLI's own umask, left as it is: the operations write files for the
 // projects' containers (a restore check's password file, 0644), which a

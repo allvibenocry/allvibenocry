@@ -7,6 +7,7 @@
  * The operations call the suite through `Suite`, which the engine wires to the
  * CLI's own code (suite.ts) and the tests to stand-ins.
  */
+import { refusal } from "../lib/lock.js";
 import { AuthStore, isCodeShape, PASSWORD_MAX } from "./auth.js";
 import type { Job, Jobs } from "./jobs.js";
 
@@ -33,7 +34,12 @@ export interface Suite {
   lastNight(): unknown;
   /** Runs the CLI's command for a long operation, printing as it does; its exit code. */
   run(kind: LongKind, app: string): Promise<number>;
+  /** The app's lock for a long operation, shared with the CLI (D72), or why not, in plain words. */
+  lock(app: string, kind: LongKind): { ok: true; release: () => void } | { ok: false; message: string };
 }
+
+/** Each long operation, as the lock names it (src/lib/lock.ts). */
+export const LOCK_OPERATION: Record<LongKind, string> = { putLive: "release", goBack: "rollback", startTestCopy: "dev-deploy" };
 
 export interface Context {
   suite: Suite;
@@ -96,13 +102,30 @@ export interface Operation {
   run(args: Args, ctx: Context): unknown;
 }
 
+const KIND_OF: Record<string, LongKind> = { "app.putLive": "putLive", "app.goBack": "goBack", "app.startTestCopy": "startTestCopy" };
+
+/** The engine runs one long operation at a time: the one that runs, in the lock's words. */
+function busyError(busy: Job): EngineError {
+  const kind = KIND_OF[busy.operation];
+  const message = refusal({ operation: kind ? LOCK_OPERATION[kind] : busy.operation, app: busy.app, from: "the panel", pid: 0, since: null, started: busy.startedAt });
+  return new EngineError("busy", message, { job: busy.id });
+}
+
+/**
+ * A long operation, as a job: only when no other job runs, and only with the
+ * app's lock, which the CLI takes too (D72), held until the job ends.
+ */
 const long = (kind: LongKind, operation: string) => (args: Args, ctx: Context): { job: string } => {
   only(args, ["app"]);
   const name = app(args, ctx);
-  const job = ctx.jobs.start(operation, name, () => ctx.suite.run(kind, name));
+  if (ctx.jobs.busy) throw busyError(ctx.jobs.busy);
+  const lock = ctx.suite.lock(name, kind);
+  if (!lock.ok) throw new EngineError("busy", lock.message);
+  const job = ctx.jobs.start(operation, name, () => Promise.resolve().then(() => ctx.suite.run(kind, name)).finally(() => lock.release()));
   if (!job) {
-    const busy = ctx.jobs.busy as Job;
-    throw new EngineError("busy", `another operation is running: ${busy.operation} for ${busy.app}, since ${busy.startedAt.slice(11, 19)} UTC. Wait for it to end.`, { job: busy.id });
+    lock.release();
+    const running = (ctx.jobs as { busy: Job | null }).busy;
+    throw running ? busyError(running) : new EngineError("busy", "another operation started meanwhile: try again");
   }
   return { job: job.id };
 };

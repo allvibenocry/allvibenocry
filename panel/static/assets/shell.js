@@ -130,14 +130,16 @@
   }
 
   /* ------------------------------------------------------------ the side -- */
-  const dotOf = (a) => (a.next?.kind === "try" || a.next?.kind === "put-live" ? "act" : a.next?.kind === "building" ? "work" : a.live ? "live" : "");
+  // Green only for a live app that runs; a live app that does not is a problem, and says so first.
+  const dotOf = (a) => (a.live && !a.prod?.running ? "down" : a.next?.kind === "try" || a.next?.kind === "put-live" ? "act" : a.next?.kind === "building" ? "work" : a.live ? "live" : "");
+  const liveChip = (a) => (!a.live ? '<span class="chip idle">Not live yet</span>' : a.prod?.running ? `<span class="chip live">${esc(a.live)} is live</span>` : `<span class="chip stop">${esc(a.live)} is not running</span>`);
   function renderNav() {
     const item = (label, href, current, cls = "") => `<a href="${href}" data-link class="${cls}"${current ? ' aria-current="page"' : ""}>${label}</a>`;
     let h = item("Home", "/", S.view === "home");
     h += '<p class="nav-group">Your apps</p>';
     for (const a of S.apps) {
       const d = dotOf(a);
-      const sr = d === "act" ? '<span class="sr">, waiting for you</span>' : d === "work" ? '<span class="sr">, the builder is working</span>' : "";
+      const sr = d === "act" ? '<span class="sr">, waiting for you</span>' : d === "work" ? '<span class="sr">, the builder is working</span>' : d === "down" ? '<span class="sr">, its live app is not running</span>' : "";
       h += item(`<span class="dot ${d || "idle"}"></span>${esc(a.name)}${sr}`, `/apps/${a.name}`, S.view === "app" && S.app === a.name, "nav-app");
     }
     if (!S.apps.length) h += '<p class="nav-empty">No apps yet.</p>';
@@ -150,7 +152,8 @@
     if (had) nav.querySelector(`a[href="${had}"]`)?.focus();
     const st = $("#side-status");
     const problems = S.last?.problems ?? 0;
-    st.className = `side-status${problems ? " warn" : ""}`;
+    // Nothing that has not run is green (friction log 3): neutral until the first night.
+    st.className = `side-status${!S.last ? " none" : problems ? " stop" : S.last.warnings ? " warn" : ""}`;
     st.innerHTML = !S.last
       ? '<span class="led" aria-hidden="true"></span><span>The nightly checks have not run yet.</span>'
       : problems
@@ -178,7 +181,7 @@
   }
   function statusRow() {
     const l = S.last;
-    if (!l) return '<div class="status-row" role="status"><span class="led" aria-hidden="true"></span><b>The nightly checks have not run yet.</b><span class="facts-inline"><span class="fact">They run every night after the backups</span></span><a class="linkbtn" href="/machine" data-link>Machine health</a></div>';
+    if (!l) return '<div class="status-row none" role="status"><span class="led" aria-hidden="true"></span><b>The nightly checks have not run yet.</b><span class="facts-inline"><span class="fact">They run every night after the backups</span></span><a class="linkbtn" href="/machine" data-link>Machine health</a></div>';
     const ok = (id) => l.checks.find((c) => c.id === id)?.status === "ok";
     const facts = [];
     const backups = l.checks.filter((c) => c.id.startsWith("backup-"));
@@ -186,11 +189,11 @@
     if (ok("recovery")) facts.push("Recovery key confirmed");
     if (ok("firewall")) facts.push("Apps kept off the home network");
     const head = l.problems ? `${l.problems} thing${l.problems === 1 ? "" : "s"} need${l.problems === 1 ? "s" : ""} you.` : "No problems found.";
-    return `<div class="status-row${l.problems ? " warn" : ""}" role="status"><span class="led" aria-hidden="true"></span><b>${head}</b><span class="facts-inline">${facts.map((f) => `<span class="fact">${f}</span>`).join("")}<span class="fact">Checked ${when(l.at)}</span></span><a class="linkbtn" href="/machine" data-link>Machine health</a></div>`;
+    return `<div class="status-row${l.problems ? " stop" : l.warnings ? " warn" : ""}" role="status"><span class="led" aria-hidden="true"></span><b>${head}</b><span class="facts-inline">${facts.map((f) => `<span class="fact">${f}</span>`).join("")}<span class="fact">Checked ${when(l.at)}</span></span><a class="linkbtn" href="/machine" data-link>Machine health</a></div>`;
   }
   function viewHome() {
     const cards = S.apps.map((a) => {
-      const chip = a.live ? `<span class="chip live">${esc(a.live)} is live</span>` : '<span class="chip idle">Not live yet</span>';
+      const chip = liveChip(a);
       return `<article class="app-card"><h3><a class="card-link" href="/apps/${a.name}" data-link>${esc(a.name)}</a></h3>${chip}<p class="muted">${a.plan?.title && !a.plan.releasedIn ? `${esc(a.plan.title)}. ` : ""}${workText(a)}</p><div class="card-foot"><span></span>${nextButton(a)}</div></article>`;
     }).join("");
     return `${statusRow()}
@@ -226,19 +229,68 @@
   const jobHere = () => S.job && S.jobApp === S.app;
   const running = () => jobHere() && S.job.state === "running";
 
+  // The app view is drawn once per page (going into an app loads the page),
+  // and after that only its parts are drawn again, each in its own box. The
+  // Preview's frame has a box of its own that nothing redraws: it is replaced
+  // only when the test copy itself is a new one (a new start, "Restart the
+  // test copy") or stops, so what is half typed in it stays (friction log 5).
   function viewApp() {
     const d = S.detail;
-    return `<div class="work" id="work" data-m="${S.m}">
+    return `<div class="work" id="work" data-m="${S.m}" data-app="${esc(d.name)}">
       <section class="left" aria-label="Your plan">
-        <div class="apphead" id="apphead">${headHTML(d)}</div>
-        <div class="mtabs" id="mtabs" role="tablist" aria-label="${esc(d.name)}">${[["chat", "Plan"], ["preview", "Preview"], ["live", "Live"]].map(([id, l]) => tabHTML("mtab", id, l, S.m === id, id === "chat" ? "lside" : "rpane")).join("")}</div>
-        <div class="lside" id="lside"${narrowMQ.matches ? ' role="tabpanel" aria-labelledby="mtab-chat"' : ""}><div class="lpane" id="lpane">${leftHTML()}</div></div>
+        <div class="apphead" id="apphead"></div>
+        <div class="mtabs" id="mtabs" role="tablist" aria-label="${esc(d.name)}"></div>
+        <div class="lside" id="lside"><div class="lpane" id="lpane"></div></div>
       </section>
       <section class="right" aria-label="What you look at">
-        <div class="rtabs" id="rtabs" role="tablist" aria-label="${esc(d.name)}">${[["preview", "Preview"], ["live", "Live"]].map(([id, l]) => tabHTML("rtab", id, l, S.right === id, "rpane")).join("")}</div>
-        <div class="pane" id="rpane" role="tabpanel" tabindex="-1" aria-labelledby="${narrowMQ.matches ? "mtab" : "rtab"}-${S.right}">${S.right === "live" ? liveHTML() : previewHTML()}</div>
+        <div class="rtabs" id="rtabs" role="tablist" aria-label="${esc(d.name)}"></div>
+        <div class="pane" id="rpane" role="tabpanel" tabindex="-1">
+          <div class="pview" id="preview-pane">
+            <div class="pview-top" id="preview-top"></div>
+            <section class="frame" id="preview-frame" aria-label="The test copy"><div class="fbar" id="fbar"></div><div class="frame-slot" id="frame-slot"></div></section>
+          </div>
+          <div class="pview" id="live-pane" hidden></div>
+        </div>
       </section>
     </div>`;
+  }
+  function renderApp() {
+    const d = S.detail;
+    if ($("#work")?.dataset.app !== d.name) {
+      $("#main").innerHTML = viewApp();
+      frameKey = null;
+    }
+    const part = (id, html) => keepFocus($(`#${id}`), () => { $(`#${id}`).innerHTML = html; });
+    part("apphead", headHTML(d));
+    part("mtabs", [["chat", "Plan"], ["preview", "Preview"], ["live", "Live"]].map(([id, l]) => tabHTML("mtab", id, l, S.m === id, id === "chat" ? "lside" : "rpane")).join(""));
+    part("rtabs", [["preview", "Preview"], ["live", "Live"]].map(([id, l]) => tabHTML("rtab", id, l, S.right === id, "rpane")).join(""));
+    const lside = $("#lside");
+    if (narrowMQ.matches) { lside.setAttribute("role", "tabpanel"); lside.setAttribute("aria-labelledby", "mtab-chat"); }
+    else { lside.removeAttribute("role"); lside.removeAttribute("aria-labelledby"); }
+    part("lpane", leftHTML());
+    $("#work").dataset.m = S.m;
+    renderRight();
+  }
+  // The test copy the frame was loaded for: its address, and which container since when.
+  let frameKey = null;
+  function syncFrame() {
+    const d = S.detail;
+    const slot = $("#frame-slot");
+    const restarting = running() && S.jobKind === "startTestCopy";
+    const up = d.testCopy?.running && !restarting;
+    const src = hostUrl(d.ports.testCopy);
+    const key = up ? `up ${src} ${d.testCopy.since ?? ""}` : `down ${restarting}`;
+    if (key === frameKey && slot.firstChild) return;
+    frameKey = key;
+    if (!up) {
+      slot.innerHTML = `<div class="tc-empty-frame"><p>${restarting ? "The test copy is starting. This takes a minute." : "The test copy is not running."}</p></div>`;
+      return;
+    }
+    const frame = document.createElement("iframe");
+    frame.className = "tc-frame";
+    frame.title = `The test copy of ${d.name}`;
+    frame.src = src;
+    slot.replaceChildren(frame);
   }
   function tabHTML(pre, id, label, selected, controls) {
     const needs = id === "live" && allTried(planOf()) && !running();
@@ -246,7 +298,7 @@
     return `<button type="button" role="tab" id="${pre}-${id}" aria-controls="${controls}" aria-selected="${selected}" tabindex="${selected ? 0 : -1}" data-${pre}="${id}">${label}${dot}</button>`;
   }
   function headHTML(d) {
-    const chip = d.live ? `<span class="chip live">${esc(d.live)} is live</span>` : '<span class="chip idle">Not live yet</span>';
+    const chip = liveChip(d);
     return `<h1 id="app-name">${esc(d.name)}</h1>
       <div class="more" id="more"><button type="button" class="more-btn" id="more-btn" aria-expanded="${S.moreOpen}" aria-controls="more-menu" data-action="more">More</button>
         <div class="more-menu" id="more-menu"${S.moreOpen ? "" : " hidden"}>
@@ -275,20 +327,20 @@
     if (p.state === "no-test-copy") return line("info", "<b>The test copy is not running.</b> Start it to try the app.", '<button type="button" class="btn small" data-action="start-test">Start the test copy</button>');
     if (p.state === "none" || p.releasedIn) return line("info", "<b>Nothing is in progress.</b> Tell your AI what you want to change next.");
     if (p.state === "invalid") return line("info", "<b>The plan cannot be read.</b> Ask your AI to fix it.");
-    if (running() && S.jobKind === "putLive") return line("done", "<b>Putting it live.</b> The safety checks are running in Live.", '<button type="button" class="btn pink small" data-action="to-live">Go to Live</button>');
+    if (running() && S.jobKind === "putLive") return line("building", "<b>Putting it live.</b> The safety checks are running in Live.", '<button type="button" class="btn pink small" data-action="to-live">Go to Live</button>');
     if (allTried(p)) return line("done", `<b>All ${p.steps.length} steps are tried.</b> Go to Live when you want everyone to get ${nextV(S.detail)}.`, '<button type="button" class="btn pink small" data-action="to-live">Go to Live</button>');
     const s = current(p);
-    if (s.state === "ready") return line("ready", `<b>Step ${s.id} is ready.</b> Try it: ${esc(s.check)}`, `<button type="button" class="btn small go" data-action="works" data-step="${s.id}">${CHECK} It works</button><button type="button" class="linkbtn" data-action="report" data-step="${s.id}">Something is wrong</button>`);
+    if (s.state === "ready") return line("ready", `<b>Step ${s.id} is ready.</b> Try it: ${esc(s.check)}`, `<button type="button" class="btn small pink" data-action="works" data-step="${s.id}">${CHECK} It works</button><button type="button" class="linkbtn" data-action="report" data-step="${s.id}">Something is wrong</button>`);
     return line("building", `<b>Building step ${s.id}:</b> ${esc(lc(s.title))}. The test copy keeps working, so you can look around meanwhile.`);
   }
-  function previewHTML() {
-    const d = S.detail;
-    const restarting = running() && S.jobKind === "startTestCopy";
-    const up = d.testCopy?.running;
-    const bar = `<div class="fbar"><span class="tc">Test copy</span><span class="fmid">${restarting ? "Restarting the test copy…" : "Try anything here. The live app is not touched."}</span>${up && !running() ? '<button type="button" data-action="start-test">Restart the test copy</button>' : ""}</div>`;
-    const body = up && !restarting ? `<iframe class="tc-frame" src="${esc(hostUrl(d.ports.testCopy))}" title="The test copy of ${esc(d.name)}"></iframe>` : `<div class="tc-empty-frame"><p>${restarting ? "The test copy is starting. This takes a minute." : "The test copy is not running."}</p></div>`;
+  function previewTopHTML() {
     const failed = jobHere() && S.jobKind === "startTestCopy" && S.job.state === "finished" && !S.job.ok ? stopBox(S.job, "The test copy did not start") : "";
-    return `${tryLine()}${failed}<section class="frame" id="preview-frame" aria-label="The test copy">${bar}${body}</section>`;
+    return `${tryLine()}${failed}`;
+  }
+  function fbarHTML() {
+    const restarting = running() && S.jobKind === "startTestCopy";
+    const up = S.detail.testCopy?.running;
+    return `<span class="tc">Test copy</span><span class="fmid">${restarting ? "Restarting the test copy…" : "Try anything here. The live app is not touched."}</span>${up && !running() ? '<button type="button" data-action="start-test">Restart the test copy</button>' : ""}`;
   }
 
   /* --------------------------------------------------------- Live -- */
@@ -378,7 +430,7 @@
     const p = planOf();
     const v = nextV(d);
     const top = d.live
-      ? `<section class="quiet lcard"><h2>${esc(d.live)} is live <span class="chip live">for everyone</span></h2><p>This is the version everyone uses.</p><div class="acts"><a class="btn small line" href="${esc(hostUrl(d.ports.live))}" target="_blank" rel="noopener noreferrer">Open the live app</a></div></section>`
+      ? `<section class="quiet lcard"><h2>${esc(d.live)} is live ${d.prod?.running ? '<span class="chip live">for everyone</span>' : '<span class="chip stop">not running</span>'}</h2><p>This is the version everyone uses.</p><div class="acts"><a class="btn small line" href="${esc(hostUrl(d.ports.live))}" target="_blank" rel="noopener noreferrer">Open the live app</a></div></section>`
       : '<section class="quiet lcard"><h2>Not live yet</h2><p>Only the test copy exists so far.</p></section>';
     let next = "";
     if (jobHere() && (S.jobKind === "putLive" || S.jobKind === "goBack")) next = jobCard();
@@ -422,18 +474,30 @@
   function render(html) {
     renderNav();
     const m = $("#main");
-    keepFocus(m, () => {
-      if (html) m.innerHTML = html;
-      else if (S.view === "home") m.innerHTML = viewHome();
-      else if (S.view === "machine") m.innerHTML = viewMachine();
-      else if (S.view === "app" && S.detail) m.innerHTML = viewApp();
-    });
+    if (!html && S.view === "app" && S.detail) renderApp();
+    else {
+      keepFocus(m, () => {
+        if (html) m.innerHTML = html;
+        else if (S.view === "home") m.innerHTML = viewHome();
+        else if (S.view === "machine") m.innerHTML = viewMachine();
+      });
+    }
     document.title = S.view === "app" && S.detail ? `${S.detail.name}: control panel` : S.view === "machine" ? "Machine health: control panel" : "Your apps: control panel";
   }
+  // The right side's parts: the line above the preview, the frame's bar, the
+  // frame (only when the test copy changed), and Live. Preview and Live are
+  // shown and hidden, never drawn in each other's place.
   function renderRight(focusId) {
     const rp = $("#rpane");
     if (!rp) return;
-    keepFocus(rp, () => { rp.innerHTML = S.right === "live" ? liveHTML() : previewHTML(); });
+    $("#preview-pane").hidden = S.right !== "preview";
+    $("#live-pane").hidden = S.right !== "live";
+    rp.setAttribute("aria-labelledby", `${narrowMQ.matches ? "mtab" : "rtab"}-${S.right}`);
+    const part = (id, html) => keepFocus($(`#${id}`), () => { $(`#${id}`).innerHTML = html; });
+    part("preview-top", previewTopHTML());
+    part("fbar", fbarHTML());
+    syncFrame();
+    part("live-pane", liveHTML());
     if (focusId) $(`#${focusId}`)?.focus();
   }
   function selectTab(id) {
@@ -446,8 +510,7 @@
       b.setAttribute("aria-selected", String(on));
       b.tabIndex = on ? 0 : -1;
     }
-    $("#rpane").setAttribute("aria-labelledby", `${narrowMQ.matches ? "mtab" : "rtab"}-${S.right}`);
-    if (id !== "chat") renderRight();
+    renderRight();
   }
 
   /* ----------------------------------------------------------- dialogs -- */

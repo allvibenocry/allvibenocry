@@ -139,3 +139,43 @@ export function lastRecord(kind: string, project?: string | null, dir = NAMES.ru
   const matching = listRecords(dir).filter((r) => r.kind === kind && (project === undefined || r.project === project));
   return matching.at(-1) ?? null;
 }
+
+/** The steps of a restore check (commands/backup.ts, restoreCheckSteps), by name: the first, and the one that ends it. */
+export const RESTORE_CHECK_FIRST = "the backup to check";
+export const RESTORE_CHECK_LAST = "the app's own health check passes against the copy";
+
+export interface RestoreCheckSeen {
+  at: string;
+  ok: boolean;
+  /** The step it stopped at, when it failed. */
+  failedStep: string | null;
+  entries: number | null;
+  /** Which run made it: a restore check of its own, the nightly one, a release, going back. */
+  kind: string;
+}
+
+/**
+ * The newest restore check of a project's backups, whoever ran it: `allvibe
+ * restore-check`, the nightly backup, or the one inside a release or going
+ * back, each of which restore-checks the backup it takes (D73, friction log 4).
+ * A run that stopped before its restore check began made none, and is passed
+ * over; one that stopped inside it made a failed one.
+ */
+export function lastRestoreCheck(project: string, records: RunRecord[] = listRecords()): RestoreCheckSeen | null {
+  for (const r of [...records].reverse()) {
+    if (r.project !== project) continue;
+    if (r.kind === "restore-check") {
+      return { at: r.started, ok: r.ok, failedStep: r.failedStep, entries: (r.facts.entries as number | null | undefined) ?? null, kind: r.kind };
+    }
+    if (r.kind !== "release" && r.kind !== "rollback") continue;
+    const first = r.steps.findIndex((s) => s.name === RESTORE_CHECK_FIRST);
+    if (first === -1) continue;
+    const check = r.steps.slice(first);
+    const failed = check.find((s) => !s.ok);
+    if (failed) return { at: r.started, ok: false, failedStep: failed.name, entries: null, kind: r.kind };
+    if (check.some((s) => s.name === RESTORE_CHECK_LAST)) {
+      return { at: r.started, ok: true, failedStep: null, entries: (r.facts.entries as number | null | undefined) ?? null, kind: r.kind };
+    }
+  }
+  return null;
+}

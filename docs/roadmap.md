@@ -537,8 +537,8 @@ These were named when their decisions were made, and are not repeated here:
   built, D65), internet publishing, tunnels, the GitHub integration, and the
   key check before push. (The agent container is
   built, D39, and so is a key check before every commit, D38.)
-- In D28: a lock between operations, and pruning old release images and release
-  backups.
+- In D28: pruning old release images and release backups. (Its lock between
+  operations is built: one lock per app, D72.)
 
 ---
 

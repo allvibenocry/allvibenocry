@@ -651,3 +651,25 @@ body.appview main{max-width:none;padding:0}
 .every .lines{display:block;margin-top:2px;padding-left:12px;border-left:2px solid var(--line);font-family:var(--mono);font-size:.8rem;color:var(--muted)}
 .lcard .every-checks p{font-size:.88rem}
 .backups-list{margin-top:14px}
+
+/* The seventh brief. The Preview and Live, each in a box of its own, shown or
+   hidden, never drawn in each other's place; the frame in a slot that only a
+   new test copy replaces (friction log 5). */
+.pview{display:flex;flex-direction:column;gap:14px;flex:1 1 auto;min-height:0}
+.pview[hidden]{display:none}
+.pview-top{display:flex;flex-direction:column;gap:14px}
+.pview-top:empty{display:none}
+.frame-slot{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+
+/* Colour roles (docs/design/control-panel.md, rule 3; friction log 3):
+   nothing that has not run yet is green. What has not run is neutral; a
+   problem is red; something worth a look is yellow; green is only done and
+   safe. */
+.side-status.none .led,.status-row.none .led{background:transparent;border:2px solid var(--lav);box-shadow:none}
+.status-row.none{background:var(--panel);border-color:var(--line)}
+.side-status.stop .led{background:var(--stop);box-shadow:0 0 0 4px rgba(214,43,38,.3)}
+.status-row.stop{background:var(--stop-soft);border-color:var(--stop)}
+.status-row.stop .led{background:var(--stop)}
+.nav .dot.down{background:var(--stop)}
+.chip.stop{background:var(--stop-soft);border-color:var(--stop);color:var(--text)}
+.chip.stop::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--stop)}

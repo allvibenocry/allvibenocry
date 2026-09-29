@@ -2630,3 +2630,109 @@ session that ran the walkthrough's text as commands was not one. Rule 16 was
 kept by habit (mistake 43); a hook keeps it by refusing. And the guard's exit
 code was lost in a pipe once (mistake 42); a hook that git runs, and that
 decides by its exit code, cannot be piped.
+
+## D72. One lock per app, for the engine and the CLI alike
+
+*2026-09-29. The seventh brief, item 3 (a), answering D66's question 5. It
+replaces D28's "nothing locks one operation against another yet".*
+
+**What.** Every operation that changes an app takes **that app's lock** first,
+whoever starts it: a release, going back (with or without the data), a new
+start of the test copy (`dev deploy`), a backup, a restore check, a change to
+its service keys, and removing it. The CLI takes it in each command; the
+engine takes it before it starts a job, and lets it go when the job ends,
+whatever the ending; the nightly backup takes it for each app in turn.
+**Whoever comes second is refused before anything changes**, in plain words,
+naming what runs, where it was started and when:
+
+```
+A release of hello is already running, started from the panel 2 minutes ago. Wait for it to end, then try again.
+```
+
+The engine says it as its `busy` refusal, which the panel shows; the CLI says
+it and exits 1. The engine's own rule, one long operation at a time, now says
+the same words about the job that runs.
+
+**How** (`src/lib/lock.ts`). The lock is a file in the app's folder,
+`operation.lock`, holding the operation, where it was started (the panel, the
+command line, the nightly backup), the process and its start time, and when.
+It is written whole under a temporary name and linked into place, which fails
+when a lock is already there, so two takers can never both have it and none
+can find a half-written one (mistake 8). **A lock whose process has ended**
+(a command stopped with Ctrl-C, an engine restarted in the middle of a job) is
+cleared by the next taker, which says so; a process that still runs holds its
+lock, and a process id reused by another process is told apart by its start
+time. **Within one process** the lock is taken once: the engine's job runs the
+same command the CLI does, which finds the lock already held by its own
+process, and so does a release's own rollback.
+
+**The nightly backup waits** for an app's lock, up to half an hour, since a
+release takes minutes; if it is still held then, that app's backup is recorded
+as refused, with the words above, and the next app goes on.
+
+**Probed** on a fresh test host (`test/host/lock-probe.mjs`, 29 of 29): a
+release started through the engine, and one from the command line while it
+ran, refused in the words above, one release made; the other way round, the
+engine's three long operations refused, naming the command line; a lock left
+by an ended process cleared, and said so; the nightly backup started while
+going back ran, waiting for it and then backing up. **The control**, the same
+probe against the previous commit's bundle: 13 of 29 WRONG, among them both
+releases running at once. Unit tests: `test/unit/lock.test.mjs`, and the
+engine's.
+
+**Limits.** The lock is between the suite's own operations. `docker`, or a
+person's hand in the app's folder, is not stopped by it. A lock file removed
+by hand while its operation runs lets another start.
+
+**Why.** Two operations on the same app at once, one from the panel and one
+from a terminal, could each take a backup, deploy and tag, and interleave: at
+best one fails confusingly, at worst prod's data is restored under a release
+that already wrote to it. One lock, taken by both, makes that impossible
+without asking anyone to remember.
+
+## D73. Four fixes from the owner's friction log
+
+*2026-09-29. The seventh brief, item 3 (b) to (e); friction log entries 1 to
+5.*
+
+1. **Machine health counts the restore check a release or going back made**
+   (entry 4). Each restore-checks the backup it takes (rule 2, D57), and
+   doctor used to count only restore checks of their own, so right after a
+   release it said no backup had been restore-checked. Now the newest restore
+   check counts, whoever ran it, and doctor says which: `last restore check …
+   passed, in a release (3 entries)`. A release that stopped before its
+   restore check began made none, and the one before counts; one that stopped
+   inside it made a failed one (`lastRestoreCheck`, 5 unit tests). Probed
+   within `lock-probe.mjs`: after a release, after the nightly backup, after
+   going back; the control said "no backup has been restore-checked yet".
+2. **The Preview frame is reloaded only by a change to the test copy**
+   (entry 5). An app's page is drawn once, and after that only its parts are
+   drawn again, each in a box of its own; the frame has a box that nothing
+   redraws. It is replaced only when the test copy is a new one: the engine
+   gives the test copy's container and when it started, which a new start
+   with a change and "Restart the test copy" both change, and a `dev deploy`
+   that changed nothing does not. Preview and Live are shown and hidden, never
+   drawn in each other's place. Probed in a real browser
+   (`test/host/panel-fixes.mjs`): text typed into the frame kept across
+   switching to Live and back, a step marked tried, and the periodic look for
+   changes after a step was marked tried in another window; the frame reloaded
+   after a committed change was deployed and after "Restart the test copy".
+   The control lost the text at each of the three redraws.
+3. **Nothing that has not run is green** (entry 3). The nightly line in the
+   side bar and on the home screen is neutral, an outline in the structure's
+   purple, until the first night; a problem it found is red, a warning yellow,
+   and only a night with neither is green. "It works" is pink, the person's
+   next action, not green; "Putting it live" while it runs is neutral, not
+   done; and a live app that is not running says so in red ("v2 is not
+   running", and its dot in the side bar), never the green of "v2 is live".
+   Probed in a real browser by computed colours; the control showed green in
+   all seven places.
+4. **The walkthrough has one command per block, and never assumes a project's
+   name is unused** (entries 1 and 2). Every block holds one command; a
+   variable set in one block and used in another (`$R`) is spelled out in
+   full, so a new shell does not break it; step 24's plan is a file in
+   `docs/walkthrough-files/`, not a heredoc. Each project (guestbook, moods,
+   scratch, ideas, hello) is made on a name made free first: `allvibe project
+   remove <name> --delete-everything`, then `allvibe project list`, where it is
+   not. `test/host/walkthrough-blocks.mjs` checks both, and a heredoc: 161
+   blocks, none with a problem; 48 before.

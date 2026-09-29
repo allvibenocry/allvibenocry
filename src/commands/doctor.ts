@@ -26,7 +26,10 @@ import { POWER_SUPPLY_DIR, powerCheck, readPower } from "../lib/power.js";
 import { AuthStore } from "../engine/auth.js";
 import { tryRun } from "../lib/run.js";
 import { writeAtomic } from "../lib/files.js";
-import { entries, lastRecord } from "../lib/steps.js";
+import { entries, lastRecord, lastRestoreCheck } from "../lib/steps.js";
+
+/** Which run made a restore check, when it was not one of its own. */
+const BY: Record<string, string> = { release: ", in a release", rollback: ", in going back" };
 
 export type Status = "ok" | "warn" | "problem" | "info";
 
@@ -314,7 +317,9 @@ export function checks(): Check[] {
       continue;
     }
     const latest = config.backupTarget ? listBackups(config, name).at(-1) : undefined;
-    const check = lastRecord("restore-check", name);
+    // The newest restore check, whoever ran it: a release and going back each
+    // check the backup they take, and count here too (D73).
+    const check = lastRestoreCheck(name);
     const hours = latest ? (Date.now() - new Date(latest.manifest.created).getTime()) / 3_600_000 : Infinity;
     const age = !latest ? "" : hours < 1 ? "less than an hour ago" : hours < 48 ? `${Math.round(hours)} hours ago` : `${Math.round(hours / 24)} days ago`;
     if (!latest) {
@@ -330,7 +335,7 @@ export function checks(): Check[] {
       add(
         `backup-${name}`,
         hours > 36 ? "warn" : "ok",
-        `${name}: last backup ${age}; last restore check ${check.started.slice(0, 16).replace("T", " ")} UTC passed${check.facts.entries !== undefined && check.facts.entries !== null ? ` (${entries(check.facts.entries as number)})` : ""}`,
+        `${name}: last backup ${age}; last restore check ${check.at.slice(0, 16).replace("T", " ")} UTC passed${BY[check.kind] ?? ""}${check.entries !== null ? ` (${entries(check.entries)})` : ""}`,
         "data",
       );
     }

@@ -25,6 +25,7 @@ import {
 } from "../lib/backup.js";
 import { containerState } from "../lib/docker.js";
 import { confirmRecovery, recoveryStatus } from "../lib/keys.js";
+import { withLock } from "../lib/lock.js";
 import { containerName, readProject, type Project } from "../lib/project.js";
 import { entries, fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
 
@@ -254,8 +255,9 @@ async function recoveryKey(args: string[]): Promise<number> {
 
 export const backupCommands = {
   "backup-target": backupTarget,
-  backup,
-  "restore-check": restoreCheck,
+  // Under the app's lock (D72): not beside a release or going back.
+  backup: (args: string[]) => withLock(args[0], "backup", () => backup(args)),
+  "restore-check": (args: string[]) => withLock(args[0], "restore-check", () => restoreCheck(args)),
   backups: async (args: string[]) => backups(args),
   "recovery-key": recoveryKey,
 };

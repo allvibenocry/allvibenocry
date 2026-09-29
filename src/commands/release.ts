@@ -68,6 +68,7 @@ import { run, tryRun } from "../lib/run.js";
 import { appliedMigrations, describeUnknown, releaseMigrations, restoreDataCommand, rollbackSchema, schemaOf } from "../lib/schema.js";
 import { fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
 import { gate, planKey, readMarks, stepName } from "../lib/plan.js";
+import { withLock } from "../lib/lock.js";
 import { backupSteps, restoreCheckSteps, targetStep } from "./backup.js";
 import { planAt } from "./plan.js";
 import { git } from "./project.js";
@@ -382,6 +383,8 @@ async function release(args: string[]): Promise<number> {
     cleanupRestore(context);
   }
   record.facts.backup = out.backup?.manifest.file ?? null;
+  // What its restore check found, for doctor, which counts it (D73).
+  record.facts.entries = context.entries;
   if (planned.value) record.facts.plan = planned.value.title;
   saveRecord(record);
 
@@ -457,6 +460,7 @@ async function rollback(args: string[]): Promise<number> {
       cleanupRestore(context);
     }
     record.facts.backup = out.backup?.manifest.file ?? null;
+    record.facts.entries = context.entries;
     saveRecord(record);
     if (record.ok) process.stdout.write(`\n${name} is back on ${to.version}, with all its data. The backup taken first: ${out.backup?.file}.\n`);
     return record.ok ? 0 : 1;
@@ -510,4 +514,11 @@ async function rollback(args: string[]): Promise<number> {
   return record.ok ? 0 : 1;
 }
 
-export const releaseCommands = { release, rollback };
+/** Each under the app's lock (D72): never two at once, from here or from the panel. */
+export const releaseCommands = {
+  release: (args: string[]) => {
+    const parsed = releaseArgs(args);
+    return withLock("error" in parsed ? undefined : parsed.name, "release", () => release(args));
+  },
+  rollback: (args: string[]) => withLock(args.find((a) => !a.startsWith("--")), "rollback", () => rollback(args)),
+};

@@ -25,6 +25,8 @@ the test host as `C:/Program Files/Git/root/x.sh`. PowerShell does not do this.
 | `node test/host/host.mjs override list` / `set <key>=<value>` / `unset <key>` | The test overrides (below). |
 | `node test/host/host.mjs status` | What exists, the port mapping, systemd's state, the overrides. |
 | `node test/host/host.mjs remove` | Removes the container, its volumes and its image. Nothing is left. |
+| `node test/host/fresh-host.mjs [<bundle dir>] [--keep]` | Walkthrough steps 1, 2, 5 and 6 in one go: a fresh test host, the bundle installed, the backup disk and the recovery key; `--keep` installs over the host that is there. Another bundle (an older commit's) makes a negative control. Never prints the setup code or the recovery key. |
+| `node test/host/walkthrough-blocks.mjs` | The walkthrough's shape: one command per block, no heredoc, and every project made on a name removed first. |
 | `node test/host/host.mjs resources snapshot <file>` / `compare <file>` | Every container, image, volume and network on this workstation's Docker, as ids, and what was added or removed since the snapshot. |
 
 ## Probes
@@ -52,6 +54,7 @@ sh /root/<script> allvibe <project> …`.
 | `power-fixtures.sh <command>` | Mains, battery and low battery, from stand-in power supply files, in doctor and the nightly result (D59). |
 | `app-isolation.sh <command> <project> [<device address> <port>]` | From inside dev's and prod's apps and databases: the machine's own ports, the router, a device on the home network and link-local refused; the public internet reached; each app reading its database; the doors answering the machine and the device (D41). The targets are tried from the machine first, where they must answer. Counts, and exits 1 if anything is wrong. |
 | `lan-fixtures.sh` | **Test host only.** Stand-ins for what a real machine has around it: an SSH server, a service on port 9999, and another device on the home network (a network namespace at 10.99.0.2, port 8080). Each is a unit, so it comes back after a restart. |
+| `lock-probe.mjs <command>` | One lock per app (D72): a release from the engine and one from the command line at once, both ways round, the second refused in plain words and one release made; a stale lock cleared; the nightly backup waiting for going back to end; and doctor counting the restore check a release and going back made (D73). With a project of its own, left behind for a look. |
 | `panel-fixture.mjs <action>` | **Test host only.** What the browser checks need done on the host, as the builder or the machine would: a plan's steps built and deployed to the test copy (`plan`), the backup disk unplugged and back (`unplug`, `plug`, in the engine's view too, since the test host's mounts do not reach a service's own), a setup code (`setup-code`), the newest report (`report`), a broken copy of the panel in the real one's place and the real one back (`break`, `mend`). The two browser scripts below push and call it. |
 
 ## In a real browser
@@ -68,6 +71,7 @@ need the ports forwarded at the same numbers (`status` says).
 | Script | What it shows |
 |---|---|
 | `panel-journey.mjs <folder>` | The first slice of the panel, from the first visit to signing out: a step ready to try, a report, steps tried, a step the builder added refused, an unplugged backup disk refused, a version put live with every safety check shown as it runs, and going back to the one before. Screenshots of each screen. |
+| `panel-fixes.mjs [--url …]` | The seventh brief's fixes (D73): text typed into the Preview frame kept across switching tabs, a step marked tried and the periodic look for changes, and the frame reloaded by a new test copy and by "Restart the test copy"; nothing green before the nightly checks have run, "It works" not green, a stopped live app red. Needs a host whose nightly backup has not run. |
 | `panel-checks.mjs <folder> [--broken <variants>\|none] [--configs <names>\|none]` | Every check, first seen failing on a deliberately broken copy of the panel (one per check), then passing on the real one, at 1280 and 390 px wide, light and dark: signing in and out, every flow and refusal, no console errors, no request to another origin, nothing wider than the screen, the keyboard in every dialog and tab list. |
 
 ## What it is

@@ -12,6 +12,7 @@
  */
 import { NAMES } from "../lib/brand.js";
 import { containerState } from "../lib/docker.js";
+import { withLock } from "../lib/lock.js";
 import { containerName, currentRelease, deployEnv, listProjects, readProject, runningTag, type Env, type Project } from "../lib/project.js";
 import { fail, ok, runSteps, type Step } from "../lib/steps.js";
 import {
@@ -175,9 +176,10 @@ async function remove(args: string[]): Promise<number> {
 
 export async function key(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
-  if (sub === "set") return set(rest);
+  // A key changed restarts the app that uses it: under the app's lock (D72).
+  if (sub === "set") return withLock(rest[0], "key-set", () => set(rest));
   if (sub === "list") return list(rest);
-  if (sub === "remove") return remove(rest);
+  if (sub === "remove") return withLock(rest[0], "key-set", () => remove(rest));
   process.stderr.write(`${USAGE}\n`);
   return 2;
 }

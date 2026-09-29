@@ -17,11 +17,14 @@ import { dev } from "../commands/dev.js";
 import { readNightly, summarise, type Check } from "../commands/doctor.js";
 import { markTried, planView, type PlanView } from "../commands/plan.js";
 import { releaseCommands } from "../commands/release.js";
-import type { LongKind, Suite } from "./operations.js";
+import { takeLock } from "../lib/lock.js";
+import { LOCK_OPERATION, type LongKind, type Suite } from "./operations.js";
 
 const state = (name: string) => {
   const s = containerState(name);
-  return { running: s.status === "running", status: s.status, health: s.health };
+  // Which container, since when: a new start of it is a new one, and only
+  // that reloads the panel's Preview frame (friction log 5).
+  return { running: s.status === "running", status: s.status, health: s.health, since: s.exists ? `${s.id.slice(0, 12)}@${s.startedAt}` : null };
 };
 
 /** The one thing to do next, as the panel's home screen shows it. */
@@ -104,5 +107,9 @@ export const realSuite: Suite = {
     if (kind === "putLive") return Promise.resolve(releaseCommands.release([app]));
     if (kind === "goBack") return Promise.resolve(releaseCommands.rollback([app]));
     return dev(["deploy", app]);
+  },
+  lock: (app, kind) => {
+    const taken = takeLock(app, LOCK_OPERATION[kind]);
+    return taken.ok ? { ok: true, release: taken.release } : { ok: false, message: taken.message };
   },
 };
