@@ -1,6 +1,6 @@
 # Walkthrough: from a fresh host to a release, a rollback, the vault and the agent
 
-This takes you from a fresh Debian 13 host through everything the first three
+This takes you from a fresh Debian 13 host through everything the first five
 briefs built. Steps 1 to 16 are the first brief's: installing, a project with
 dev and prod, backups and restore checks, a release, a broken release that
 rolls itself back, and a manual rollback. Steps 17 to 20 and 22 are the second
@@ -8,8 +8,10 @@ brief's: rolling back across a change to the database that only adds, and one
 that breaks; the key vault; the key check before every commit; and the coding
 agent in its container. Step 21 is the third's: every project container kept off
 the machine's own ports and the home network. Step 23 is the fourth's: the agent
-signed in to your own Claude account, which only you can do. It takes about an
-hour.
+signed in to your own Claude account, which only you can do. Steps 24 to 28 are
+the fifth's: a release only after you have tried every step of its plan; going
+back behind a fresh backup; doctor every night; mains and battery; and what the
+agent did, and its conversations. It takes about an hour and a half.
 
 It works on the **test host** (a container on your workstation, D14) and,
 unchanged, on a **real Debian 13 machine** later. Where the two differ, and
@@ -77,9 +79,9 @@ node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
 You should see thirteen steps, `[1/13] This machine` to `[13/13] How the host
-is`, each with `changed:` lines, then `allvibe doctor` with only `✓` lines (and
-one `i` line saying the test overrides are active, on the test host), `All
-green.`, and last:
+is`, each with `changed:` lines, then `allvibe doctor` with only `✓` lines (and,
+on the test host, two `i` lines: that it has no battery, and that the test
+overrides are active), `All green.`, and last:
 
 ```
 Installed All vibe no cry 0.1.0+<commit>: 35 change(s).
@@ -305,7 +307,7 @@ allvibe release guestbook --dry-run --outside-plan "the heading, changed by hand
 
 The change was made by hand, not as the steps of a plan the agent keeps, so a
 release needs your reason for putting it live outside any plan, and its record
-keeps it (D56; step 25 shows a plan). Every step says `ok`; the ones that would
+keeps it (D56; step 24 shows a plan). Every step says `ok`; the ones that would
 change something say `would …`. It ends:
 
 ```
@@ -384,17 +386,25 @@ A backup of prod as it is now is taken first, so even this can be undone.
 To do it: allvibe rollback guestbook --restore-data --confirm-data-loss
 ```
 
-Do not confirm. The ordinary rollback goes back to the code only:
+Do not confirm. The ordinary rollback goes back to the code only, and, since it
+changes the live app, first takes a fresh backup of prod and checks that it
+restores, as a release does (D57):
 
 ```sh
 allvibe rollback guestbook
 ```
 
 ```
-ok   3/5 prod's data
+ok   6/14 an encrypted backup of prod, on the target
+       /mnt/allvibe-backup/allvibe/guestbook/releases/guestbook-prod-<time>.dump.age (3.7 kB, sha256 …)
+       encrypted to this machine's backup key and to the recovery key; prod v2, 3 entries when it was taken
+…
+ok   11/14 the app's own health check passes against the copy
+…
+ok   12/14 prod's data
        kept as it is: nothing is restored, so nothing written since the release is lost (rule 8)
 …
-guestbook is back on v1, with all its data.
+guestbook is back on v1, with all its data. The backup taken first: /mnt/allvibe-backup/allvibe/guestbook/releases/guestbook-prod-<time>.dump.age.
 ```
 
 Reload **prod**: the heading is "Guestbook" again, and every entry is there.
@@ -470,7 +480,7 @@ allvibe dev deploy moods
 allvibe release moods --outside-plan "remember the mood, by hand"
 ```
 
-The release's second step reads the new migration:
+The release's third step reads the new migration:
 
 ```
 ok   3/16 the migrations since v1 only add, or are marked breaking
@@ -485,14 +495,14 @@ allvibe rollback moods
 ```
 
 ```
-ok   2/5 prod's database is one v1 can run on
+ok   2/14 prod's database is one v1 can run on
        one migration since v1, and it only adds, so v1 runs on it unchanged:
        migrations/002_add_mood.sql (from v2): only adds
 …
-ok   5/5 prod answers its smoke check
+ok   14/14 prod answers its smoke check
        prod answers on v1: {"ok":true,"entries":3,"environment":"prod","version":"v1"}
 
-moods is back on v1, with all its data.
+moods is back on v1, with all its data. The backup taken first: …
 ```
 
 v1 was written before the column existed, and runs on the database after it:
@@ -512,7 +522,7 @@ allvibe dev deploy moods
 allvibe release moods --outside-plan "the writer is the author, by hand"
 ```
 
-Dev takes it. The release refuses at its second step, before anything
+Dev takes it. The release refuses at its third step, before anything
 changes:
 
 ```
@@ -541,13 +551,14 @@ allvibe rollback moods
 ```
 
 ```
-FAIL 2/5 prod's database is one v1 can run on
+FAIL 2/14 prod's database is one v1 can run on
        v1 was not written for the database as it is now. Since v1, this migration has changed it in a way v1 cannot run on:
          migrations/003_name_to_author.sql (from v3): it is marked breaking: renames name to author, and versions before it still read name
        Going back to v1's code alone would run it on data it does not understand, so this rollback stops here and nothing is changed.
 ```
 
-Nothing changed: prod still answers on v3. Going back means putting the data
+Nothing changed, and no backup was taken: the check comes first. Prod still
+answers on v3. Going back means putting the data
 back too, which says first what it loses:
 
 ```sh
@@ -592,7 +603,8 @@ node test/host/host.mjs exec -- sh /root/vault-check.sh allvibe moods /root/weat
 
 Every count is `0` (command outputs and run records, the journal, `docker
 inspect`, container logs, every process's arguments and environment, the
-repository and its history, the vault's files, the backup disk), except the
+repository and its history, the vault's files, the backup disk, the agent's
+activity log and conversations), except the
 copy in memory, which the app reads, at `1`. From inside dev's app: `holds
 dev's value: 1`, `holds prod's value: 0`. The vault goes into every backup, and
 the restore check proves it comes back. Host:
@@ -737,7 +749,11 @@ allvibe agent start moods
 The first start builds the agent's image, about a minute. It ends:
 
 ```
-ok   7/7 Claude Code answers in it
+ok   6/8 its activity log, and a place to keep its conversations
+       allvibe-moods-agent-activity started: one line per tool call, to /var/lib/allvibe/projects/moods/agent/log/activity.jsonl
+       its conversations are kept in /var/lib/allvibe/projects/moods/agent/transcripts; its login is not
+…
+ok   8/8 Claude Code answers in it
        claude --version: 2.1.283 (Claude Code)
        open it: allvibe agent shell moods
 ```
@@ -756,9 +772,12 @@ the Docker socket, both backup keys, the backup disk and prod's keys absent;
 refused by it; dev's app, dev's database and the gate answering; and a fake key
 committed from inside the agent stopped by the key check. From inside the gate:
 the machine, the router, the device and link-local refused, and the API
-answering. The agent's settings say auto mode, and its home is in memory, with
-no mount or volume. It ends `75 of 75 as they must be`, and the gate's log lists every
-connection it refused.
+answering. From inside the activity logger (step 28): the machine, the router,
+the device, link-local, prod and the internet refused. The agent's settings say
+auto mode, and its home is in memory, with no mount or volume; its only mounts
+are its working copy, the directory its conversations are kept in, and its key.
+It ends `89 of 89 as they must be`, and the gate's log lists every connection it
+refused.
 
 **With a real key**, open the agent's own session, host:
 
@@ -775,6 +794,8 @@ check for each step, and stops after each step for you to try it:
 ```sh
 allvibe agent stop moods
 ```
+
+It removes the agent, its gate and its activity logger.
 
 ## 23. Signing in with your own Claude account
 
@@ -797,13 +818,13 @@ allvibe agent start scratch --sign-in account
 The agent's start ends:
 
 ```
-ok   2/7 it signs in with your own Claude account
+ok   2/8 it signs in with your own Claude account
        no API key, and nothing from the key vault: you sign in yourself, through Claude Code's own sign-in, in its shell.
        the login stays in the agent's memory only, and is gone when the agent stops (D46)
 …
-ok   5/7 its only way out: api.anthropic.com, claude.ai, platform.claude.com, over HTTPS
+ok   5/8 its only way out: api.anthropic.com, claude.ai, platform.claude.com, over HTTPS
 …
-ok   7/7 Claude Code is in it
+ok   8/8 Claude Code is in it
        Claude Code 2.1.283, as published
        open it and sign in: allvibe agent shell scratch
 ```
@@ -894,7 +915,292 @@ the change was made and committed, what dev showed, and whether the second
 start asked you to sign in again. That is recorded in STATE.md as tried by you,
 exactly as you say it.
 
-## 24. Clean up
+## 24. A plan, and a release only after you have tried every step
+
+The agent keeps its plan in `plan.json`, in the project's working copy: each
+step with the check you can try (D56). A release reads the plan in the commit
+it would put live, and goes ahead only when you have tried every step of it in
+dev. Only you can mark a step as tried: the marks live beside the project,
+outside the working copy, where the agent cannot reach. Here you write the plan
+yourself, as the agent would, with a change to go with it, in a new project
+whose history is short. Host:
+
+```sh
+allvibe project create ideas
+R=/var/lib/allvibe/projects/ideas/repo
+runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>How are you? <span|' $R/server.js
+runuser -u allvibe -- tee $R/plan.json > /dev/null <<'END'
+{
+  "title": "Ask how people are",
+  "steps": [
+    { "id": 1, "title": "A new heading", "check": "Open dev: the heading says How are you?", "built": true },
+    { "id": 2, "title": "Writing still works", "check": "Sign the guestbook in dev: your entry is listed.", "built": true }
+  ]
+}
+END
+allvibe dev commit ideas "Ask how people are"
+allvibe dev deploy ideas
+allvibe plan ideas
+```
+
+`allvibe plan` shows the plan dev runs, and where each step stands:
+
+```
+ideas: "Ask how people are", as dev runs it (<commit>)
+   1. A new heading
+      ready for you to try: Open dev: the heading says How are you?
+   2. Writing still works
+      ready for you to try: Sign the guestbook in dev: your entry is listed.
+```
+
+Put it live before trying anything:
+
+```sh
+allvibe release ideas
+```
+
+```
+FAIL 2/16 every step of the plan is tried by you
+       the plan "Ask how people are" has steps you have not tried: step 1, "A new heading"; step 2, "Writing still works"
+
+     what would have to be true:
+       try each in dev (the test copy), then mark it: allvibe plan tried ideas <step>
+
+stopped at step 2/16. Nothing after it was attempted.
+```
+
+Nothing changed: prod still runs v1. Now try both steps in dev (the dev address
+`project create` printed; on the test host, its port on http://localhost), and
+mark each one you tried:
+
+```sh
+allvibe plan tried ideas 1
+allvibe plan tried ideas 2
+```
+
+```
+step 1, "A new heading": marked as tried by you, in dev at <commit>.
+Still to try: step 2, "Writing still works".
+step 2, "Writing still works": marked as tried by you, in dev at <commit>.
+Every step of "Ask how people are" is tried. It can be put live: allvibe release ideas
+```
+
+```sh
+allvibe release ideas
+```
+
+```
+ok   2/16 every step of the plan is tried by you
+       "Ask how people are": all 2 steps tried by you, the last <time> UTC
+…
+ideas v2 is live. Rollback: allvibe rollback ideas
+```
+
+Reload **prod**: "How are you?". A plan goes live once. Ask for it again:
+
+```sh
+allvibe plan ideas
+```
+
+It says `This plan was released in v2. What comes next needs a new plan.`, with
+both steps tried by you. A change after it, without a new plan, is outside any
+plan, and a release then needs your reason, as in step 11.
+
+## 25. Going back, behind a fresh backup
+
+Going back changes the live app too, so, like a release, it first takes a
+fresh backup of prod and checks that it restores (D57): step 14 showed those
+steps. When that cannot be done, it changes nothing. Take the backup disk away,
+as in step 15. **Test host**, host: `umount /mnt/allvibe-backup`. **Real
+machine**: unmount or unplug the USB disk. Then, host:
+
+```sh
+allvibe rollback ideas
+```
+
+```
+ok   1/14 the version to go back to: v1
+…
+FAIL 4/14 the backup target is off this machine and writable
+       /mnt/allvibe-backup is on this machine's own root filesystem, which is not off the machine
+…
+stopped at step 4/14. Nothing after it was attempted.
+```
+
+Prod still runs v2. Bring the disk back as in step 16 (**test host**,
+workstation: `node test/host/host.mjs restart`; **real machine**: plug it in and
+`reboot`), give the apps half a minute, and go back. Host:
+
+```sh
+allvibe rollback ideas
+```
+
+Fourteen steps, the backup and its restore check (steps 3 to 11) before prod is
+touched, ending:
+
+```
+ideas is back on v1, with all its data. The backup taken first: /mnt/allvibe-backup/allvibe/ideas/releases/ideas-prod-<time>.dump.age.
+```
+
+That backup is kept with the releases' backups, which are never rotated away:
+
+```sh
+allvibe backups ideas
+```
+
+```
+<time> UTC  release   v1    3.6 kB  ideas-prod-<time>.dump.age
+<time> UTC  rollback  v2    3.6 kB  ideas-prod-<time>.dump.age
+```
+
+## 26. doctor, every night
+
+Every night, after the backup and its restore check, the machine runs `doctor`
+and keeps what it found (D58): the newest in `/var/lib/allvibe/doctor/latest.json`,
+and a copy for each of the last fourteen nights, for the control panel to show.
+Run tonight's now, then read it back. Host:
+
+```sh
+systemctl start allvibe-backup.service
+allvibe doctor --last
+ls /var/lib/allvibe/doctor
+```
+
+```
+All vibe no cry on this machine, as the nightly check found it at <time> UTC
+
+  ✓ Debian GNU/Linux 13 (trixie) on x86-64
+…
+  ✓ ideas: last backup less than an hour ago; last restore check <time> UTC passed (0 entries)
+…
+All green.
+```
+
+and the directory holds `latest.json` and one dated file for each night so far
+(step 9's run made the first).
+
+## 27. Mains and battery
+
+`doctor` now says how the machine is powered (D59). A laptop's battery carries
+it through a short power cut; a desktop without one stops at once. Host:
+
+```sh
+allvibe doctor | grep Power
+```
+
+**Test host:** it has no battery, and says so:
+
+```
+  i Power: no battery, so a power cut stops the machine at once (a battery or a small UPS would carry it through a short one)
+```
+
+Its probe shows the other answers, with stand-ins for the power supply that
+only a test host accepts. Workstation:
+
+```sh
+node test/host/host.mjs push test/host/power-fixtures.sh /root/
+node test/host/host.mjs exec -- sh /root/power-fixtures.sh allvibe
+```
+
+```
+mains:
+  | ✓ Power: on mains; the battery is at 80%, charging, ready to carry the machine through a power cut (declared by the test host)
+…
+battery:
+  | ! Power: ON BATTERY, at 60%, about 1 hour and 40 minutes left. The apps keep running; plug the machine in (declared by the test host)
+…
+low:
+  | ✗ Power: ON BATTERY, and it is low: at 12%, about 20 minutes left. The machine will switch itself off soon; plug it in now (declared by the test host)
+…
+12 of 12 as they must be
+```
+
+**Real laptop:** `doctor` says `Power: on mains; the battery is at …%, …, ready
+to carry the machine through a power cut`. Unplug the charger and run it again:
+`Power: ON BATTERY, at …%, …. The apps keep running; plug the machine in`. Plug
+it back in.
+
+## 28. What the agent did, and its conversations
+
+Every tool call the agent makes is logged, one line each, outside its reach:
+the file it read or wrote, or the first line of the command it ran, and whether
+it failed; never a file's contents, and anything that looks like a key is
+withheld (D60). Its conversations are kept on the machine too, in no backup;
+its login is not.
+
+**With your own account (step 23) or a real key**, start the agent, open its
+session, sign in if asked, ask it for something small, for example "List the
+files in this project, and tell me what server.js does", and leave with
+`/exit`. Host:
+
+```sh
+allvibe agent start moods --sign-in account     # or without --sign-in, with a real key
+allvibe agent shell moods
+```
+
+**Without either**, a probe runs real Claude Code sessions in the agent
+against a stand-in for the model, which asks for four tool calls each time,
+and checks the log and the conversations. Workstation:
+
+```sh
+node test/host/host.mjs exec -- allvibe agent start moods
+node test/host/host.mjs push test/host/stub-api.mjs /root/
+node test/host/host.mjs push test/host/agent-activity.sh /root/
+node test/host/host.mjs exec -- sh /root/agent-activity.sh allvibe moods /root/weather-prod /root/weather-dev /root/anthropic-key
+```
+
+One line per call, the written file's path without its content, the fake key
+withheld, the failed call marked; a line from dev's app refused; the log out of
+the agent's reach, and still written when the agent turns hooks off in the
+settings it can write; a transcript for each session, with no stand-in login,
+key or vault value in it. It ends `29 of 29 as they must be`.
+
+Either way, see what it did. Host:
+
+```sh
+allvibe agent activity moods
+```
+
+```
+What the agent of moods did, the last 13 of 13 tool calls (UTC; ! = it failed):
+  <time>    Bash       ls /workspace
+  <time>    Write      /workspace/stub-note.txt
+  <time>    Bash       (held something that looks like a key or a password: not logged)
+  <time>  ! Bash       ls /no-such-directory
+…
+```
+
+Stop the agent. The login goes with it; the log and the conversations stay:
+
+```sh
+allvibe agent stop moods
+allvibe agent transcripts moods
+```
+
+```
+ok   1/1 the agent, its egress gate and its activity logger
+       removed allvibe-moods-agent, allvibe-moods-agent-egress, allvibe-moods-agent-activity, network allvibe-moods-agent-egress
+The conversations of the agent of moods, oldest first, kept in /var/lib/allvibe/projects/moods/agent/transcripts (only on this machine, not in backups):
+  <time> UTC     136 kB  <session>.jsonl
+…
+To delete them all: allvibe agent transcripts moods --delete
+```
+
+They are only on this machine, readable only by the service user, and in no
+backup. To delete the conversations:
+
+```sh
+allvibe agent transcripts moods --delete
+```
+
+```
+Deleted 3 conversations of the agent of moods. Its activity log is kept.
+```
+
+(While the agent runs, that is refused: it may be writing one.) `allvibe
+project remove` deletes both the conversations and the log, and says so first.
+
+## 29. Clean up
 
 **Test host**, workstation:
 
@@ -907,4 +1213,5 @@ too; it only opened this test host's backups. **On a real machine**, keep the
 recovery key in your password manager, and delete the file from your
 workstation; and on the machine, delete the stand-in keys in `/root`
 (`weather-dev`, `weather-prod`, `anthropic-key`) and the probes' `.out` files,
-and the scratch project: `allvibe project remove scratch --delete-everything`.
+and the scratch and ideas projects: `allvibe project remove scratch
+--delete-everything` and `allvibe project remove ideas --delete-everything`.

@@ -1,14 +1,16 @@
 # State
 
-*Updated 2026-09-28: the fourth brief's product items are built (D46 to D51),
-and its report is [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md).
-The third brief's is [reports/2026-09-28-brief-03.md](reports/2026-09-28-brief-03.md),
+*Updated 2026-09-29: the fifth brief's product items are built (D52 to D60),
+and its report is [reports/2026-09-29-brief-05.md](reports/2026-09-29-brief-05.md).
+The fourth brief's is [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md),
+the third's [reports/2026-09-28-brief-03.md](reports/2026-09-28-brief-03.md),
 the second's [reports/2026-09-28-brief-02.md](reports/2026-09-28-brief-02.md), the
 first's [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
 
 Everything below has been **built and run by the implementer on the local test
-host**. None of it has been tried by a human yet (rule 6), and none of it has
-run on real hardware.
+host**. Only what is marked **tried by the owner** has been tried by a human
+(rule 6): so far, signing in with a Claude account (walkthrough step 23). None
+of it has run on real hardware.
 
 ## What works
 
@@ -46,11 +48,26 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   every key in it decrypts (D37).
 - **Releases and rollbacks.** A release is dev's commit, behind a fresh backup
   that passed a restore check; a failed deploy rolls back by itself with the
-  data intact; a manual rollback keeps the data; putting data back needs
-  explicit confirmation and takes a backup first. Every release records the
+  data intact; a manual rollback keeps the data, and first takes a fresh
+  backup of prod that must pass its restore check, kept with the releases'
+  backups (D57); putting data back needs explicit confirmation and takes a
+  backup first. Every release records the
   schema it ran with; a breaking migration is released only when its file says
   so; a rollback goes ahead across migrations that only add, and stops, before
   changing anything, across a breaking one (D35).
+- **A release only after every step of its plan is tried** (D56). The agent
+  keeps its plan in `plan.json`; `allvibe plan <project>` shows it, and
+  `allvibe plan tried <project> <step>` is the person's mark, kept outside the
+  working copy, where the agent cannot reach. A release reads the plan in the
+  commit it puts live and refuses while a step is untried; a plan goes live
+  once; work outside any plan needs `--outside-plan "reason"`, which the
+  release's record keeps.
+- **doctor every night** (D58), after the scheduled backup: its result kept in
+  `/var/lib/allvibe/doctor` (the newest and fourteen nights), read back with
+  `allvibe doctor --last [--json]`, for the control panel.
+- **Mains and battery** (D59): doctor says whether the machine is on mains or on
+  battery, how full it is and how long it would last, and warns on battery;
+  low battery is a problem; no battery is information.
 - **The key vault** (D37). `allvibe key set|list|remove`: values from standard
   input, encrypted at rest to the same two keys, given to apps as files in
   memory, separate for dev, prod and the agent, back in memory after a reboot.
@@ -72,10 +89,18 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   sign-in choice, and no further: the sign-in is the owner's. The owner has
   since followed walkthrough step 23, and it worked as written (tried by the
   owner, 2026-09-28).
+- **What the agent did, and its conversations** (D60). One log line per tool
+  call (the tool, the path or the command's first line, and whether it
+  failed; never contents; anything that looks like a key withheld), written by
+  a logger beside the agent that the agent cannot reach, and still written when
+  the agent turns hooks off in the settings it can write: `allvibe agent
+  activity <project>`. Claude Code's own transcripts kept through a mount of
+  only their directory, the login still in memory: `allvibe agent transcripts
+  <project> [--delete]`. Neither is in backups.
 - **The repository.** The rules ([CLAUDE.md](CLAUDE.md)), the decisions
-  ([DECISIONS.md](DECISIONS.md), D1-D51), the control panel's design rules
+  ([DECISIONS.md](DECISIONS.md), D1-D60), the control panel's design rules
   ([docs/design/control-panel.md](docs/design/control-panel.md)), the Vikt
-  inventory, the test host harness, its fixtures and probes (`test/host/`), 67
+  inventory, the test host harness, its fixtures and probes (`test/host/`), 82
   unit tests, and CI on every push: a secret scan (gitleaks), the guard for
   rules 9 and 10, the unit tests, and shellcheck of install.sh and firewall.sh.
 
@@ -88,6 +113,27 @@ registered business), Anthropic confirms otherwise in writing, or a design in
 which the suite does not install or run Claude Code itself. It does not stop
 development, and it does not touch the MCP bridge (D44). Until then the website
 says "your own API key", and nothing about signing in with a Claude account.
+
+## The fifth brief
+
+**Tried by the owner:** nothing new in this brief yet. **Waiting for:** the
+owner to try items 7 to 11 (walkthrough steps 24 to 28), the website's new
+demo (item 6, a local preview), and the decision that items 3 and 4 need.
+
+| Item | State |
+|---|---|
+| 1. The sign-in test | Recorded as **tried by the owner**: "I followed walkthrough step 23 on the test host on 2026-09-28, and it worked as written." |
+| 2. The open points | Recorded: the Commercial Terms question as a release gate (D52, "Gates" above); four plans from the demo and the services' reach (D53); the demo's corrections, done in the website repository at its D29. |
+| 3. Website release v0.3.0 | **Blocked, for the owner.** The tag v0.3.0 was pushed, and its release workflow failed: its own test still expected `/favicon.ico` to answer 204, which the website's D26 had changed. The test is fixed on the website's main branch (its D30). Releasing needs either the tag moved to the fixed commit, which rewrites a published tag (rule 11), or the owner's word for v0.3.1 (the release was authorized for v0.3.0 only). v0.2.0 stays live. |
+| 4. Website deploy of v0.3.0 | **Blocked** by item 3. Nothing was deployed. |
+| 5. Documentation | Recorded: MFA in sign-in and invitations, a device on the home network for one app, the first real project with its friction log, a gallery, a session review (D54); the control panel's app view (D55). |
+| 6. The website's demo, app view | Done in the website repository (its D31, `415ea52`), pushed, **not tagged, released or deployed**: the page for one app rebuilt to D55, the same layout in both modes (Versions into Live, Files into Code, Backups and Service keys under More; a new app opens in planning); its checks clean at 1440, 768, 390, 360 and 320, light and dark, each seen failing on one of 15 broken copies; the claims sheet read at `f205494`, 98 rows, none without a source; a before-and-after gallery on the workstation; the phone preview shows it. **Waiting for the owner** to look at it. |
+| 7. A release only after every step is tried | Built and run: `test/host/plan-gate.sh` 31 of 31 on a fresh test host, WRONG on every gate check against the previous bundle; walkthrough step 24 run as written on a fresh test host. D56. |
+| 8. A fresh backup before going back | Built and run: `test/host/rollback-backup.sh` 14 of 14, including a backup damaged as it lands, which stops the rollback with prod untouched; WRONG on every check against the previous bundle; walkthrough steps 14 and 25 run as written. D57. |
+| 9. doctor every night | Built and run: `test/host/doctor-nightly.sh` 16 of 16, WRONG against the previous bundle; walkthrough step 26 run as written. D58. |
+| 10. Mains and battery | Built and run with stand-ins: `test/host/power-fixtures.sh` 12 of 12 (1 of 12 against the previous bundle); walkthrough step 27 run as written. **Not on a real laptop**: see "To verify on real hardware". D59. |
+| 11. The agent's activity log and conversations | Built and run with a stand-in for the model: `test/host/agent-activity.sh` 29 of 29 in both ways of signing in (11 of 22 against the previous bundle, with the probe's first 22 checks); the isolation probe 89 of 89 with a key and 88 of 88 with an account; the leftovers probe 17 of 17 in both; walkthrough step 28 run as written. **Not run with a real model.** D60, an amendment to D46. |
+| 12. Walkthrough and records | Walkthrough steps 1 to 28 run on a fresh test host (step 23 up to Claude Code's sign-in choice, the rest being the owner's), with outputs in the text corrected where this brief changed them; these records; the guard and a history scan in both repositories. |
 
 ## The fourth brief
 
@@ -185,6 +231,19 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   `/exit`, or `Ctrl-C` twice, ends it.
 - **Stopping the agent is not signing out**: the login is gone from the
   machine, and stays valid at Anthropic until it expires or `/logout` (D46).
+- **The agent's conversations keep what it read and was told** (D60): a key
+  pasted into the conversation, or a file the agent printed, is in its
+  transcript on this machine until deleted. The activity log is scanned for
+  keys; the transcripts are Claude Code's own files, and are not.
+- **The activity log**: the agent can add lines of its own making, though it
+  cannot change or delete one; lines are lost, and the agent carries on, if the
+  logger is down; the log is not rotated (D60).
+- **A plan's marks belong to its words** (D56): if the agent changes a tried
+  step's title or check, the step is untried again; a change the agent commits
+  after the last step was tried, and before the release, is released with the
+  plan, and the release records the commit each step was tried at.
+- **Built and not tried by a person:** everything of the fifth brief (items 7
+  to 11), including a session with a real model logged and kept.
 
 ## Next
 
@@ -194,14 +253,18 @@ the recovery key in the web UI, a lost recovery key, the control panel at
 check-up, moving to a new computer, full disk encryption at install, the rest
 of the agent adapters with the MCP bridge next (D44), sign-in and invitations,
 two modes in the control panel, a bug report builder, the architect as a role
-(D45), your own services (D50), and the team version. Its "Built, from this
-roadmap" part has what the second brief built. The control panel's design is
-decided (D51).
+(D45), your own services (D50), a device on the home network for one app, the
+first real project, a gallery and a session review (D54), and the team
+version. Its "Built, from this roadmap" part has what the second and fifth
+briefs built. The control panel's design is decided (D51), and its app view
+(D55).
 
 Candidates for the next brief: the MCP bridge; the web UI calling this CLI, on
-the runtime D40 decided; sign-in in front of apps; the key check before push,
-with the GitHub integration; a lock between operations; pruning; the laptop;
-and the live agent test with a key, which still waits for API credits (D43).
+the runtime D40 decided; sign-in in front of apps, with MFA (D54); the session
+review, now that the activity log and the conversations exist (D60); the key
+check before push, with the GitHub integration; a lock between operations;
+pruning, and rotating the activity log; the laptop; and the live agent test
+with a key, which still waits for API credits (D43).
 
 ## To verify on real hardware
 
@@ -230,7 +293,7 @@ closes these. Each names the test override or stand-in used in the container.
   that an app with keys comes back healthy and no container ever runs without
   the firewall (on the test host, `/run` is a tmpfs the harness mounts).
 - **The daily run at 03:30.** Only started by hand so far; let one happen on its
-  own and read `allvibe runs` the next morning.
+  own and read `allvibe runs` and `allvibe doctor --last` the next morning.
 - **Reachability from another machine on the LAN.** The test host's ports are
   published on the workstation's loopback only; a network namespace on the
   test host stood in for another device, and reached the doors through the

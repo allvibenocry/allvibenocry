@@ -276,3 +276,37 @@ From the fourth brief, here:
     the terminal of `allvibe agent shell` left `claude` running in the agent
     until the container was stopped. *Here:* say how to leave properly
     (`/exit`, or `Ctrl-C` twice), and count on `agent stop` for the rest.
+
+From the fifth brief, here and in the website:
+
+37. **A decision that changes what is served must change every test of it,
+    the release workflow's included.** The website's D26 made `/favicon.ico`
+    an icon, and its release workflow still expected 204; the tag v0.3.0 was
+    pushed, its workflow failed, and a published tag cannot be moved without
+    rewriting history. *Here:* in the same commit as the change, search every
+    test and workflow for the old behaviour; run the release workflow's own
+    test against the commit before tagging it.
+38. **A check that compares nothing, or matches everything, passes.** The plan
+    gate's probe compared prod's `current` before and after, and it was
+    undefined both times; a leak probe's pattern file had an empty line, and
+    `grep -f` matched every file. *Here:* every "unchanged" check compares
+    something that exists and prints it (the image prod runs, the number of
+    backups); pattern files are built without empty lines, and the number of
+    patterns is itself a checked line.
+39. **A probe that races the code it tests proves luck.** The damage meant for
+    the rollback's fresh backup came from a watcher polling too slowly, after
+    the restore check had read the file. *Here:* act on the event itself
+    (inotify), and check that the damage landed before trusting the verdict.
+40. **An old version that ignores a new flag passes for the wrong reason.** The
+    previous bundle's doctor ignored `--last` and printed its usual checks, so
+    the negative control passed. *Here:* a negative control looks for what only
+    the new behaviour prints (the nightly result's header). And a setting the
+    agent can change is proved read before it is proved powerless: its own hook
+    is seen running, then seen off, beside the log's hook still writing.
+41. **A heredoc inside a heredoc ends the outer one.** Walkthrough text holding
+    its own `EOF` line, passed to Python through a shell heredoc, ended it
+    early, and the rest of the text ran as shell commands on the workstation; a
+    bare `node` waited for input until it was stopped. Nothing was written or
+    removed. *Here:* text with heredocs in it goes into a file with the file
+    tool, never through a shell heredoc, and the walkthrough's own heredocs end
+    with `END`.

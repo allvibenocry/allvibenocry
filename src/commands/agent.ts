@@ -214,7 +214,7 @@ function transcripts(name: string, rest: string[]): number {
     return 0;
   }
   if (!files.length) {
-    process.stdout.write(`No conversation of the agent of ${name} is kept yet.\n`);
+    process.stdout.write(`No conversation of the agent of ${name} is kept.\n`);
     return 0;
   }
   process.stdout.write(`The conversations of the agent of ${name}, oldest first, kept in ${dir} (only on this machine, not in backups):\n`);
