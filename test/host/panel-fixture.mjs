@@ -118,6 +118,52 @@ if (action === "plan") {
   must("dev commit", sh(C, ["dev", "commit", app, "A route that names the cookies it receives"]));
   must("dev deploy", sh(C, ["dev", "deploy", app]));
   console.log("cookies: /cookies-received, in the test copy");
+} else if (action === "stub" || action === "stub-stop") {
+  // The stand-in for the model's API (stub-api.mjs), for the chat's check
+  // (D77): on the app's dev network, playing two tool calls, a plan with one
+  // step written and committed, as the builder would; and Claude Code in the
+  // agent pointed at it by the working copy's own local settings, which it
+  // reads at its start. Test tooling only: nothing of the suite does this.
+  const [app] = rest;
+  const name = `${C}-${app}-dev-stubapi`;
+  const repo = `${STATE}/projects/${app}/repo`;
+  sh("docker", ["rm", "-f", name]);
+  rmSync(`${repo}/.claude/settings.local.json`, { force: true });
+  if (action === "stub-stop") {
+    console.log("stub: gone");
+    process.exit(0);
+  }
+  const plan = { title: "A first step", steps: [{ id: 1, title: "Say hello on the page", check: "Open the test copy: the page says hello.", built: false }] };
+  const steps = [
+    { name: "Write", input: { file_path: "/workspace/plan.json", content: `${JSON.stringify(plan, null, 2)}\n` } },
+    { name: "Bash", input: { command: "git add plan.json && git commit -q -m 'Plan: a first step'", description: "Commit the plan" } },
+  ];
+  const dir = "/var/tmp/stub-api";
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(`${dir}/out`, { recursive: true });
+  cpSync("/root/stub-api.mjs", `${dir}/stub-api.mjs`);
+  writeFileSync(`${dir}/steps.json`, JSON.stringify(steps));
+  must("readable", sh("chmod", ["-R", "a+rX", dir]));
+  // What Claude Code sent back for each tool call, for the probe to show when a step goes wrong.
+  must("writable", sh("chmod", ["a+rwx", `${dir}/out`]));
+  must("the stub", sh("docker", ["run", "-d", "--name", name, "--label", `${C}.test=stub-api`, "--network", `${C}-${app}-dev-internal`, "--read-only", "--cap-drop", "ALL",
+    "-e", "STEPS_FILE=/steps.json", "-e", "RESULTS_FILE=/out/results.jsonl", "-v", `${dir}/stub-api.mjs:/stub.mjs:ro`, "-v", `${dir}/steps.json:/steps.json:ro`, "-v", `${dir}/out:/out`,
+    "node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1", "node", "/stub.mjs"]));
+  // The agent's own exceptions to its egress gate (src/lib/agent.ts, agentRunArgs), and the stub's name.
+  const noProxy = [`${C}-${app}-dev-app`, `${C}-${app}-dev-db`, `${C}-${app}-agent-activity`, "localhost", "127.0.0.1"].join(",");
+  // Auto mode asks a classifier, through the same API, before a command runs;
+  // the stand-in cannot answer it, so the command it plays is allowed here
+  // (the deny rules still come first). A person's session asks the real one.
+  const settings = {
+    env: { ANTHROPIC_BASE_URL: `http://${name}:8080`, NO_PROXY: `${noProxy},${name}`, no_proxy: `${noProxy},${name}` },
+    permissions: { allow: ["Bash(git add plan.json)", "Bash(git commit -q -m 'Plan: a first step')"] },
+  };
+  mkdirSync(`${repo}/.claude`, { recursive: true });
+  writeFileSync(`${repo}/.claude/settings.local.json`, `${JSON.stringify(settings, null, 2)}\n`);
+  const [uid, gid] = [sh("id", ["-u", C]).stdout.trim(), sh("id", ["-g", C]).stdout.trim()].map(Number);
+  chownSync(`${repo}/.claude`, uid, gid);
+  chownSync(`${repo}/.claude/settings.local.json`, uid, gid);
+  console.log(`stub: ${name}, two tool calls, and the working copy's local settings pointing at it`);
 } else if (action === "unplug" || action === "plug") {
   // The test host's mounts are private (Docker's default), so an unmount here
   // does not reach a service with its own mount namespace, as the engine has

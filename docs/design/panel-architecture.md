@@ -76,6 +76,10 @@ condition for Node.js 20, D66): JSON, one message per line, no HTTP and no TLS:
   shows exactly what `allvibe release` prints, and stops where it stops (rule 7).
 - One long operation at a time: another is refused with `busy`, naming the
   one that runs.
+- **A long operation's command runs on a thread of its own** (D77), which
+  sends the engine what it prints and each step as it starts; the engine keeps
+  answering meanwhile, and a terminal keeps flowing. The app's lock is taken
+  by the engine before the job and adopted by that thread.
 
 **The operations**, the whole allow-list of the first version. Each has its
 arguments validated before anything runs; anything else is `unknown_operation`.

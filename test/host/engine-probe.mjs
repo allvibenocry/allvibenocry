@@ -185,8 +185,25 @@ const report = await ask("app.report", { app: P, text: "The probe says something
 verdict("app.report: kept in the project's folder", report.ok && readFileSync(`${STATE}/projects/${P}/${report.result.file}`, "utf8").includes("On two lines."), true);
 const start = await until((await ask("app.startTestCopy", { app: P })).result?.job);
 verdict("app.startTestCopy", start?.ok, true);
-const live = await until((await ask("app.putLive", { app: P })).result?.job);
+// While a job's command runs, the engine answers (D77): the command runs on a
+// thread of its own. Asked how it goes every quarter second, as the panel
+// asks, the slowest answer; on the engine's own thread, a step that waits on
+// Docker held every answer back for as long as it took.
+const liveJob = (await ask("app.putLive", { app: P })).result?.job;
+let slowest = 0;
+let asked = 0;
+let live = null;
+for (let i = 0; liveJob && i < 3600; i++) {
+  const t = Date.now();
+  const answer = await ask("job.get", { job: liveJob });
+  slowest = Math.max(slowest, Date.now() - t);
+  asked += 1;
+  if (!answer.ok) break;
+  if (answer.result.state === "finished") { live = answer.result; break; }
+  await new Promise((r) => setTimeout(r, 250));
+}
 verdict("app.putLive, every step tried", live ? `${live.ok}, ${live.phases[0].steps.length} steps` : "no job", "true, 16 steps");
+verdict(`the engine answering while it runs: the slowest of ${asked} answers`, `${slowest} ms`, (s) => parseInt(s, 10) < 1000);
 verdict("the live version after it", (await ask("app.get", { app: P })).result?.live, "v2");
 const busyJob = await ask("app.goBack", { app: P });
 const busy = await ask("app.startTestCopy", { app: P });

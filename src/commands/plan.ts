@@ -61,12 +61,14 @@ export function planView(project: Project): PlanView {
   const commit = devCommit(name);
   const view: PlanView = { app: name, commit, state: "no-test-copy", problem: null, title: null, releasedIn: null, steps: [], ahead: null };
   if (!commit) return view;
+  // Whatever dev runs, the agent may have committed more: its first plan, too.
+  const head = gitHead(name);
+  const ahead = head.startsWith(commit) ? null : head;
   const marks = readMarks(name);
   const result = gate(planAt(name, commit), marks, project.releases);
-  if (result.state === "none") return { ...view, state: "none" };
-  if (result.state === "invalid") return { ...view, state: "invalid", problem: result.problem };
+  if (result.state === "none") return { ...view, state: "none", ahead };
+  if (result.state === "invalid") return { ...view, state: "invalid", problem: result.problem, ahead };
   const plan = result.plan;
-  const head = gitHead(name);
   return {
     ...view,
     state: "plan",
@@ -76,7 +78,7 @@ export function planView(project: Project): PlanView {
       const mark = markFor(plan, step, marks);
       return { id: step.id, title: step.title, check: step.check, state: mark ? "tried" : step.built ? "ready" : "building", triedAt: mark?.at ?? null };
     }),
-    ahead: head.startsWith(commit) ? null : head,
+    ahead,
   };
 }
 
@@ -115,14 +117,19 @@ function show(project: Project): number {
     return 1;
   }
   const commit = view.commit as string;
+  const more = () => {
+    if (view.ahead) out(`\nThe agent has committed more since (${view.ahead.slice(0, 12)}). To try it: ${C} dev deploy ${name}`);
+  };
   if (view.state === "none") {
     out(`${name}: dev runs ${commit.slice(0, 12)}, which has no plan.`);
     out("Ask the agent to write your idea as a plan, in plan.json.");
+    more();
     return 0;
   }
   if (view.state === "invalid") {
     out(`${name}: dev runs ${commit.slice(0, 12)}, and its plan cannot be read: ${view.problem}.`);
     out("Ask the agent to fix plan.json.");
+    more();
     return 1;
   }
   out(`${name}: "${view.title}", as dev runs it (${commit.slice(0, 12)})`);
@@ -135,7 +142,7 @@ function show(project: Project): number {
         : "the builder is still working on it";
     out(`  ${String(step.id).padStart(2)}. ${step.title}\n      ${where}`);
   }
-  if (view.ahead) out(`\nThe agent has committed more since (${view.ahead.slice(0, 12)}). To try it: ${C} dev deploy ${name}`);
+  more();
   return 0;
 }
 

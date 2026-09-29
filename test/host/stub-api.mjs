@@ -11,7 +11,8 @@
 //   3. Bash: a command that holds a fake key (the log must not)
 //   4. Bash: a command that fails
 //   5. the end of the turn, in words
-// Every request's method and path is logged, never its body.
+// Every request's method and path is logged, with how many tools it offered
+// and tool results it held, never its body.
 //
 // With STEPS_FILE, the script is that file's instead (a JSON list of tool
 // calls, { name, input }), and each tool result Claude Code sends back is
@@ -89,7 +90,15 @@ http
     request.on("data", (chunk) => (raw += chunk));
     request.on("end", () => {
       const path = String(request.url).split("?")[0];
-      log(`${request.method} ${path}`);
+      let shape = "";
+      try {
+        // How many tools it offered and tool results it sent back: counts only.
+        const body = JSON.parse(raw);
+        shape = ` (${Array.isArray(body.tools) ? body.tools.length : 0} tools, ${toolResults(body)} results)`;
+      } catch {
+        /* not JSON: the path is enough */
+      }
+      log(`${request.method} ${path}${shape}`);
       if (request.method === "POST" && path.endsWith("/v1/messages/count_tokens")) {
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ input_tokens: 10 }));

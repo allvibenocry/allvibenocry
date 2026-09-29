@@ -3003,3 +3003,96 @@ purpose. Unit tests: the engine's 24, the panel's 10.
 started keeps running in the agent until the agent stops, and opening the
 terminal again starts another. The terminal is Claude Code's alone; the
 agent's shell stays on the machine (`allvibe agent shell`).
+
+## D77. The chat in the panel, as built; long jobs on a thread of their own
+
+*2026-09-29. Built in the seventh brief, item 7, on D69 and D76.*
+
+**Your AI, on the left, under the plan's checklist.** While the AI does not
+run, the section says where it works ("in the test copy, and never reaches the
+live app") and asks how it signs in: **Sign in with your Claude account** ("In
+the terminal, when it starts.") or **Use the key in the vault**, which is off
+until the app has an Anthropic key there. The guided path's next action, in
+Plan, is **Start your AI**; the panel says it is confirmed (D66, question 8),
+and the engine starts the agent (D76). The first start builds the agent's
+image and takes a minute or two, and the section says so, with the step it is
+on. When it runs, the section shows **Claude Code's own terminal** and how it
+signs in, with **Stop your AI** (confirmed in a dialog) beside it.
+
+- **The terminal is opened by the person's press**, and joined when the page
+  comes to a running one (D48, rule 17): "Start your AI", "Open Claude Code",
+  "Open it here". The page never types into it.
+- **The keyboard**: every key goes to Claude Code, Tab and Escape too, and
+  **Ctrl + ]** leaves it, which the line under it says. A link Claude Code
+  shows (its sign-in address) opens in a tab of its own when clicked, and only
+  an https one.
+- **Plan, in the guided path**: "Start your AI, and tell it what you want to
+  build"; once it runs, "Go to your AI", which puts the keyboard in its
+  terminal; once it has committed a plan the test copy does not run yet,
+  "Update the test copy", and then the plan's first step, in the checklist and
+  as "Try: 1 of 3".
+- **A new app, from the panel**: "Make a new app" on the home screen (pink
+  when there is none yet) asks for a name, says what it will be (a small
+  guestbook, with a test copy and a live app of its own), makes it through the
+  engine (`app.create`, confirmed) and opens it in Plan.
+
+**xterm.js, bundled and pinned** (rule 15): `@xterm/xterm` 6.0.0 and
+`@xterm/addon-fit` 0.11.0, their built files and licences in
+`panel/static/assets/vendor/`, served by the panel itself. `panel/vendor.json`
+names each package's version, npm's integrity for its tarball, and each
+file's SHA-256; a unit test checks every file against it. Its renderer draws
+with style elements of its own, which the page's policy allows by a nonce made
+for each response (`style-src 'self' 'nonce-…'`); no inline style of the
+page's own, and nothing from another origin.
+
+**Found on the way.**
+
+- **The first plan never reached the guided path.** The plan's view said
+  whether the AI had committed more than the test copy runs only when the test
+  copy already had a plan; a new app has none, so its first plan waited
+  unseen. `ahead` is now worked out whatever the test copy runs, and
+  `allvibe plan` says so too.
+- **A long job stopped the engine.** A job ran the CLI's command on the
+  engine's own thread, and its commands wait on Docker: during the agent's
+  first image build, 46 seconds, the engine answered nothing, the panel's
+  question how the job went timed out after 30, and the page stopped asking,
+  so "Start your AI" never came to an end on a fresh machine. A terminal would
+  have frozen the same way during any release. The command now runs on **a
+  thread of its own** (`src/engine/job-worker.ts`, through
+  `job-thread.ts`), which sends the engine what it prints and each step as it
+  starts, in order; the lock the engine took for the job is **adopted** by that
+  thread (`adoptLock`), so the command's own lock is not refused; the engine's
+  own log is never taken over any more. And the page, when an answer does not
+  come, **asks again** instead of giving up; when the job is gone (an engine
+  restart) it says where things stand from the app itself.
+- **Auto mode's classifier and the stand-in.** In auto mode Claude Code asks a
+  classifier, through the same API, before a command runs; the stand-in for
+  the model cannot answer it, and Claude Code blocks the command "for safety".
+  The test fixture allows the stand-in's one command in the working copy's
+  local settings (the deny rules still come first); a person's session asks
+  the real classifier. Requests through another address also bring a notice
+  from Claude Code about the classifier, which the probe reads and passes with
+  Enter, as a person would.
+
+**Probed** on a fresh test host, in a real browser (headless Edge), at a
+desktop's width and a phone's: `chat-probe.mjs` 30 of 30: a new app made in
+the panel opens in Plan with "Start your AI" and both choices (the key's off);
+with a stand-in key and the stand-in for the model, the AI started from the
+panel, its first start building its image; Claude Code's terminal under the
+plan; its first start gone through by keys as a person does; a prompt typed;
+Claude Code answering, writing a plan of one step and committing it; the
+panel seeing the commit, "Update the test copy", then the step in the
+checklist ("0 of 1 tried", "being built") and in the guided path ("Try: 1 of
+1: Your AI is building step 1"); no pink but the one next action, no console
+error (the terminal's styles within the policy), no request to another origin.
+`engine-probe.mjs` 72 of 72, with a new check: asked how a release goes every
+quarter second, the slowest answer was 1 ms; on the engine before this change
+it was 1358 ms (the control). `lock-probe.mjs` 29 of 29 and
+`terminal-probe.mjs` 26 of 26 again, on the new engine. Unit tests: a job's
+command on a thread through the real plumbing (its steps, what it prints, the
+engine's output untouched, the engine's thread free meanwhile); one that
+throws or ends its thread failing the job; and the adopted lock, with the
+control refused.
+
+**Not tried.** Signing in with a Claude account: that needs the owner's login
+(rule 13), and is his step in the walkthrough.

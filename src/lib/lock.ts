@@ -16,8 +16,9 @@
  * its lock.
  *
  * Within one process the lock is taken once: the engine takes it before it
- * starts a job, and the command the job runs finds it already held by its own
- * process, so a release's own rollback, run inside it, is not refused either.
+ * starts a job, and the command the job runs, on a thread of its own, adopts
+ * it (`adoptLock`), so a release's own rollback, run inside it, is not refused
+ * either.
  */
 import { existsSync, linkSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { posix as path } from "node:path";
@@ -142,6 +143,16 @@ export function takeLock(app: string, operation: string, file = lockFile(app)): 
     return { ok: true, release, cleared };
   }
   return { ok: false, holder: null, message: `The lock of ${app} could not be taken: try again.` };
+}
+
+/**
+ * A lock this process already holds, taken on another of its threads: the
+ * engine takes it before a job, and the job's command runs on a thread of its
+ * own (D77), whose view of what is held starts empty. The file is untouched:
+ * it already names this process, and the engine lets it go when the job ends.
+ */
+export function adoptLock(app: string, operation: string): void {
+  held.set(app, operation);
 }
 
 /** Runs a command under the app's lock; refuses in plain words when another holds it. */

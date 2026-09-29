@@ -110,7 +110,8 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   starting and stopping the agent as jobs, one at a time, with the CLI's steps
   as progress, each change confirmed; the agent's terminal as a stream, one
   browser at a time; signing in to the panel kept here. It answers while it
-  works: doctor's checks run off its thread (D65).
+  works: doctor's checks and every job's command run off its thread (D65,
+  D77).
 - **The control panel** (D63, D64, D65). A container built on the machine from
   the pinned Node.js 24 image, as its own user, read-only, with no
   capabilities, on an internal network with no route out, with only the
@@ -124,7 +125,10 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   with the nightly status and each app's next action; an app's plan, Preview
   (the real test copy) and Live; "It works", "Something is wrong", "Put vN
   live" and "Go back" with the six safety checks as they run and every
-  refusal in the engine's words; the app's backups; Machine health. Checked
+  refusal in the engine's words; the app's backups; Machine health. Since
+  the seventh brief: the guided path, one next action at a time (D75); a new
+  app made from the home screen; and Your AI, Claude Code's own terminal on
+  the left under the plan, started from the panel (D77). Checked
   in headless Edge at 1280 and 390 pixels, light and dark
   (`test/host/panel-checks.mjs`), each check first seen failing on a broken
   copy of the panel.
@@ -165,6 +169,7 @@ each with where it goes.
 | 4. The Preview frame and host names | Built and probed on a fresh test host (D74): the panel at `allvibe.local` (Avahi) and the machine's address, on port 80 through a door container Docker publishes (a capability does not reach the proxy's unprivileged user, seen); the apps' doors taking out the panel's cookie and refusing its name; the frame sandboxed; the Origin check exact and required; two firewall rules for the door (D41, amended). `names-probe.mjs` 43 of 43 in headless Edge and on the host, each part with its control; `panel-probe.mjs` 62 of 62 (it found containers reaching the door, fixed); `app-isolation.sh` 59 of 59; `engine-probe.mjs` 54 of 54. |
 | 5. The guided path | Built and seen in headless Edge (D75): Plan, Try, Live, Done, and one pink next-action button at the top of an app's page; `guided-probe.mjs` 69 of 69 at 1280 and 390 pixels, from "Try step 1" to "v2 is live" by that button alone, never a tab, one pink thing at every stage, the tabs still working. Walkthrough step 30 still tells the panel before it: rewritten in item 9. |
 | 6. The engine: the agent and a new app | Built and probed on the test host (D76): the engine's protocol is JSON lines, no HTTP (D66's condition); `app.create`, `agent.status`, `agent.start`, `agent.stop`, each change confirmed; `agent.terminal`, a stream through Docker's exec API, one browser at a time (a second takes over), 30 minutes idle, resizing, nothing kept; the panel's WebSocket for it. `engine-probe.mjs` 71 of 71; `terminal-probe.mjs` 26 of 26 in two real browsers, refusals with their control, a marker typed and shown found nowhere on the host; a race on take-over found and fixed. |
+| 7. The chat in the panel | Built and probed on a fresh test host (D77): Claude Code's own terminal on the left under the plan (xterm.js 6.0.0 and its fit add-on, bundled, pinned by version and checksum, served by the panel); "Start your AI" with the account or the key in the vault; "Make a new app" on the home screen, opening in Plan. `chat-probe.mjs` 30 of 30 in headless Edge at 1280 and 390 pixels: an app made in the panel, its AI started from the panel with a stand-in key (its image built on that first start), Claude Code answering the stand-in for the model in the terminal, and the plan it committed in the checklist and the guided path. Found and fixed: the first plan never reached the guided path; a long job stopped the engine (46 seconds on a first start, and the page gave up), now on a thread of its own, `engine-probe.mjs` 72 of 72 (slowest answer during a release 1 ms, 1358 ms on the control). Signing in with an account is the owner's step. |
 
 ## The sixth brief
 

@@ -10,12 +10,12 @@ import path from "node:path";
 import { Duplex, PassThrough } from "node:stream";
 import { test } from "node:test";
 import { AuthStore, CODE_ALPHABET, isCodeShape, normaliseCode, showCode } from "../../dist/engine/auth.js";
-import { Jobs, readLines } from "../../dist/engine/jobs.js";
+import { inWorker, Jobs, readLines } from "../../dist/engine/jobs.js";
 import { OPERATIONS, perform, STREAMS, terminalStream } from "../../dist/engine/operations.js";
 import { createEngineServer, MAX_LINE } from "../../dist/engine/server.js";
 import { Terminals } from "../../dist/engine/terminal.js";
 import { nextAction } from "../../dist/engine/suite.js";
-import { runSteps, ok, fail } from "../../dist/lib/steps.js";
+import { takeLock } from "../../dist/lib/lock.js";
 
 const tmp = () => mkdtempSync(path.join(tmpdir(), "engine-"));
 
@@ -45,12 +45,8 @@ function fakeSuite(calls = []) {
   };
 }
 
-// A job takes over the output it is given; in the engine that is the process's,
-// here a stand-in, so that the test runner keeps its own.
-const fakeStreams = () => ({ out: { write: () => true }, err: { write: () => true } });
-
 function context(dir = tmp(), calls = [], now) {
-  return { suite: fakeSuite(calls), jobs: new Jobs(fakeStreams()), auth: new AuthStore(path.join(dir, "auth.json"), now) };
+  return { suite: fakeSuite(calls), jobs: new Jobs(), auth: new AuthStore(path.join(dir, "auth.json"), now) };
 }
 
 const waitFor = async (check, ms = 3000) => {
@@ -205,23 +201,21 @@ test("a job that throws still lets the app's lock go", async () => {
   assert.equal(ctx.jobs.get(answer.result.job).ok, false);
 });
 
-test("a job reads the CLI's steps as they run, and gives the output back", async () => {
-  const streams = fakeStreams();
-  const jobs = new Jobs(streams);
-  const before = streams.out.write;
-  const job = jobs.start("app.putLive", "guestbook", async () => {
-    const record = await runSteps(
-      [
-        { name: "dev runs the commit", run: () => ok("dev runs abc123") },
-        { name: "every step of the plan is tried by you", run: () => fail("the plan has steps you have not tried: step 2", "try each in dev") },
-        { name: "never reached", run: () => ok("no") },
-      ],
-      { kind: "release", project: "guestbook", record: false, out: (line) => streams.out.write(`${line}\n`) },
-    );
-    return record.ok ? 0 : 1;
-  });
+// A job's command, on a thread of its own, through the real plumbing (D77).
+const WORKER = new URL("./job-thread-worker.mjs", import.meta.url);
+const inThread = (jobs, order) => jobs.start("app.putLive", order.app, (feed) => inWorker(WORKER, order, feed));
+
+test("a job's command runs on a thread of its own: its steps as they run, what it prints, and the engine's own output left alone", async () => {
+  const jobs = new Jobs();
+  const before = process.stdout.write;
+  const seen = [];
+  const job = inThread(jobs, { kind: "putLive", app: "steps" });
+  // While it runs, the engine's thread is free: it answers meanwhile.
+  const timer = setInterval(() => seen.push(job.state), 1);
   await waitFor(() => job.state === "finished");
-  assert.equal(streams.out.write, before, "the output is its own again");
+  clearInterval(timer);
+  assert.ok(seen.includes("running"), "the engine's thread ran while the job did");
+  assert.equal(process.stdout.write, before, "the engine's output is never taken");
   assert.equal(job.ok, false);
   const [phase] = job.phases;
   assert.deepEqual(phase.steps.map((s) => [s.n, s.total, s.name, s.state]), [
@@ -230,7 +224,41 @@ test("a job reads the CLI's steps as they run, and gives the output back", async
   ]);
   assert.deepEqual(phase.steps[0].lines, ["dev runs abc123"]);
   assert.deepEqual(phase.steps[1].lines, ["the plan has steps you have not tried: step 2", "what would have to be true:", "try each in dev"]);
+  assert.ok(phase.notes.includes("a line from console.log, before the steps"));
   assert.ok(phase.notes.some((n) => /stopped at step 2\/3/.test(n)));
+});
+
+test("a job's command that throws, or ends its thread, fails the job and says so", async () => {
+  const jobs = new Jobs();
+  const threw = inThread(jobs, { kind: "putLive", app: "throws" });
+  await waitFor(() => threw.state === "finished");
+  assert.equal(threw.ok, false);
+  assert.ok(threw.phases.at(-1).notes.includes("the command broke"));
+  const exited = inThread(jobs, { kind: "putLive", app: "exits" });
+  await waitFor(() => exited.state === "finished");
+  assert.equal(exited.ok, false);
+  assert.ok(exited.phases.at(-1).notes.some((n) => /stopped without finishing \(3\)/.test(n)));
+});
+
+test("a job's command finds the app's lock, taken by the engine for it, already its own; without that it would be refused", async () => {
+  const dir = tmp();
+  const file = path.join(dir, "operation.lock");
+  const taken = takeLock("locked", "release", file);
+  assert.equal(taken.ok, true);
+  try {
+    const jobs = new Jobs();
+    const adopted = inThread(jobs, { kind: "putLive", app: "locked", lock: "release", file });
+    await waitFor(() => adopted.state === "finished");
+    assert.equal(adopted.ok, true);
+    assert.deepEqual(adopted.phases.at(-1).notes, ["the lock: held already, by this process"]);
+    // The control: the same thread, not told of the lock, is refused by it.
+    const told = inThread(jobs, { kind: "putLive", app: "locked", file });
+    await waitFor(() => told.state === "finished");
+    assert.equal(told.ok, false);
+    assert.match(told.phases.at(-1).notes[0], /^A release of locked is already running, started from the command line/);
+  } finally {
+    taken.release();
+  }
 });
 
 test("a failed release and its automatic rollback are two phases", () => {

@@ -2,7 +2,8 @@
  * The engine's operations, wired to the CLI's own code (rule 5, D62). Nothing
  * here reimplements an operation: reads come from the functions the CLI
  * prints from, and long operations run the CLI's own commands, the functions
- * `allvibe release`, `allvibe rollback` and `allvibe dev deploy` run. What is
+ * `allvibe release`, `allvibe rollback` and `allvibe dev deploy` run, on a
+ * thread of their own (job-worker.ts). What is
  * returned is chosen field by field, so that nothing secret can come along.
  */
 import { mkdirSync } from "node:fs";
@@ -14,14 +15,11 @@ import { containerState } from "../lib/docker.js";
 import { writeAtomic } from "../lib/files.js";
 import { containerName, currentRelease, listProjects, nameProblem, nextVersion, projectDir, readProject, urlFor, type Project } from "../lib/project.js";
 import { agentContainer, agentState, hasAgentKey, signInOf } from "../lib/agent.js";
-import { agent } from "../commands/agent.js";
-import { dev } from "../commands/dev.js";
-import { project } from "../commands/project.js";
 import { readNightly, summarise, type Check } from "../commands/doctor.js";
 import { markTried, planView, type PlanView } from "../commands/plan.js";
-import { releaseCommands } from "../commands/release.js";
 import { takeLock } from "../lib/lock.js";
 import { appsHost } from "../lib/panel.js";
+import { inWorker } from "./jobs.js";
 import { LOCK_OPERATION, type LongKind, type Suite } from "./operations.js";
 
 const state = (name: string) => {
@@ -109,15 +107,8 @@ export const realSuite: Suite = {
     const last = readNightly();
     return last ? { at: last.at, summary: last.summary, problems: last.problems, warnings: last.warnings, checks: last.checks.map((c) => ({ id: c.id, status: c.status, text: c.text })) } : null;
   },
-  run: (kind: LongKind, app: string, options = {}) => {
-    if (kind === "putLive") return Promise.resolve(releaseCommands.release([app]));
-    if (kind === "goBack") return Promise.resolve(releaseCommands.rollback([app]));
-    // The agent and a new app (D76): the CLI's own commands, as `allvibe` runs them.
-    if (kind === "agentStart") return agent(["start", app, "--sign-in", options.signIn ?? "key"]);
-    if (kind === "agentStop") return agent(["stop", app]);
-    if (kind === "createApp") return project(["create", app]);
-    return dev(["deploy", app]);
-  },
+  // The CLI's own command, on a thread of its own (job-worker.ts, D77).
+  run: (kind: LongKind, app: string, options, feed) => inWorker(new URL("./job-worker.js", import.meta.url), { kind, app, ...options }, feed),
   lock: (app, kind) => {
     const operation = LOCK_OPERATION[kind];
     if (!operation) return { ok: true, release: () => {} };

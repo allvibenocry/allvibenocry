@@ -16,7 +16,7 @@
   const narrowMQ = matchMedia("(max-width:1080px)");
 
   let token = null;
-  const S = { view: "home", app: null, apps: [], last: null, now: null, detail: null, plan: null, right: "preview", m: "preview", job: null, jobKind: null, jobApp: null, jobFor: null, moreOpen: false, checkedNow: false, trying: null, stage: null };
+  const S = { view: "home", app: null, apps: [], last: null, now: null, detail: null, plan: null, right: "preview", m: "preview", job: null, jobKind: null, jobApp: null, jobFor: null, moreOpen: false, checkedNow: false, trying: null, stage: null, agent: null, aiChoice: null };
 
   /* ------------------------------------------------------------ talking -- */
   async function session() {
@@ -110,7 +110,8 @@
     S.apps = apps.ok ? apps.result : [];
     S.last = last.ok ? last.result : null;
     if (S.view === "app") {
-      const [detail, plan] = await Promise.all([api("app.get", { app: S.app }), api("app.plan", { app: S.app })]);
+      const [detail, plan, agent] = await Promise.all([api("app.get", { app: S.app }), api("app.plan", { app: S.app }), api("agent.status", { app: S.app })]);
+      S.agent = agent.ok ? agent.result : null;
       if (!detail.ok) {
         S.detail = null;
         render(`<div class="head"><div><h1>There is no app called ${esc(S.app)}</h1><p class="muted">${esc(up(detail.error.message))}.</p></div></div><a class="btn line" href="/" data-link>Back home</a>`);
@@ -130,10 +131,13 @@
         else remember(S.app, null);
       }
     }
-    const sig = JSON.stringify([S.view, S.app, S.apps, S.last, S.view === "app" ? [S.detail, S.plan] : null]);
+    const sig = JSON.stringify([S.view, S.app, S.apps, S.last, S.view === "app" ? [S.detail, S.plan, S.agent?.running, S.agent?.signIn] : null]);
     if (quiet && sig === S.sig) return;
     S.sig = sig;
     render();
+    // The AI's terminal follows the agent: joined when it runs (never opened
+    // without the person asking, D48), let go when it stops.
+    if (S.view === "app") syncTerminal();
   }
 
   /* ------------------------------------------------------------ the side -- */
@@ -208,8 +212,8 @@
       return `<article class="app-card"><h3><a class="card-link" href="/apps/${a.name}" data-link>${esc(a.name)}</a></h3>${chip}<p class="muted">${a.plan?.title && !a.plan.releasedIn ? `${esc(a.plan.title)}. ` : ""}${workText(a)}</p><div class="card-foot"><span></span>${nextButton(a, a.name === first)}</div></article>`;
     }).join("");
     return `${statusRow()}
-      <div class="head"><div><h1>Your apps</h1><p class="muted">On this machine, for everyone on your home network.</p></div></div>
-      ${S.apps.length ? `<div class="apps">${cards}</div>` : '<div class="notice"><p><b>No apps yet.</b> Making a new app from here comes in a later version of this panel.</p></div>'}`;
+      <div class="head"><div><h1>Your apps</h1><p class="muted">On this machine, for everyone on your home network.</p></div><button type="button" class="btn small ${S.apps.length ? "line" : "pink"}" data-action="new-app">Make a new app</button></div>
+      ${S.apps.length ? `<div class="apps">${cards}</div>` : '<div class="quiet notice-plain"><p><b>No apps yet.</b> Make your first one: it starts as a small guestbook, and your AI makes it what you want.</p></div>'}`;
   }
 
   /* ----------------------------------------------------------- machine -- */
@@ -273,10 +277,23 @@
     else if ((stage === "plan" || stage === "try") && !d.testCopy?.running) {
       text = "The test copy is not running. Start it to try the app.";
       primary = btn("start-test", "Start the test copy");
+    } else if ((stage === "plan" || stage === "try") && p.ahead && !running()) {
+      // The AI committed what the test copy does not run yet: its plan, or a step.
+      text = "Your AI has changed the app since the test copy started. Update the test copy to see what it made.";
+      primary = btn("start-test", "Update the test copy");
+    } else if (stage === "plan" && agentJob() && running()) {
+      text = S.jobKind === "agentStart" ? "Starting your AI. The first time takes a minute or two." : "Stopping your AI.";
+    } else if (stage === "plan" && p.state === "invalid") {
+      text = `The plan cannot be read: ${esc(p.problem)}. Ask your AI to fix it.`;
+    } else if (stage === "plan" && !aiRunning()) {
+      text = `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Start your AI, and tell it what you want${p.releasedIn ? " next" : " to build"}. It works in the test copy, never the live app.`;
+      primary = btn("start-ai", "Start your AI");
+    } else if (stage === "plan" && T.state !== "open") {
+      text = T.state === "taken" ? "Your AI's terminal is open in another window." : "Your AI is running. Open Claude Code, on the left, to talk to it.";
+      primary = T.state === "taken" || T.state === "lost" ? btn("join-ai", "Open it here") : T.state === "connecting" || T.state === "none" ? "" : btn("open-ai", "Open Claude Code");
     } else if (stage === "plan") {
-      text = p.state === "invalid"
-        ? `The plan cannot be read: ${esc(p.problem)}. Ask your AI to fix it.`
-        : `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Tell your AI what you want${p.releasedIn ? " next" : " to build"}, in your own words. It writes a plan, with something for you to try at every step.`;
+      text = `${p.releasedIn && d.live === p.releasedIn ? `${esc(d.live)} is live. ` : ""}Tell your AI what you want${p.releasedIn ? " next" : " to build"}, in its terminal on the left, in your own words. It writes a plan, with something for you to try at every step.`;
+      primary = btn("focus-ai", "Go to your AI");
     } else if (stage === "try" && s.state === "building") {
       text = `Your AI is building step ${s.id}: ${esc(lc(s.title))}. The test copy keeps working meanwhile.`;
     } else if (stage === "try" && S.trying === s.id) {
@@ -302,6 +319,153 @@
     }
     return { stage, label, text, primary, second };
   }
+  /* ---------------------------------------------- your AI, its terminal -- */
+  // Claude Code's own interface, in a terminal on the left (D69, D77): the
+  // person talks to it and signs in to it there; the panel only carries the
+  // keys in and the screen out, and keeps none of it. It is opened only when
+  // the person presses a button; a window that comes back joins it.
+  const T = { term: null, fit: null, ws: null, state: "none", note: "", app: null };
+  // The terminal's library makes a few style elements of its own: they carry
+  // this page's nonce, the only inline style the page allows (D77).
+  const styleNonce = document.querySelector('meta[name="style-nonce"]')?.content;
+  if (styleNonce && !styleNonce.startsWith("{{")) {
+    const make = Document.prototype.createElement;
+    Document.prototype.createElement = function (tag, ...rest) {
+      const el = make.call(this, tag, ...rest);
+      if (String(tag).toLowerCase() === "style") el.setAttribute("nonce", styleNonce);
+      return el;
+    };
+  }
+  const aiRunning = () => Boolean(S.agent?.running);
+  const agentJob = () => jobHere() && (S.jobKind === "agentStart" || S.jobKind === "agentStop");
+  function mountTerminal() {
+    const host = $("#ai-term");
+    if (!host || T.term || !window.Terminal) return;
+    T.app = S.app;
+    const term = new window.Terminal({
+      fontFamily: 'ui-monospace, "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace',
+      fontSize: 13,
+      cursorBlink: true,
+      scrollback: 2000,
+      theme: { background: "#18122A", foreground: "#EDE8FA", cursor: "#EDE8FA", selectionBackground: "#4B4068" },
+      // A link Claude Code shows (its sign-in address) opens in a tab of its
+      // own when the person clicks it, and only an https one.
+      linkHandler: { activate: (_event, uri) => { if (/^https:\/\//.test(uri)) window.open(uri, "_blank", "noopener,noreferrer"); } },
+    });
+    T.fit = new window.FitAddon.FitAddon();
+    term.loadAddon(T.fit);
+    term.open(host);
+    // Every key goes to Claude Code, Tab and Escape too; Ctrl+] leaves the terminal, for the keyboard.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === "keydown" && e.ctrlKey && e.key === "]") {
+        term.blur();
+        ($("#ai-top button, #ai-top a") ?? $("#guide-t"))?.focus();
+        return false;
+      }
+      return true;
+    });
+    term.onData((d) => send({ t: "in", d }));
+    T.term = term;
+    const refit = () => {
+      if (!T.term || !host.getClientRects().length) return;
+      try { T.fit.fit(); } catch {}
+      send({ t: "resize", cols: T.term.cols, rows: T.term.rows });
+    };
+    new ResizeObserver(refit).observe(host);
+    refit();
+  }
+  function send(message) {
+    if (T.ws && T.ws.readyState === 1 && T.state === "open") T.ws.send(JSON.stringify(message));
+  }
+  function disposeTerminal() {
+    try { T.ws?.close(); } catch {}
+    T.ws = null;
+    T.term?.dispose();
+    T.term = null;
+    T.state = "none";
+  }
+  /** Connects to the AI's Claude Code: `start` only on the person's press. */
+  function connect(start) {
+    mountTerminal();
+    if (!T.term) return;
+    try { T.ws?.close(); } catch {}
+    T.state = "connecting";
+    renderAI();
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${S.app}`);
+    ws.binaryType = "arraybuffer";
+    T.ws = ws;
+    ws.onopen = () => {
+      try { T.fit.fit(); } catch {}
+      ws.send(JSON.stringify({ t: "hello", token, cols: T.term.cols, rows: T.term.rows, start }));
+    };
+    ws.onmessage = (e) => {
+      if (T.ws !== ws) return;
+      if (typeof e.data !== "string") { T.term?.write(new Uint8Array(e.data)); return; }
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === "ready") { T.state = "open"; T.term.reset(); T.note = ""; }
+      else if (m.t === "refused") { T.state = m.code === "not_found" ? "closed" : "refused"; T.note = m.message ?? ""; }
+      else if (m.t === "taken") T.state = "taken";
+      else if (m.t === "ended") { T.state = "ended"; T.note = m.why === "idle" ? "It was idle for a long time." : ""; }
+      renderAI();
+      render();
+    };
+    ws.onclose = () => {
+      if (T.ws !== ws) return;
+      if (T.state === "open" || T.state === "connecting") { T.state = "lost"; renderAI(); render(); }
+    };
+  }
+  /** The terminal follows the agent: joined when it runs, gone when it stops. */
+  function syncTerminal() {
+    if (T.app && T.app !== S.app) disposeTerminal();
+    if (!aiRunning()) {
+      if (T.term) disposeTerminal();
+      renderAI();
+      return;
+    }
+    if (!T.term) connect(false);
+  }
+  function aiTopHTML() {
+    const a = S.agent ?? { running: false, hasKey: false };
+    const job = agentJob() ? S.job : null;
+    if (job && job.state === "running") {
+      const step = job.phases.flatMap((p) => p.steps).at(-1);
+      return `<p class="ai-line"><b>${S.jobKind === "agentStart" ? "Starting your AI." : "Stopping your AI."}</b> ${S.jobKind === "agentStart" ? "The first time takes a minute or two." : ""}${step ? ` <span class="muted">${esc(up(step.name))}.</span>` : ""}</p>`;
+    }
+    const failed = job && job.state === "finished" && !job.ok ? stopBox(job, S.jobKind === "agentStart" ? "Your AI did not start" : "Your AI did not stop") : "";
+    if (!a.running) {
+      const choice = S.aiChoice ?? (a.hasKey ? "key" : "account");
+      const radio = (value, label, hint, disabled = false) => `<label class="ai-choice${disabled ? " off" : ""}"><input type="radio" name="ai-sign-in" value="${value}"${choice === value ? " checked" : ""}${disabled ? " disabled" : ""}><span><b>${label}</b><small>${hint}</small></span></label>`;
+      const own = stageOf() !== "plan" || (S.plan?.ahead && S.detail?.testCopy?.running) ? '<button type="button" class="btn small line" data-action="start-ai">Start your AI</button>' : "";
+      return `${failed}<h2 class="ai-h">Your AI</h2><p class="ai-line">It works in the test copy, and never reaches the live app.</p>
+        <fieldset class="ai-choices"><legend class="sr">How your AI signs in</legend>
+        ${radio("account", "Sign in with your Claude account", "In the terminal, when it starts.")}
+        ${radio("key", "Use the key in the vault", a.hasKey ? "The Anthropic key this app keeps." : "This app has no key in the vault.", !a.hasKey)}
+        </fieldset>${own}`;
+    }
+    const how = a.signIn === "account" ? "It signs in with your Claude account" : "It uses the key in the vault";
+    const stop = '<button type="button" class="linkbtn" data-action="stop-ai">Stop your AI</button>';
+    const words = {
+      open: `<b>Claude Code.</b> <span class="muted">${how}.</span>`,
+      connecting: "Connecting to your AI…",
+      closed: "<b>Your AI is running.</b> Open Claude Code to talk to it.",
+      taken: "<b>This terminal was opened in another window.</b>",
+      ended: `<b>Claude Code has ended.</b> ${esc(T.note)}`,
+      lost: "<b>The terminal lost its connection.</b>",
+      refused: `<b>${esc(T.note || "The terminal could not open.")}</b>`,
+      none: "Connecting to your AI…",
+    }[T.state];
+    const again = { taken: ["join-ai", "Open it here"], ended: ["open-ai", "Open it again"], lost: ["join-ai", "Connect again"], closed: ["open-ai", "Open Claude Code"] }[T.state];
+    const guideHas = guide().primary.includes(`data-action="${again?.[0]}"`);
+    return `${failed}<p class="ai-line">${words}</p><div class="ai-acts">${again && !guideHas ? `<button type="button" class="btn small line" data-action="${again[0]}">${again[1]}</button>` : ""}${stop}</div>`;
+  }
+  function renderAI() {
+    const top = $("#ai-top");
+    if (!top) return;
+    keepFocus(top, () => { top.innerHTML = aiTopHTML(); });
+    $("#ai")?.classList.toggle("on", aiRunning());
+  }
+
   function guideHTML() {
     const g = guide();
     const order = ["plan", "try", "live", "done"];
@@ -331,7 +495,13 @@
       <section class="left" aria-label="Your plan">
         <div class="apphead" id="apphead"></div>
         <div class="mtabs" id="mtabs" role="tablist" aria-label="${esc(d.name)}"></div>
-        <div class="lside" id="lside"><div class="lpane" id="lpane"></div></div>
+        <div class="lside" id="lside"><div class="lpane" id="lpane"></div>
+          <section class="ai" id="ai" aria-label="Your AI">
+            <div class="ai-top" id="ai-top"></div>
+            <div class="ai-term" id="ai-term"></div>
+            <p class="ai-keys">Every key goes to Claude Code. To leave its terminal with the keyboard: Ctrl + ]</p>
+          </section>
+        </div>
       </section>
       <section class="right" aria-label="What you look at">
         <div class="rtabs" id="rtabs" role="tablist" aria-label="${esc(d.name)}"></div>
@@ -371,6 +541,7 @@
     if (narrowMQ.matches) { lside.setAttribute("role", "tabpanel"); lside.setAttribute("aria-labelledby", "mtab-chat"); }
     else { lside.removeAttribute("role"); lside.removeAttribute("aria-labelledby"); }
     part("lpane", leftHTML());
+    renderAI();
     $("#work").dataset.m = S.m;
     renderRight();
   }
@@ -426,8 +597,7 @@
       box = `<div class="plan-top"><h3>Plan: ${esc(lc(p.title))}</h3><span class="muted">${triedCount(p)} of ${p.steps.length} tried</span></div><ol>${items}</ol>`;
     }
     return `<div class="who"><h2 id="who-h" tabindex="-1">Your plan</h2><p>Your AI builds one step at a time and stops for you to try each one.</p></div>
-      <div class="plan" id="plan-box">${box}</div>
-      <p class="later-note">Talking to your AI here comes in a later version of this panel. For now, talk to it in its own session.</p>`;
+      <div class="plan" id="plan-box">${box}</div>`;
   }
   // What to try, above the test copy. The buttons are the guided path's, at
   // the top of the page (D68): this line only says what the step asks.
@@ -660,6 +830,51 @@
       : `<p>${!r.ok ? esc(up(r.error.message)) : S.detail?.live ? "No backups yet. The first is taken tonight, or before the next change to the live app." : "No backups yet. They start when the app goes live."}</p>`;
     openModal(`<h2 id="dialog-title">Backups of ${esc(S.app)}</h2><p>Every night the app's data is copied to the backup disk, then restored into a scratch copy and checked. A release and going back each take one first.</p><div class="quiet rows backups-list">${rows}</div><div class="dialog-actions"><button type="button" class="btn line" data-action="close">Close</button></div>`, opener);
   }
+  // A new app (D77): its name, typed, is the confirmation; the CLI's steps as
+  // they run; and the new app opened, in planning.
+  function newAppDialog(opener) {
+    openModal(`<h2 id="dialog-title">Make a new app</h2>
+      <p>It starts as a small guestbook, with a test copy and a live app of its own. Then you tell your AI what it should become.</p>
+      <form id="new-app-form"><div class="field"><label for="new-app-name">Its name</label><input id="new-app-name" name="name" autocomplete="off" autocapitalize="none" spellcheck="false" required maxlength="30" aria-describedby="new-app-hint" autofocus><span class="hint" id="new-app-hint">2 to 30 small letters, digits and dashes, starting with a letter. For example: moods</span></div>
+      <p class="form-error" id="new-app-error" role="alert" tabindex="-1" hidden></p>
+      <ol class="every new-app-steps" id="new-app-steps" aria-live="polite" hidden></ol>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Not now</button><button type="submit" class="btn" id="new-app-go">Make it</button></div></form>`, opener);
+    const form = $("#new-app-form");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = $("#new-app-name").value.trim();
+      const er = $("#new-app-error");
+      const say = (t) => { er.textContent = t; er.hidden = !t; if (t) er.focus(); };
+      if (!/^[a-z][a-z0-9-]{1,29}$/.test(name)) return say("The name needs 2 to 30 small letters, digits and dashes, starting with a letter.");
+      const go = $("#new-app-go");
+      go.disabled = true;
+      const r = await api("app.create", { app: name, confirm: true });
+      if (!r.ok) { go.disabled = false; return say(up(r.error.message)); }
+      say("");
+      go.textContent = "Making it…";
+      const list = $("#new-app-steps");
+      list.hidden = false;
+      for (;;) {
+        await new Promise((ok) => setTimeout(ok, 1000));
+        const j = await api("job.get", { job: r.result.job });
+        if (!j.ok) continue;
+        const steps = j.result.phases.flatMap((p) => p.steps);
+        list.innerHTML = steps.map((s) => `<li class="${s.state}"><span class="st">${s.state === "ok" ? "done" : s.state === "failed" ? "stopped" : "making"}</span> ${esc(up(s.name))}</li>`).join("");
+        if (j.result.state !== "finished") continue;
+        if (j.result.ok) { location.assign(`/apps/${name}`); return; }
+        const failed = steps.find((s) => s.state === "failed");
+        go.disabled = false;
+        go.textContent = "Make it";
+        return say(`It stopped at "${failed?.name ?? "a step"}": ${(failed?.lines ?? []).join(" ")}`);
+      }
+    });
+  }
+  function stopAIDialog(opener) {
+    openModal(`<h2 id="dialog-title">Stop your AI?</h2>
+      <p>Claude Code stops, and its container goes. What it made stays in the test copy, and its conversations are kept.</p>
+      ${S.agent?.signIn === "account" ? "<p>Stopping is not signing out: to end your sign-in at Anthropic too, type /logout in Claude Code first.</p>" : ""}
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Keep it running</button><button type="button" class="btn" data-action="confirm-stop-ai">Stop your AI</button></div>`, opener);
+  }
   function goBackDialog(v, opener) {
     openModal(`<h2 id="dialog-title">Go back to ${esc(v)}?</h2>
       <p>The live app goes back to ${esc(v)}. Your data stays: everything written since then is kept.</p>
@@ -674,29 +889,51 @@
     pollT = setTimeout(async () => {
       if (!S.job) return;
       const r = await api("job.get", { job: S.job.id });
-      if (!r.ok) return;
+      if (!r.ok && r.error.code === "not_found") {
+        // The engine restarted, and the job with it: the app itself says where things stand.
+        remember(S.jobApp, null);
+        S.job = null;
+        S.jobKind = null;
+        if (S.view === "app") load();
+        return;
+      }
+      // No answer this time (the machine busy, the network): ask again.
+      if (!r.ok) {
+        if (r.error.code !== "signed_out") poll();
+        return;
+      }
       const before = S.job.phases.flatMap((p) => p.steps).filter((s) => s.state !== "running").length;
       S.job = r.result;
       const after = S.job.phases.flatMap((p) => p.steps);
       const doneNow = after.filter((s) => s.state !== "running").length;
       if (doneNow > before) announce(`${up(after[doneNow - 1].name)}: ${after[doneNow - 1].state === "ok" ? "done" : "stopped"}.`);
       if (S.job.state === "running") {
-        if (S.view === "app" && S.app === S.jobApp) renderRight();
+        if (S.view === "app" && S.app === S.jobApp) { renderRight(); renderAI(); }
         poll();
         return;
       }
       remember(S.jobApp, null);
       const kind = S.jobKind;
-      announce(kind === "putLive" ? (S.job.ok ? `${S.jobFor} is live.` : `${S.jobFor} is not live. Nothing was lost.`) : kind === "goBack" ? (S.job.ok ? `Back on ${S.jobFor}.` : "Nothing changed.") : S.job.ok ? "The test copy is running." : "The test copy did not start.");
-      if (kind === "startTestCopy" && S.job.ok) { S.job = null; S.jobKind = null; }
+      const said = {
+        putLive: S.job.ok ? `${S.jobFor} is live.` : `${S.jobFor} is not live. Nothing was lost.`,
+        goBack: S.job.ok ? `Back on ${S.jobFor}.` : "Nothing changed.",
+        startTestCopy: S.job.ok ? "The test copy is running." : "The test copy did not start.",
+        agentStart: S.job.ok ? "Your AI is running." : "Your AI did not start.",
+        agentStop: S.job.ok ? "Your AI has stopped." : "Your AI did not stop.",
+      };
+      announce(said[kind] ?? "");
+      const started = kind === "agentStart" && S.job.ok;
+      if ((kind === "startTestCopy" || kind === "agentStart" || kind === "agentStop") && S.job.ok) { S.job = null; S.jobKind = null; }
       if (S.view === "app" && S.app === S.jobApp) {
         await load();
-        $("#shipcard")?.focus();
+        // The person pressed "Start your AI": Claude Code opens in its terminal.
+        if (started && aiRunning()) connect(true);
+        ($("#shipcard") ?? (started ? null : $("#guide-t")))?.focus();
       }
     }, 1000);
   }
   async function startJob(kind, op, extra = {}) {
-    const r = await api(op, { app: S.app });
+    const r = await api(op, { app: S.app, ...(extra.args ?? {}) });
     if (!r.ok) {
       toast(up(r.error.message));
       return;
@@ -713,6 +950,10 @@
   }
 
   /* ----------------------------------------------------------- actions -- */
+  // The choice of how the AI signs in is kept across redraws.
+  document.addEventListener("change", (e) => {
+    if (e.target?.name === "ai-sign-in") S.aiChoice = e.target.value;
+  });
   document.addEventListener("click", async (e) => {
     const link = e.target.closest("a[data-link]");
     if (link && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
@@ -760,6 +1001,19 @@
       $("#guide .guide-acts .btn")?.focus();
       return;
     }
+    if (a === "start-ai") {
+      // How it signs in is the person's choice, on the left (D46, D77).
+      const choice = document.querySelector('input[name="ai-sign-in"]:checked')?.value ?? (S.agent?.hasKey ? "key" : "account");
+      S.aiChoice = choice;
+      if (narrowMQ.matches) selectTab("chat");
+      return startJob("agentStart", "agent.start", { args: { signIn: choice, confirm: true } });
+    }
+    if (a === "open-ai") { if (narrowMQ.matches) selectTab("chat"); connect(true); T.term?.focus(); return; }
+    if (a === "join-ai") { if (narrowMQ.matches) selectTab("chat"); connect(false); T.term?.focus(); return; }
+    if (a === "focus-ai") { if (narrowMQ.matches) selectTab("chat"); T.term?.focus(); return; }
+    if (a === "stop-ai") return stopAIDialog(b);
+    if (a === "new-app") return newAppDialog(b);
+    if (a === "confirm-stop-ai") { closeModal(); return startJob("agentStop", "agent.stop", { args: { confirm: true } }); }
     if (a === "guide-new") {
       // Something new: back to Plan, and to the AI on the left.
       try { sessionStorage.setItem(newKey(b.dataset.v), "1"); } catch {}

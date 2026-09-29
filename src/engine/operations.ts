@@ -9,7 +9,7 @@
  */
 import { refusal } from "../lib/lock.js";
 import { AuthStore, isCodeShape, PASSWORD_MAX } from "./auth.js";
-import type { Job, Jobs } from "./jobs.js";
+import type { Feed, Job, Jobs } from "./jobs.js";
 import type { StreamStart } from "./server.js";
 import { validSize, type Terminals } from "./terminal.js";
 
@@ -35,8 +35,11 @@ export interface Suite {
   report(app: string, text: string): { file: string };
   machineStatus(): unknown;
   lastNight(): unknown;
-  /** Runs the CLI's command for a long operation, printing as it does; its exit code. */
-  run(kind: LongKind, app: string, options?: { signIn?: SignIn }): Promise<number>;
+  /**
+   * Runs the CLI's command for a long operation, feeding back what it prints;
+   * its exit code. `lock`: the app's lock, which the engine already holds for it.
+   */
+  run(kind: LongKind, app: string, options: { signIn?: SignIn; lock?: string }, feed: Feed): Promise<number>;
   /** The app's lock for a long operation, shared with the CLI (D72), or why not, in plain words. */
   lock(app: string, kind: LongKind): { ok: true; release: () => void } | { ok: false; message: string };
   /** The agent of an app (D76): whether it runs, how it signs in, whether the vault has its key. */
@@ -138,7 +141,7 @@ function startJob(ctx: Context, kind: LongKind, operation: string, name: string,
   if (ctx.jobs.busy) throw busyError(ctx.jobs.busy);
   const lock = LOCK_OPERATION[kind] ? ctx.suite.lock(name, kind) : { ok: true as const, release: () => {} };
   if (!lock.ok) throw new EngineError("busy", lock.message);
-  const job = ctx.jobs.start(operation, name, () => Promise.resolve().then(() => ctx.suite.run(kind, name, options)).finally(() => lock.release()));
+  const job = ctx.jobs.start(operation, name, (feed) => Promise.resolve().then(() => ctx.suite.run(kind, name, { ...options, lock: LOCK_OPERATION[kind] }, feed)).finally(() => lock.release()));
   if (!job) {
     lock.release();
     const running = (ctx.jobs as { busy: Job | null }).busy;

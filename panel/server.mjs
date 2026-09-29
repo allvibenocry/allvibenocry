@@ -66,11 +66,13 @@ function readStatic(dir) {
 }
 
 /** The policy for the panel's pages: its own files only (D63). The Preview's frames come in the app view. */
-export function policy(frames = []) {
+export function policy(frames = [], styleNonce = null) {
   return [
     "default-src 'none'",
     "script-src 'self'",
-    "style-src 'self'",
+    // The terminal's library draws its colours and sizes in style elements of
+    // its own, which carry this response's nonce (D77); nothing else inline.
+    styleNonce ? `style-src 'self' 'nonce-${styleNonce}'` : "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
@@ -241,7 +243,11 @@ export function createPanel({ engine = engineOver(), staticDir = path.join(HERE,
   const refuse = (response, status, code, message, extra = {}) => send(response, status, { ok: false, error: { code, message, ...extra } });
   const page = (response, file, frameOrigins = []) => {
     const f = files.get(`pages/${file}`);
-    send(response, 200, f.body, { "Content-Type": f.type, "Content-Security-Policy": policy(frameOrigins) });
+    const text = f.body.toString("utf8");
+    // A nonce of this response's own, for the terminal's style elements (D77).
+    const nonce = text.includes("{{STYLE_NONCE}}") ? randomBytes(16).toString("base64") : null;
+    const body = nonce ? Buffer.from(text.replace("{{STYLE_NONCE}}", nonce)) : f.body;
+    send(response, 200, body, { "Content-Type": f.type, "Content-Security-Policy": policy(frameOrigins, nonce) });
   };
   const redirect = (response, where) => send(response, 303, "", { Location: where });
 

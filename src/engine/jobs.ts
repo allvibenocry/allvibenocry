@@ -3,10 +3,12 @@
  * function `allvibe` runs, and keeps what it prints, step by step: the steps
  * are the CLI's own (`runSteps`), announced as each one starts and read back
  * from its printed lines as each one ends, so the panel shows exactly what the
- * command prints and stops where it stops (rule 7).
+ * command prints and stops where it stops (rule 7). The command runs on a
+ * thread of its own (job-worker.ts, D77), so the engine answers meanwhile.
  */
 import { randomBytes } from "node:crypto";
-import { stepEvents } from "../lib/steps.js";
+import { Worker } from "node:worker_threads";
+import type { LongKind, SignIn } from "./operations.js";
 
 export interface JobStep {
   n: number;
@@ -73,17 +75,57 @@ function started(phases: JobPhase[], n: number, total: number, name: string): vo
   if (!phase.steps.some((s) => s.n === n && s.total === total)) phase.steps.push({ n, total, name, state: "running", lines: [] });
 }
 
-/** What a job takes over while it runs: the process's output, in the engine. */
-export interface Streams {
-  out: { write: (...args: never[]) => boolean };
-  err: { write: (...args: never[]) => boolean };
+/** What a job's command sends while it runs: what it prints, and each step as it starts. */
+export interface Feed {
+  text(chunk: string): void;
+  started(n: number, total: number, name: string): void;
+}
+
+/** What the worker is to run: the operation, the app, and the lock the engine already holds for it. */
+export interface JobOrder {
+  kind: LongKind;
+  app: string;
+  signIn?: SignIn;
+  lock?: string;
+}
+
+/** What the worker sends, in the order it happens. */
+export type JobMessage =
+  | { t: "text"; chunk: string }
+  | { t: "start"; n: number; total: number; name: string }
+  | { t: "done"; code: number }
+  | { t: "failed"; message: string };
+
+/**
+ * Runs a worker (job-worker.js, or a test's) and feeds the job what it sends;
+ * its exit code. A worker that stops without saying how it ended has failed,
+ * and says so in the job's lines.
+ */
+export function inWorker(script: URL, order: JobOrder, feed: Feed): Promise<number> {
+  return new Promise((resolve) => {
+    const worker = new Worker(script, { workerData: order });
+    let ended = false;
+    const end = (code: number, line?: string) => {
+      if (ended) return;
+      ended = true;
+      if (line) feed.text(`${line}\n`);
+      void worker.terminate();
+      resolve(code);
+    };
+    worker.on("message", (message: JobMessage) => {
+      if (message.t === "text") feed.text(message.chunk);
+      else if (message.t === "start") feed.started(message.n, message.total, message.name);
+      else if (message.t === "done") end(message.code);
+      else end(1, message.message);
+    });
+    worker.once("error", (error) => end(1, `the command stopped: ${error.message}`));
+    worker.once("exit", (code) => end(1, `the command stopped without finishing (${code})`));
+  });
 }
 
 export class Jobs {
   private jobs = new Map<string, Job>();
   private running: Job | null = null;
-
-  constructor(private readonly streams: Streams = { out: process.stdout, err: process.stderr }) {}
 
   get busy(): Job | null {
     return this.running;
@@ -94,10 +136,10 @@ export class Jobs {
   }
 
   /**
-   * Starts `run` as a job, or returns null when another is running. While it
-   * runs, what the process prints is the job's, not the engine's log.
+   * Starts `run` as a job, or returns null when another is running. What it
+   * feeds back is the job's; the engine's own log stays the engine's.
    */
-  start(operation: string, app: string, run: () => Promise<number>): Job | null {
+  start(operation: string, app: string, run: (feed: Feed) => Promise<number>): Job | null {
     if (this.running) return null;
     const job: Job = {
       id: randomBytes(8).toString("hex"),
@@ -112,25 +154,18 @@ export class Jobs {
     };
     this.jobs.set(job.id, job);
     this.running = job;
-    const { out: outStream, err: errStream } = this.streams;
-    const out = outStream.write;
-    const err = errStream.write;
     let pending = "";
-    const take = (chunk: unknown): boolean => {
-      pending += typeof chunk === "string" ? chunk : Buffer.from(chunk as Uint8Array).toString("utf8");
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      readLines(lines, job.phases);
-      return true;
+    const feed: Feed = {
+      text: (chunk) => {
+        pending += chunk;
+        const lines = pending.split("\n");
+        pending = lines.pop() ?? "";
+        readLines(lines, job.phases);
+      },
+      started: (n, total, name) => started(job.phases, n, total, name),
     };
-    outStream.write = take as typeof out;
-    errStream.write = take as typeof err;
-    stepEvents.onStart = (n, total, name) => started(job.phases, n, total, name);
     const finish = (code: number) => {
       if (pending) readLines([pending], job.phases);
-      outStream.write = out;
-      errStream.write = err;
-      stepEvents.onStart = null;
       job.state = "finished";
       job.exitCode = code;
       job.ok = code === 0;
@@ -141,7 +176,7 @@ export class Jobs {
       for (const old of finished.slice(0, Math.max(0, finished.length - 20))) this.jobs.delete(old.id);
     };
     Promise.resolve()
-      .then(run)
+      .then(() => run(feed))
       .then(finish, (error: unknown) => {
         readLines([`${error instanceof Error ? error.message : String(error)}`], job.phases);
         finish(1);

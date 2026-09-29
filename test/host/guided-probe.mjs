@@ -119,8 +119,10 @@ try {
       await sleep(600);
       const after = await seen();
       verdict("back to Plan", after.stage, "Plan");
-      verdict("and it says what to do", after.text, /^v2 is live\. Tell your AI what you want next/);
-      verdict("pink things on the screen", after.pinks, 0);
+      // Its AI does not run here: the next action is to start it (D77).
+      verdict("and it says what to do", after.text, /^v2 is live\. Start your AI, and tell it what you want next/);
+      verdict("its next action", after.button, "Start your AI");
+      verdict("pink things on the screen: that one", after.pinkIsButton, true);
       verdict("no console errors", page.log.errors.length ? page.log.errors.join(" | ").slice(0, 120) : "none", "none");
     } finally {
       await page.close();

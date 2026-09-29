@@ -699,6 +699,29 @@ body.appview main{max-width:none;padding:0}
   .guide-acts .btn{flex:1 1 auto}
 }
 .tryline.ready{background:var(--purple-soft);border:1.5px solid var(--purple-line)}
+
+/* Your AI (D69, D77): the plan above, Claude Code's own terminal below it,
+   which takes the rest of the column; on a phone, most of the screen. */
+.ai{display:flex;flex-direction:column;gap:8px;padding:10px 14px 12px;border-top:1.5px solid var(--line);min-height:0}
+.ai-h{font-size:1.05rem}
+.ai-line{font-size:.9rem}
+.ai-choices{border:0;margin:0;padding:0;display:grid;gap:6px;min-width:0}
+.ai-choice{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1.5px solid var(--line);border-radius:12px;background:var(--panel);cursor:pointer}
+.ai-choice input{margin-top:4px;accent-color:var(--lav);flex:none}
+.ai-choice b{display:block;font-size:.92rem}
+.ai-choice small{display:block;color:var(--muted);font-size:.84rem}
+.ai-choice.off{opacity:.6;cursor:not-allowed}
+.ai-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.ai-term{display:none;flex:1 1 auto;min-height:240px;border-radius:12px;background:#18122A;padding:6px 4px 4px 8px;overflow:hidden}
+.ai.on .ai-term{display:block}
+.ai-keys{display:none;font-size:.8rem;color:var(--muted)}
+.ai.on .ai-keys{display:block}
+.notice-plain{padding:14px 18px;margin-top:16px}
+@media (min-width:1081px){
+  .lpane{flex:0 1 auto;max-height:42%;overflow-y:auto}
+  .ai{flex:1 1 auto}
+}
+@media (max-width:1080px){.ai-term{flex:none;height:clamp(280px,55vh,560px)}}
 .plan .ready .m{background:var(--purple-soft);border-color:var(--lav);color:var(--text)}
 .nav .dot.act{background:var(--sun);box-shadow:0 0 0 3px rgba(255,196,0,.3)}
 .chip.stop{background:var(--stop-soft);border-color:var(--stop);color:var(--text)}

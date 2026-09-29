@@ -75,5 +75,6 @@ test("the Preview frame is sandboxed without top navigation or windows, and the 
   const sandbox = /setAttribute\("sandbox", "([^"]*)"\)/.exec(shell)?.[1];
   assert.equal(sandbox, "allow-scripts allow-same-origin allow-forms");
   assert.doesNotMatch(shell, /addEventListener\(\s*["']message["']/);
-  assert.doesNotMatch(shell, /onmessage/);
+  // The window's own message handler, which a frame's postMessage reaches; the terminal's WebSocket has one of its own.
+  assert.doesNotMatch(shell, /window\.onmessage|(?<![.\w])onmessage\s*=/);
 });
