@@ -1,8 +1,11 @@
 # State
 
-*Updated 2026-09-29: the fifth brief's product items are built (D52 to D60),
-and its report is [reports/2026-09-29-brief-05.md](reports/2026-09-29-brief-05.md).
-The fourth brief's is [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md),
+*Updated 2026-09-29: the sixth brief's items are built (D61 to D65): deny
+rules, the engine, the control panel's container and signing in, and its first
+slice in the browser; its report is
+[reports/2026-09-29-brief-06.md](reports/2026-09-29-brief-06.md). The fifth
+brief's is [reports/2026-09-29-brief-05.md](reports/2026-09-29-brief-05.md),
+the fourth's [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md),
 the third's [reports/2026-09-28-brief-03.md](reports/2026-09-28-brief-03.md),
 the second's [reports/2026-09-28-brief-02.md](reports/2026-09-28-brief-02.md), the
 first's [reports/2026-09-27-brief-01.md](reports/2026-09-27-brief-01.md).*
@@ -16,11 +19,12 @@ of it has run on real hardware.
 
 On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough.md):
 
-- **Installing a host.** `install.sh`, in thirteen steps, installs Docker Engine
+- **Installing a host.** `install.sh`, in fifteen steps, installs Docker Engine
   from Docker's repository, the service user, the directories, the CLI, the
   reverse proxy, the backup keys, the daily timer, the unit that puts the key
   vault's keys back into memory at boot, the firewall for project containers,
-  and the key check's scanner; a second run changes nothing and says so. It
+  the key check's scanner, the engine and the control panel, and shows the
+  panel's setup code once, at the end; a second run changes nothing and says so. It
   refuses anything but Debian 13 on x86-64, and warns in plain language about
   low memory and a spinning disk. `allvibe doctor` reports the host in plain
   language, or as JSON.
@@ -97,11 +101,38 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   activity <project>`. Claude Code's own transcripts kept through a mount of
   only their directory, the login still in memory: `allvibe agent transcripts
   <project> [--delete]`. Neither is in backups.
+- **The engine the control panel calls** (D62). `allvibe-engine.service`, as
+  the service user, on a Unix socket only the panel's group may open, with no
+  network port: an allow-list of operations, each with its arguments checked,
+  calling the CLI's own code; releasing, going back and starting the test copy
+  as jobs, one at a time, with the CLI's steps as progress; signing in to the
+  panel kept here. It answers while it works: doctor's checks run off its
+  thread (D65).
+- **The control panel** (D63, D64, D65). A container built on the machine from
+  the pinned Node.js 24 image, as its own user, read-only, with no
+  capabilities, on an internal network with no route out, with only the
+  engine's socket mounted; its door in the proxy at the home-network address,
+  port 8099, private sources and its own host names only. A one-time setup
+  code, then a password; a strict session cookie; cross-site requests refused;
+  wrong tries paused. Its first slice, simple mode, in the demo's design: home
+  with the nightly status and each app's next action; an app's plan, Preview
+  (the real test copy) and Live; "It works", "Something is wrong", "Put vN
+  live" and "Go back" with the six safety checks as they run and every
+  refusal in the engine's words; the app's backups; Machine health. Checked
+  in headless Edge at 1280 and 390 pixels, light and dark
+  (`test/host/panel-checks.mjs`), each check first seen failing on a broken
+  copy of the panel.
+- **Claude Code's deny rules in both repositories** (D61): force pushes,
+  moving or deleting pushed refs, hard resets, `git clean -f`, every Docker
+  prune, removing Docker volumes and recursive deletion outside the
+  repository, for the Bash and PowerShell tools; each seen refusing its
+  command (`test/host/deny-probe.mjs`).
 - **The repository.** The rules ([CLAUDE.md](CLAUDE.md)), the decisions
-  ([DECISIONS.md](DECISIONS.md), D1-D60), the control panel's design rules
+  ([DECISIONS.md](DECISIONS.md), D1-D65), the control panel's design rules
   ([docs/design/control-panel.md](docs/design/control-panel.md)), the Vikt
-  inventory, the test host harness, its fixtures and probes (`test/host/`), 82
-  unit tests, and CI on every push: a secret scan (gitleaks), the guard for
+  inventory, the test host harness, its fixtures, probes and browser checks
+  (`test/host/`), 104 unit tests, and CI on every push: a secret scan
+  (gitleaks), the guard for
   rules 9 and 10, the unit tests, and shellcheck of install.sh and firewall.sh.
 
 ## Gates
@@ -113,6 +144,28 @@ registered business), Anthropic confirms otherwise in writing, or a design in
 which the suite does not install or run Claude Code itself. It does not stop
 development, and it does not touch the MCP bridge (D44). Until then the website
 says "your own API key", and nothing about signing in with a Claude account.
+
+## The sixth brief
+
+**Tried by the owner:** nothing in this brief yet. **Waiting for:** the owner
+to try the control panel (walkthrough steps 29 and 30), and three decisions:
+whether to rewrite the history for `864be95` (Known), where the deny rules
+should also live for a session opened above the repositories (item 1), and the
+nine open questions of the panel's architecture.
+
+| Item | State |
+|---|---|
+| 1. The heredoc incident, and deny rules | Recorded and built: the incident reconstructed from the session's own record (report); deny rules in both repositories (D61; the website's D32), 201 of 201 with the pinned Claude Code on the test host, 110 of 110 run without the file; eight rules in a form Claude Code no longer reads were seen matching nothing, and fixed. **For the owner**: the rules apply only to a session whose project is the repository. |
+| 2. Product records | Recorded: D60 amended (the activity log is a narrative, not evidence); a key scan of each session's conversations Planned. |
+| 3. Website: Under the hood and the claims sheets | Done in the website repository (its D33, `1224d95`), read again at the product's `3bfa5e8`. |
+| 4. Release v0.4.0 | Done: the tag v0.4.0 at `1224d95`, its workflow green; v0.3.0 never released, its tag not moved. |
+| 5. Deploy and verify v0.4.0 | Done: live, `check-page --deployed` clean at every width, nothing else on the host changed. |
+| 6. The panel's architecture | Recorded: D62 to D64 and docs/design/panel-architecture.md, with nine open questions. |
+| 7. The engine | Built and run: 15 unit tests; `engine-probe.mjs` 53 of 53 on a fresh test host, 12 of 53 with the engine stopped. A deadlock found by item 10 fixed: doctor's checks now run off the engine's thread. |
+| 8. The container, signing in, install | Built and run: 7 unit tests (104); `panel-probe.mjs` 52 of 52, 50 of 52 with the door loosened; install twice, nothing changed the second time. Port 8099, not 80 (D63, amended). |
+| 9. The first slice of the interface | Built and run: `panel-journey.mjs` 49 of 49 in headless Edge on a fresh test host, a step ready, tried, refused while untried, refused without the backup disk, put live with every check shown, and gone back from; no console errors, no request to another origin. D65. |
+| 10. Browser checks | Built and run: `test/host/panel-checks.mjs`; each of its 23 checks seen failing on a deliberately broken copy of the panel (22 copies, 30 check and copy pairs), then, on a fresh test host, 77, 77, 78 and 78 passed at 1280 and 390 pixels, light and dark. Found and fixed: Machine health, through the engine, waited for itself (D65); the engine probe now 54 of 54. |
+| 11. Walkthrough and records | Built and run: walkthrough steps 29 and 30 written; steps 1 to 3, 5, 6, 29 and 30 run as written on a fresh test host (the browser steps in headless Edge), 46 of 46 as the text says; these records; the guard, gitleaks over every commit and the working tree, and a rule 10 scan of every revision, in both repositories: nothing new beyond `864be95` (Known) and the website's first day (its D14). The labelled test host is left running. |
 
 ## The fifth brief
 
@@ -212,6 +265,23 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   next commit removes both from the files. The history is not rewritten
   (rule 11): whether to, as for the website's first days (its D14), is the
   owner's decision.
+- **Machine health says a backup is not restore-checked right after a
+  release**, although the release checked the one it took: doctor counts only
+  the restore checks it runs on its own (the nightly one, or `allvibe
+  restore-check`), not those inside a release or going back. A new project
+  shows "no backup yet" the same way. Both clear with the first night, or with
+  `allvibe backup <project>` and `allvibe restore-check <project>`. Found with
+  the panel (the sixth brief); not changed.
+- **The Preview frame loads the test copy again** whenever the pane is drawn
+  again: switching between Preview and Live, a step marked tried, a job ending.
+  Anything half typed in the test copy is lost then.
+- **The panel's home line is the last nightly check**, so a fresh machine says
+  "The nightly checks have not run yet." until the first night; Machine health
+  runs them on demand. Signing in lives in the panel's memory: restarting it,
+  or the machine, signs everyone out (D64).
+- **Claude Code's deny rules apply only to a session opened on the
+  repository** (D61): a session opened on the folder above both repositories
+  did not get them. Where else to put them is the owner's decision.
 
 - Nothing locks one operation against another yet (D28).
 - Release images and release backups are never pruned yet (D28).
@@ -254,7 +324,10 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   after the last step was tried, and before the release, is released with the
   plan, and the release records the commit each step was tried at.
 - **Built and not tried by a person:** everything of the fifth brief (items 7
-  to 11), including a session with a real model logged and kept.
+  to 11), including a session with a real model logged and kept; and
+  everything of the sixth (the engine, the panel, its first slice, the deny
+  rules), which ran in a headless browser and in the probes, not in a
+  person's hands.
 
 ## Next
 
@@ -270,8 +343,12 @@ version. Its "Built, from this roadmap" part has what the second and fifth
 briefs built. The control panel's design is decided (D51), and its app view
 (D55).
 
-Candidates for the next brief: the MCP bridge; the web UI calling this CLI, on
-the runtime D40 decided; sign-in in front of apps, with MFA (D54); the session
+Candidates for the next brief: the panel's next slices (the chat with the
+agent, a new app from the panel, advanced mode, the recovery key and backups
+pages), and the nine open questions of docs/design/panel-architecture.md; the
+panel over TLS at home, with passkeys; doctor counting the restore checks a
+release and going back run (Known); the MCP bridge; sign-in in front of apps,
+with MFA (D54); the session
 review, now that the activity log and the conversations exist (D60); the key
 check before push, with the GitHub integration; a lock between operations;
 pruning, and rotating the activity log; the laptop; and the live agent test
@@ -339,3 +416,14 @@ closes these. Each names the test override or stand-in used in the container.
   pasted back into it.
 - **The harness over SSH.** `exec`, `shell`, `push`, `pull` and `status` with
   `ALLVIBE_TEST_HOST` set have not run against a real machine.
+- **The control panel from another device on the home network** (D63). On the
+  test host the browser reached the panel through the harness's forwarded
+  ports on the workstation's loopback. On the laptop: from a phone and a
+  computer on the same network, at `http://<address>:8099/`; the door refusing
+  a public source address and another host name; and the Preview frame at the
+  test copy's port on that address.
+- **An unplugged backup disk, as the engine sees it** (D65). The test host's
+  mounts are private, so the browser checks unplug the disk in the engine's
+  view as well. On the laptop, systemd shares mounts with its services: pull
+  the USB disk and press "Put vN live" in the panel, which must stop at the
+  backup target.

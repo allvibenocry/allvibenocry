@@ -11,7 +11,10 @@ the machine's own ports and the home network. Step 23 is the fourth's: the agent
 signed in to your own Claude account, which only you can do. Steps 24 to 28 are
 the fifth's: a release only after you have tried every step of its plan; going
 back behind a fresh backup; doctor every night; mains and battery; and what the
-agent did, and its conversations. It takes about an hour and a half.
+agent did, and its conversations. Steps 29 and 30 are the sixth's: the control
+panel in your browser, from its first visit to a step tried, put live and gone
+back from; they need only steps 1, 2, 5 and 6, and take about twenty minutes.
+All of it takes about two hours.
 
 It works on the **test host** (a container on your workstation, D14) and,
 unchanged, on a **real Debian 13 machine** later. Where the two differ, and
@@ -60,7 +63,7 @@ You should see, after about twenty seconds:
 ```
 systemd   running
 overrides /etc/allvibe/test-overrides: memory-mb=16384, system-disk=ssd, external-backup-mount=/mnt/allvibe-backup
-ports     test host 8100-8119 -> http://localhost:8100-8119 on this workstation
+ports     test host 8099-8119 -> http://localhost:8099-8119 on this workstation
 ready     a fresh Debian 13 host. Next: node test/host/host.mjs shell
 ```
 
@@ -78,17 +81,22 @@ node test/host/host.mjs push bundle/allvibe-0.1.0 /root/
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
-You should see thirteen steps, `[1/13] This machine` to `[13/13] How the host
+You should see fifteen steps, `[1/15] This machine` to `[15/15] How the host
 is`, each with `changed:` lines, then `allvibe doctor` with only `✓` lines (and,
 on the test host, two `i` lines: that it has no battery, and that the test
 overrides are active), `All green.`, and last:
 
 ```
-Installed All vibe no cry 0.1.0+<commit>: 35 change(s).
+Installed All vibe no cry 0.1.0+<commit>: 46 change(s).
+
+The control panel: http://<address>:8099/
+Its setup code, for your first visit: <four groups of four>
+It works once. It is shown here, on the machine, and nowhere else.
 ```
 
-It takes about a minute: most of it is Docker Engine arriving from Docker's own
-repository.
+Keep the setup code for step 29. It takes a minute or two: most of it is
+Docker Engine arriving from Docker's own repository, and the control panel's
+image being built from the pinned Node.js image.
 
 ## 3. Install again
 
@@ -98,10 +106,13 @@ Workstation, the same command:
 node test/host/host.mjs exec -- bash /root/allvibe-0.1.0/install.sh
 ```
 
-Every step now says `unchanged:`, and the last line is:
+Every step now says `unchanged:`, and the last lines are:
 
 ```
 Nothing changed: this machine was already set up, and everything checked above is as it should be.
+
+The control panel: http://<address>:8099/
+It waits for the setup code shown when it was made. A new one, which replaces it: sudo allvibe panel setup-code
 ```
 
 ## 4. The warnings (test host only)
@@ -1200,7 +1211,193 @@ Deleted 3 conversations of the agent of moods. Its activity log is kept.
 (While the agent runs, that is refused: it may be writing one.) `allvibe
 project remove` deletes both the conversations and the log, and says so first.
 
-## 29. Clean up
+## 29. The control panel: the first visit
+
+The control panel is where everything here is meant to be done from a browser
+(D63, D64). It runs on the machine in a container of its own that reaches
+nothing but the engine, which does the work with the same code as the commands
+above (D62), and it answers only on the home network. This step and the next
+need only steps 1, 2, 5 and 6.
+
+The install printed the panel's address and a setup code, last (step 2):
+
+```
+The control panel: http://<address>:8099/
+Its setup code, for your first visit: <four groups of four>
+It works once. It is shown here, on the machine, and nowhere else.
+```
+
+If you no longer have it, host: `allvibe panel setup-code` makes a new one,
+which replaces it. Open the panel in your browser:
+
+- **Test host:** http://localhost:8099/
+- **Real machine:** the address it printed, from a computer or phone on the
+  same network.
+
+It opens on **Set up your control panel**. Type the setup code, then a password
+of twelve characters or more, twice, and press **Set up and sign in**. You are
+signed in, on **Your apps**, with a line at the top about the nightly checks (on
+a fresh host, "The nightly checks have not run yet.") and each app with what it
+needs next. **Machine health**, in the side bar (on a phone, under **Menu**),
+lists the same checks as `allvibe doctor`, in plain words; **Run the checks
+again** runs them now.
+
+Press **Sign out**, at the bottom of the side bar. The panel shows **Sign in**.
+Type a wrong password and press Enter:
+
+```
+That is not the password.
+```
+
+Five wrong tries in a row pause signing in for 30 seconds, then longer. Type
+the right one: you are back on Your apps. A forgotten password, host: `allvibe
+panel reset`: a new setup code, and everyone signed out.
+
+## 30. The control panel: a step tried, put live, and back
+
+The same as steps 24 and 25, from the browser. The plan and its change are
+written by hand again, as the agent would. A new project, and a new heading for
+it. Host:
+
+```sh
+allvibe project create hello
+R=/var/lib/allvibe/projects/hello/repo
+runuser -u allvibe -- sed -i 's|<h1>Guestbook <span|<h1>Hello, how are you? <span|' $R/server.js
+```
+
+The plan is a file in this repository. Workstation:
+
+```sh
+node test/host/host.mjs push docs/walkthrough-files/say-hello-2.json /root/
+```
+
+Host:
+
+```sh
+install -o allvibe -g allvibe -m 644 /root/say-hello-2.json $R/plan.json
+allvibe dev commit hello "Say hello"
+allvibe dev deploy hello
+```
+
+In the panel, **Your apps** now has **hello**, `v1 is live`, "Say hello. Step 1
+is ready for you to try.", and a button **Try step 1**. Press it. On the left is
+the plan, `0 of 2 tried`, and a note that talking to your AI here comes later.
+On the right, **Preview** shows the test copy itself, under a line that says
+**Test copy**, with the heading "Hello, how are you?", and above it:
+
+```
+Step 1 is ready. Try it: Open the test copy: the heading says Hello, how are you?
+```
+
+Open **Live** first: `v2: say hello`, "2 steps left to try before v2 can go
+live.", and no way to put it live. Back in **Preview**, press **Something is
+wrong**, write a line, and **Save the report**: "Saved with the app. Tell your
+AI in its own session to read it." Host, to see it where the AI will read it:
+
+```sh
+cat /var/lib/allvibe/projects/hello/reports/*-something-is-wrong.txt
+```
+
+Press **It works**: step 1 is ticked, `1 of 2 tried`, and step 2 is ready. Sign
+the guestbook in the frame, as step 2 asks, and press **It works** again:
+
+```
+All 2 steps are tried. Go to Live when you want everyone to get v2.
+```
+
+**A step you have not tried.** Press **Go to Live**: "v2 is ready: say hello",
+and **Put v2 live**. Do not press it yet. The page looks for changes every
+fifteen seconds, except while a dialog is open, so open **More**, then
+**Backups**, and leave it open. The builder now adds a step. Workstation:
+
+```sh
+node test/host/host.mjs push docs/walkthrough-files/say-hello-3.json /root/
+```
+
+Host:
+
+```sh
+runuser -u allvibe -- sed -i 's|>Sign the guestbook</button>|>Say hello</button>|' $R/server.js
+install -o allvibe -g allvibe -m 644 /root/say-hello-3.json $R/plan.json
+allvibe dev commit hello "A friendlier button"
+allvibe dev deploy hello
+```
+
+Close the dialog (Escape) and press **Put v2 live**, which the page still shows:
+
+```
+v2 is not live
+Nothing changed. It stopped at "every step of the plan is tried by you": the
+plan "Say hello" has steps you have not tried: step 3, "A friendlier button"
+```
+
+with what would have to be true, and where to do it here. The six safety checks
+below it stop at the first, **Tried by you**. Press **OK**, then **Preview**:
+step 3 is ready. Look at the button in the frame and press **It works**.
+
+**A backup that cannot be taken.** Take the backup disk away. **Test host**,
+host (on the test host, the engine has its own view of the disks, so it starts
+again to see the change):
+
+```sh
+umount /mnt/allvibe-backup
+systemctl restart allvibe-engine
+```
+
+**Real machine**: unmount or unplug the USB disk. In the panel, **Live**, **Put
+v2 live**:
+
+```
+v2 is not live
+Nothing changed. It stopped at "the backup target is off this machine and
+writable": /mnt/allvibe-backup is on this machine's own root filesystem, which
+is not off the machine
+```
+
+The checks show **Tried by you** done and **Backup taken** stopped. **Every
+check, as the machine ran it** opens the steps themselves, as `allvibe release`
+prints them. Press **OK**. Bring the disk back as in step 16 (**test host**,
+workstation: `node test/host/host.mjs restart`; **real machine**: plug it in
+and `reboot`), give the apps half a minute, reload the panel and sign in again
+(a restart signs everyone out).
+
+**Put it live.** **hello**, **Live**, **Put v2 live**. The six checks fill in as
+the machine runs them: **Tried by you**, **Backup taken**, **Backup restored and
+checked**, **v2 started**, **v2 answers**, **Live**. In less than a minute:
+
+```
+v2 is live.
+Nothing lost. The version before it is kept below, so you can go back any time.
+```
+
+**Open the live app**: "Hello, how are you?", and the button says Say hello.
+Write an entry there. **Earlier versions** has v2, **Live now**, and v1 with
+**Go back to v1**.
+**More**, **Backups**: the backup the release took first, `Before a release`.
+
+**Go back.** Press **Go back to v1**. The dialog says your data stays, and that
+a fresh backup is taken and checked first; press **Go back to v1**. Six checks
+again, from **It can go back** to **v1 answers**, then:
+
+```
+Back on v1.
+Your data is as it was. The backup taken first is kept with the others.
+```
+
+Reload the live app: "Guestbook" again, and the entry you wrote on v2 is still
+there. Host, the same from the machine's side: `allvibe project status hello`
+says prod runs v1, with 1 entry.
+
+**Machine health** lists hello's backups as a problem until a restore check of
+its own has run: `no backup yet`, or, after the release, `no backup has been
+restore-checked yet`, although the release checked the one it took (STATE.md,
+Known). The nightly backup clears it, or, host: `allvibe backup hello` and
+`allvibe restore-check hello`.
+
+Everything the panel did, it did through the engine, with the same steps as the
+commands: `ls /var/lib/allvibe/runs/` lists the release and the rollback.
+
+## 31. Clean up
 
 **Test host**, workstation:
 
@@ -1213,5 +1410,6 @@ too; it only opened this test host's backups. **On a real machine**, keep the
 recovery key in your password manager, and delete the file from your
 workstation; and on the machine, delete the stand-in keys in `/root`
 (`weather-dev`, `weather-prod`, `anthropic-key`) and the probes' `.out` files,
-and the scratch and ideas projects: `allvibe project remove scratch
---delete-everything` and `allvibe project remove ideas --delete-everything`.
+and the scratch, ideas and hello projects: `allvibe project remove scratch
+--delete-everything`, `allvibe project remove ideas --delete-everything` and
+`allvibe project remove hello --delete-everything`.

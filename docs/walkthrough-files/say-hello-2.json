@@ -1,0 +1,7 @@
+{
+  "title": "Say hello",
+  "steps": [
+    { "id": 1, "title": "A new heading", "check": "Open the test copy: the heading says Hello, how are you?", "built": true },
+    { "id": 2, "title": "Writing still works", "check": "Sign the guestbook in the test copy: your entry is listed.", "built": true }
+  ]
+}

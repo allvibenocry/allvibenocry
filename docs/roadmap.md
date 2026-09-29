@@ -81,7 +81,10 @@ When it is lost, the plan is:
 
 ## The control panel at allvibe.local
 
-**Planned.** One of the website's promises (D33).
+**Planned.** One of the website's promises (D33). **The panel itself is
+built**, its first slice (the sixth brief, D62 to D65, under "Built" below), at
+the machine's address on port 8099: what stays Planned here is the name, and
+port 80 (D63, amended).
 
 The control panel answers at **`allvibe.local`**, a name announced on the home
 network by multicast DNS (mDNS), with **the machine's address as the fallback**.
@@ -310,7 +313,8 @@ and prod.
 
 ## Two modes in the control panel
 
-**Planned** (D45). From the architect's review of the second brief.
+**Planned** (D45). From the architect's review of the second brief. The
+panel's first slice is simple mode only (D65).
 
 **A simple mode for beginners, and "Show what's under the hood"** for people who
 want details and finer control: a deeper layer of the same panel, which can
@@ -514,8 +518,9 @@ landed there should be found the day it landed, not whenever someone looks.
 
 These were named when their decisions were made, and are not repeated here:
 
-- In [CLAUDE.md](../CLAUDE.md): the web UI, internet publishing, tunnels, the
-  GitHub integration, and the key check before push. (The agent container is
+- In [CLAUDE.md](../CLAUDE.md): the rest of the web UI (its first slice is
+  built, D65), internet publishing, tunnels, the GitHub integration, and the
+  key check before push. (The agent container is
   built, D39, and so is a key check before every commit, D38.)
 - In D28: a lock between operations, and pruning old release images and release
   backups.
@@ -632,10 +637,14 @@ the agent, not enforced by the suite.
 
 ## The control panel's runtime
 
-**Decided** (the second brief, D40), for the brief that builds the panel; not
-built. Was: a decision to make, from the architect's review of the website
-(D33).
+**Built** (the sixth brief, D62 to D65). Was: decided (the second brief, D40),
+from the architect's review of the website (D33).
 
 The panel runs in a container on the official Node.js 24 image, pinned by
 digest (D27), not on the host's Node.js 20: acceptable for a command-line tool
-that listens on no port (D32), not for a web server.
+that listens on no port (D32), not for a web server. It is built on the machine
+from that image, with Node's standard library only, and calls an engine on a
+socket that runs the CLI's own code (D62). Its first slice is simple mode: home,
+an app's plan, Preview and Live, releasing and going back, the app's backups,
+and Machine health (D65), checked in a real browser at two widths, light and
+dark, each check first seen failing on a broken copy.

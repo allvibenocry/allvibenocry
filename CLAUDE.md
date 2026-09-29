@@ -34,8 +34,13 @@ with rollback. The second built the foundations for the agent: rollback that
 knows the schema, the project template with the guided plan, the key vault,
 the key check before every commit, and the agent container itself. The third
 kept every project container off the machine's own ports and the home network.
-The web UI, sign-in in front of apps, internet publishing, tunnels, the GitHub
-integration and the key check before push come later.
+The fourth and fifth signed the agent in to the person's own account, gated
+releases on a tried plan, and kept what the agent did. The sixth built the
+control panel's first slice: an engine on a socket that runs the CLI's own code
+(D62), the panel in a fenced container behind the proxy (D63), signing in to it
+(D64), and its simple mode for one app's plan, preview, release and going back
+(D65). The rest of the panel, sign-in in front of apps, internet publishing,
+tunnels, the GitHub integration and the key check before push come later.
 
 The product name and the command name are each defined once, in
 [brand.conf](brand.conf). The command is `allvibe`, and the service user and
@@ -47,14 +52,16 @@ directories use the same name.
    access to, credentials for, or volumes of a prod environment.
 2. **No release without a fresh backup** on a target outside the machine's own
    disk, and that backup must have passed a restore test.
-3. **The control panel is never exposed directly to the internet.** There is no
-   panel yet; the rule is recorded now.
+3. **The control panel is never exposed directly to the internet.** It answers
+   only through the proxy, on the machine's home-network address, to private
+   source addresses (D63).
 4. **Secrets never appear** on a command line, in output, in logs, in the repo or
    in a chat. Tools read them by name from the environment or from files with
    restricted permissions, and never prompt for a password. SSH is key-based
    with `BatchMode=yes`.
 5. **Everything a beginner needs to do must eventually be doable in a browser.**
-   The CLI is the engine the web UI will call, not the user interface.
+   The CLI is the engine the panel calls (through the engine service, D62),
+   not the user interface; the panel never reimplements what it does.
 6. **Every numbered item is tried by a human before it counts as done.** Reports
    keep what was actually run and observed apart from what was only built.
 7. **Stop at the first failure.** An operation that fails part-way names the step
@@ -106,8 +113,9 @@ directories use the same name.
    in `reports/` that keeps what was run and observed apart from what was only
    built.
 
-Before every commit: `node scripts/guard.mjs` is clean, and nothing in the diff
-is a secret or a detail of anybody's infrastructure. The CI scans every push for
+Before every commit: `node scripts/guard.mjs` is clean, run on its own and its
+exit code checked, never piped (mistake 42), and nothing in the diff is a
+secret or a detail of anybody's infrastructure. The CI scans every push for
 secrets (D6).
 
 ## Mistakes we do not repeat
@@ -306,7 +314,40 @@ From the fifth brief, here and in the website:
 41. **A heredoc inside a heredoc ends the outer one.** Walkthrough text holding
     its own `EOF` line, passed to Python through a shell heredoc, ended it
     early, and the rest of the text ran as shell commands on the workstation; a
-    bare `node` waited for input until it was stopped. Nothing was written or
-    removed. *Here:* text with heredocs in it goes into a file with the file
-    tool, never through a shell heredoc, and the walkthrough's own heredocs end
-    with `END`.
+    bare `sh` waited for input until it was stopped (the fifth report said
+    `node`; the session's record shows `sh`). Nothing was written or removed.
+    *Here:* text with heredocs in it goes into a file with the file tool, never
+    through a shell heredoc, and the walkthrough's own heredocs end with `END`.
+42. **A pipe keeps only the last command's exit code.** `npm run guard | tail
+    -1 && git commit` committed and pushed what the guard had refused: an
+    address from the owner's private list (the sixth brief, item 8). *Here:*
+    the guard runs on its own, unpiped, and its exit code is checked before
+    every commit.
+43. **Rule 16 is kept by habit, not by a tool.** After mistake 41, two commit
+    messages and one Python edit still went through shell heredocs, and, after
+    this entry was written, a multi-line `node -e` script in shell quotes
+    inserted a section into STATE.md; nothing went wrong, and nothing stopped
+    them. *Here:* a commit message is a file written with the file tool,
+    committed with `git commit -F`; so is every script, however short it
+    looks, and every edit goes through the Edit tool.
+44. **A service's sandbox is part of its environment.** The engine ran the
+    CLI's release under `PrivateTmp=yes`, which hid its temporary files from
+    Docker, and then under a tighter umask, which made the restore check's
+    password file unreadable to the app's container; each broke the restore
+    check. *Here:* a service that runs the CLI's operations runs them in the
+    CLI's own environment, and a hardening option stays only after a real
+    release has run under it.
+45. **A rule in a form the tool no longer reads matches nothing, silently.**
+    Deny rules ending in `:*`, Claude Code's old prefix form, refused nothing.
+    *Here:* every deny rule is seen refusing a harmless command, and the same
+    commands seen running without the settings file (`deny-probe.mjs`).
+46. **A mount changed in one namespace is not changed in another.** On the test
+    host, the backup disk unmounted from a root shell was still mounted in the
+    engine's own namespace, and a release meant to be refused went live, on
+    the real disk. *Here:* a fixture changes the machine where the service
+    under test sees it, and says what that view shows.
+47. **A service must not wait for a client that is waiting for it.** doctor,
+    run on the engine's thread, asked the panel, whose `/health` asked the
+    engine: only a timeout ended it, and it was reported as the panel's
+    problem. *Here:* the engine does blocking work off its thread, and the
+    engine probe checks the panel's line as the engine sees it.
