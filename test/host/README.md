@@ -16,7 +16,7 @@ the test host as `C:/Program Files/Git/root/x.sh`. PowerShell does not do this.
 |---|---|
 | `node test/host/host.mjs create` | A fresh test host. Fails if one exists. |
 | `node test/host/host.mjs reset` | Throws the test host away and creates a fresh one, backup target included. `--keep-backup-target` keeps the backup volume, to test restoring onto a new machine. |
-| `node test/host/host.mjs restart` | Restarts the container: the stand-in for a reboot. |
+| `node test/host/host.mjs restart [--hard]` | Restarts the container: the stand-in for a reboot; `--hard` kills every process at once and starts it again, the nearest to a power cut. Then says what the root cgroup gives its children (it fails loudly if not what a machine gives), and, with the suite installed, waits for everything to come back within 120 seconds of the start and says what came back, or what did not, with Docker's reason, and exits 1 (D80, `comeback.mjs`). |
 | `node test/host/host.mjs exec -- <command>` | Runs a command as root on the test host. Standard input is passed through, so `… exec -- cmd < file` works. |
 | `node test/host/host.mjs shell` | A root shell on the test host. |
 | `node test/host/host.mjs push <local> <remote-dir>` | Copies a file or directory onto the test host. |
@@ -81,6 +81,7 @@ need the ports forwarded at the same numbers (`status` says).
 | `guided-probe.mjs [--configs desktop,phone]` | The guided path (D75), at a desktop's width and a phone's, each with a project of its own: from "Try step 1" to "v2 is live" pressing only the next-action button; one pink thing on the screen at every stage; the panel moving on by itself; the ending's three choices; the tabs still working; "Start something new" back at Plan. |
 | `chat-probe.mjs [--configs desktop,phone]` | The chat in the panel (D69, D77), each width with an app of its own: an app made in the panel, opening in Plan with "Start your AI" and the two ways to sign in; its AI started from the panel with a stand-in key; Claude Code's terminal under the plan, its first start gone through by keys; a prompt typed, and Claude Code answering the stand-in for the model (`panel-fixture.mjs stub`) by writing and committing a plan; the panel seeing the commit, then the step in the checklist and in the guided path; no console error, no other origin. Run it on a fresh test host: the first start then builds the agent's image. Never an account. |
 | `panel-fixes.mjs [--url …]` | The seventh brief's fixes (D73): text typed into the Preview frame kept across switching tabs, a step marked tried and the periodic look for changes, and the frame reloaded by a new test copy and by "Restart the test copy"; nothing green before the nightly checks have run, "Step 1 works" not green, a stopped live app red. Needs a host whose nightly backup has not run. |
+| `restart-probe.mjs [--only <way,...>]` | Everything back after the machine stops and starts, in any order (D80), from this workstation: the panel set up and an app made and backed up, then nine ways, each checked within 120 seconds: a restart; a restart with a shell entering the test host as it starts; with the machine's address 25 seconds late; with Docker's first start failing; Docker restarted, stopped and started, and killed; a hard stop, and a hard stop with the address late. Each: doctor all green, the suite's units active, every suite container running and healthy, the panel answering by its name and at the address, and, in headless Edge, signed out after the machine stopped (a restart of Docker alone keeps the panel and its sessions), still set up, and the same password signing in by the name and at the address. Its fixtures are in `harness/`, put in place for one way and taken away after it. |
 | `panel-checks.mjs <folder> [--broken <variants>\|none] [--configs <names>\|none]` | Every check, first seen failing on a deliberately broken copy of the panel (at least one per check), then passing on the real one, at 1280 and 390 px wide, light and dark: signing in and out; the guided path from "Try step 1" to "v2 is live", one pink thing at a time, with the mouse and the keyboard; the Preview frame keeping what is typed in it; every refusal, the app's lock held from the command line among them; a new app made in the panel; its AI started with a stand-in key and stopped; its terminal's keyboard (Ctrl + ] leaves it) and its refusals from the browser (a wrong token; the test copy's own page); the apps it made removed; no console errors, no request to another origin but the Preview frame's, nothing wider than the screen, the side's lights each a dot; the keyboard in every dialog and tab list. Replaces the sixth brief's `panel-journey.mjs`, whose every flow it has. |
 
 ## What it is
@@ -90,6 +91,19 @@ need the ports forwarded at the same numbers (`status` says).
   iproute2, procps and kmod added: the minimum that boots like a machine. No
   Docker, no curl, no CA certificates; `install.sh` has to fetch everything
   itself, as it will on a fresh installation.
+- **One unit of the harness's own**, `test-host-cgroups.service`
+  (`harness/cgroups.sh`, D80): before containerd and Docker start, whatever
+  entered the test host's root cgroup while it booted (a shell kept open on
+  the container, or the harness's own look at systemd) is moved into
+  `init.scope`, and the controllers a machine's root always gives its
+  children are turned on. Without it, one `docker exec` at the wrong second
+  left no container with a limit able to start (the eighth brief, item 1). It
+  says what it moved; never part of the suite.
+- **`harness/`** also holds the restart probe's fixtures, which are put in
+  place only for the way that needs them: the machine's address taken away
+  before Docker starts and given back 25 seconds later (`late-address.sh`,
+  `late-address.service`, `address-back.service`), and Docker failing its
+  first start at a boot (`docker-fails-once.conf`).
 - **Three volumes**: Docker's data and containerd's image store (Docker inside
   Docker cannot keep them on the container's overlay root), and a third that
   stands in for the **off-machine backup target**, mounted at

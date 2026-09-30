@@ -114,7 +114,13 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   as progress, each change confirmed; the agent's terminal as a stream, one
   browser at a time; signing in to the panel kept here. It answers while it
   works: doctor's checks and every job's command run off its thread (D65,
-  D77).
+  D77). **It keeps what must run** (D80): every 5 seconds for three minutes
+  after it starts, then every 30, the panel's container, its door (following
+  the machine's address), the proxy, and any app's container Docker could not
+  start, under the app's lock; it wants Docker rather than requiring it, starts
+  with it, and is started again whatever ends it. After a restart, a Docker
+  restart or a hard stop, in any order, everything is back within two minutes,
+  the panel signed out and still set up.
 - **The control panel** (D63, D64, D65). A container built on the machine from
   the pinned Node.js 24 image, as its own user, read-only, with no
   capabilities, on an internal network with no route out, with only the
@@ -159,6 +165,19 @@ registered business), Anthropic confirms otherwise in writing, or a design in
 which the suite does not install or run Claude Code itself. It does not stop
 development, and it does not touch the MCP bridge (D44). Until then the website
 says "your own API key", and nothing about signing in with a Claude account.
+
+## The eighth brief
+
+**Tried by the owner**, in their words (2026-09-30): "I followed walkthrough
+steps 29 and 30 on the test host until 'Bring the disk back'. After node
+test/host/host.mjs restart, the panel did not come back (ERR_EMPTY_RESPONSE;
+its container exited)." The seventh brief is **reviewed by the architect**
+and accepted, with three points carried forward (D81).
+
+| Item | State |
+|---|---|
+| 1. The panel after a restart: evidence | Recorded, reading only, before anything was changed: the panel and its door failed to start with a cgroup error; a shell had entered the test host through Docker's API in the second it started, into its root cgroup, so no container with a limit could start. That trigger is the test host's alone. The root cause in the product: nothing brought back a container Docker could not start. In the report. |
+| 2. The panel after a restart: fix and proof | Built and probed (D80): the engine keeps the panel, its door, the proxy and what Docker could not start of the apps running, again and again; the panel and its door at fixed addresses; the door written from Docker's address pool; the engine wanting Docker, started with it and again whatever ends it, and Docker never given up on either; doctor and `panel status` saying what Docker could not start and why; the test host booting like a machine, and `host.mjs restart [--hard]` saying whether everything came back within 120 seconds. `restart-probe.mjs` 55 of 55 on a fresh test host, every way back within 11 to 41 seconds; on the previous commit's bundle every one of the nine ways WRONG (and, run again alone, the engine left inactive by Docker stopped and started, and a hard stop hitting the address clash). The upgrade from the previous bundle seen remaking the panel's network. |
 
 ## The seventh brief
 

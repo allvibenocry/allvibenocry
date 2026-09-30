@@ -548,7 +548,20 @@ Bring the disk back and restart. **Test host**, workstation:
 node test/host/host.mjs restart
 ```
 
-**Real machine:** plug the disk in and `reboot`. Then, host:
+It waits for the test host to boot, then for everything to come back by
+itself, for at most two minutes from the start, and says what came back:
+
+```
+restarted allvibe-test-host (standing in for a reboot)
+systemd   running
+cgroups   the root cgroup gives its children cpuset cpu io memory hugetlb pids rdma
+suite     back 41 s after the start: doctor all green; 7 units active; 7 containers running (proxy, panel, panel-door, app, db); the panel answers at http://allvibe.local/ and at the address
+```
+
+The seconds differ. If anything did not come back, the last line says `NOT
+back within 120 s of the start:` instead, and the lines under it say what,
+with Docker's own reason; it exits 1. **Real machine:** plug the disk in and
+`reboot`. Then, host:
 
 ```sh
 systemctl is-active allvibe-backup.timer

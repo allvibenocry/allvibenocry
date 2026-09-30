@@ -24,7 +24,7 @@ import { existsSync, linkSync, readFileSync, rmSync, writeFileSync } from "node:
 import { posix as path } from "node:path";
 import { projectDir } from "./project.js";
 
-export type Origin = "the panel" | "the command line" | "the nightly backup";
+export type Origin = "the panel" | "the command line" | "the nightly backup" | "the machine";
 
 let origin: Origin = "the command line";
 /** Where this process's operations are started from: the engine says "the panel". */
@@ -51,6 +51,7 @@ const WORDS: Record<string, (app: string) => string> = {
   "restore-check": (app) => `A restore check of ${app}`,
   "key-set": (app) => `A change to ${app}'s service keys`,
   "project-remove": (app) => `Removing ${app}`,
+  "bring-back": (app) => `Starting ${app} again, after Docker could not,`,
 };
 export const OPERATIONS = Object.keys(WORDS);
 

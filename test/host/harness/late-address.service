@@ -1,0 +1,13 @@
+[Unit]
+Description=Test host only: the machine's address taken away before Docker starts (D80)
+DefaultDependencies=no
+After=systemd-journald.service test-host-cgroups.service
+Before=sysinit.target containerd.service docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh /usr/local/lib/test-host/late-address.sh take
+
+[Install]
+WantedBy=sysinit.target

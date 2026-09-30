@@ -7,13 +7,13 @@
  * never an argument's value.
  */
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { Worker } from "node:worker_threads";
 import { NAMES } from "../lib/brand.js";
-import { containerState } from "../lib/docker.js";
 import { agentContainer, agentState } from "../lib/agent.js";
 import { setLockOrigin } from "../lib/lock.js";
 import { readOverrides } from "../lib/overrides.js";
-import { ensurePanelDoor } from "../lib/panel.js";
 import { AuthStore } from "./auth.js";
+import type { Round } from "./keeper-worker.js";
 import { Jobs } from "./jobs.js";
 import { terminalStream } from "./operations.js";
 import { createEngineServer } from "./server.js";
@@ -51,19 +51,50 @@ setInterval(() => {
 
 const ctx = { suite: realSuite, jobs: new Jobs(), auth: new AuthStore(NAMES.panelAuth), terminals };
 const server = createEngineServer(ctx, log, { "agent.terminal": terminalStream(ctx, terminals) });
+/**
+ * The keeper (D80): the panel, its door, the proxy and whatever of the apps
+ * Docker could not start, brought back, again and again: every 5 seconds for
+ * the first three minutes after the engine starts, when a boot's late things
+ * (the machine's address, Docker itself) come in, then every 30 seconds. The
+ * door also follows the machine's address, which a reboot or the home router
+ * may change (D63). A round runs on a thread of its own, one at a time. What
+ * it changed is logged every time; what it could not do, once, until it
+ * changes or goes away.
+ */
+const startedAt = Date.now();
+let rounding = false;
+let lastProblems = new Set<string>();
+function keeperRound(): void {
+  if (rounding) return;
+  rounding = true;
+  const worker = new Worker(new URL("./keeper-worker.js", import.meta.url));
+  let done = false;
+  const finish = (round: Round | null, failure?: string) => {
+    if (done) return;
+    done = true;
+    rounding = false;
+    for (const line of round?.changes ?? []) log(`keeper: ${line}`);
+    const problems = new Set(round ? round.problems : [`the round stopped: ${failure}`]);
+    for (const line of problems) if (!lastProblems.has(line)) log(`keeper: ${line} (tried again every ${Date.now() - startedAt < 180_000 ? 5 : 30} seconds)`);
+    for (const line of lastProblems) if (!problems.has(line)) log(`keeper: no longer: ${line}`);
+    lastProblems = problems;
+  };
+  worker.once("message", (round: Round) => finish(round));
+  worker.once("error", (error) => finish(null, error.message));
+  worker.once("exit", (code) => finish(null, `its thread ended (${code})`));
+}
+function scheduleKeeper(): void {
+  setTimeout(() => {
+    keeperRound();
+    scheduleKeeper();
+  }, Date.now() - startedAt < 180_000 ? 5_000 : 30_000).unref();
+}
+
 server.listen(NAMES.engineSocket, () => {
   chmodSync(NAMES.engineSocket, 0o660);
   log(`the engine listens on ${NAMES.engineSocket}`);
-  // The panel's door follows the machine's address, which a reboot may have
-  // changed (D63). Before install has made the panel, there is none to follow.
-  try {
-    if (containerState(NAMES.panelContainer).exists) {
-      const door = ensurePanelDoor();
-      log(`${door.changed ? "the panel's door moved to" : "the panel's door is"} ${door.what}`);
-    }
-  } catch (error) {
-    log(`the panel's door could not be written: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  keeperRound();
+  scheduleKeeper();
 });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {

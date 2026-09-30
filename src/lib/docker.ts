@@ -14,11 +14,13 @@ export interface ContainerState {
   startedAt: string;
   restartCount: number;
   labels: Record<string, string>;
+  /** Why Docker could not start it, when it tried and could not; empty otherwise. */
+  error: string;
 }
 
 export function containerState(name: string): ContainerState {
   const result = tryDocker(["container", "inspect", name]);
-  if (result.code !== 0) return { exists: false, id: "", status: "absent", health: "none", image: "", startedAt: "", restartCount: 0, labels: {} };
+  if (result.code !== 0) return { exists: false, id: "", status: "absent", health: "none", image: "", startedAt: "", restartCount: 0, labels: {}, error: "" };
   const [c] = JSON.parse(result.stdout);
   return {
     exists: true,
@@ -29,6 +31,7 @@ export function containerState(name: string): ContainerState {
     startedAt: c.State?.StartedAt ?? "",
     restartCount: c.RestartCount ?? 0,
     labels: c.Config?.Labels ?? {},
+    error: c.State?.Error ?? "",
   };
 }
 

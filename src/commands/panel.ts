@@ -12,6 +12,7 @@
  */
 import { NAMES } from "../lib/brand.js";
 import { containerState, tryDocker, waitHealthy } from "../lib/docker.js";
+import { startError } from "../lib/keeper.js";
 import { ensurePanel, panelWhere } from "../lib/panel.js";
 import { AuthStore, showCode } from "../engine/auth.js";
 
@@ -60,12 +61,20 @@ async function reset(): Promise<number> {
   return 0;
 }
 
+/** A container as a person reads it: its health only while it runs, and why Docker could not start it (D80). */
+function said(state: ReturnType<typeof containerState>): string {
+  if (!state.exists) return "not there";
+  if (state.status === "running") return state.health === "none" ? "running" : `running, ${state.health}`;
+  return `${state.status}${state.error ? `: Docker could not start it (${startError(state.error)})` : ""}; the engine starts it again within half a minute`;
+}
+
 function status(): number {
   const auth = new AuthStore(NAMES.panelAuth).status();
   const state = containerState(NAMES.panelContainer);
   process.stdout.write(
     `The control panel: ${panelWhere()}\n` +
-      `  its container: ${state.exists ? `${state.status}, ${state.health}` : "not there"}\n` +
+      `  its container: ${said(state)}\n` +
+      `  its door: ${said(containerState(NAMES.panelDoorContainer))}\n` +
       `  ${auth.claimed ? "set up: sign in with its password" : auth.hasCode ? "waiting for its setup code" : `not set up, and no setup code: sudo ${C} panel setup-code`}` +
       `${auth.pausedFor ? `; signing in is paused for ${auth.pausedFor} seconds after wrong tries` : ""}\n`,
   );

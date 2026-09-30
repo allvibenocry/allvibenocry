@@ -304,6 +304,28 @@ esac
 # The pools every project container takes its address from: what the firewall keys on (D41).
 ADDRESS_POOLS=$(printf '%s' "${daemon_result#* }" | tr ',' ' ')
 
+# Docker itself started again whatever ends it, and never given up on (D80):
+# systemd's default for its unit refuses a fourth start within a minute, and
+# after that Docker, and everything the suite runs with it, stays down until
+# the machine restarts. Its own unit is left as it is; this is a drop-in.
+docker_dropin=/etc/systemd/system/docker.service.d/$CMD.conf
+docker_dropin_content="# $PRODUCT_NAME (D80): Docker is started again whatever ends it, backing off to 30 seconds, and never given up on.
+[Unit]
+StartLimitIntervalSec=0
+
+[Service]
+RestartSec=2
+RestartSteps=5
+RestartMaxDelaySec=30"
+if [ "$(cat "$docker_dropin" 2>/dev/null || true)" != "$docker_dropin_content" ]; then
+  mkdir -p "$(dirname "$docker_dropin")"
+  printf '%s\n' "$docker_dropin_content" >"$docker_dropin"
+  systemctl daemon-reload
+  changed "$docker_dropin: Docker started again whatever ends it, never given up on"
+else
+  unchanged "$docker_dropin"
+fi
+
 # ---------------------------------------------------------------------------
 step "The service user" "useradd and usermod work"
 
@@ -615,32 +637,41 @@ rm -f "$setup_output"
 step "The engine the control panel calls" "systemd accepts the unit, and the engine answers on its socket"
 
 # A host service, as the service user, on a Unix socket only (D62): the panel's
-# only way to act, through an allow-list of the CLI's own operations.
+# only way to act, through an allow-list of the CLI's own operations. It keeps
+# the panel, its door and what Docker could not start running (D80), so it
+# must itself come back in any order: it wants Docker rather than requiring
+# it (a Docker whose first start at boot fails would otherwise take the
+# engine's start with it, for good), starts whenever Docker starts, and is
+# started again whatever ends it, without ever giving up.
 engine_content="[Unit]
 Description=$PRODUCT_NAME: the engine the control panel calls (D62)
-Wants=network-online.target
+Wants=network-online.target docker.service
 After=network-online.target docker.service
-Requires=docker.service
+StartLimitIntervalSec=0
 
 [Service]
 User=$SERVICE_USER
 Group=$SERVICE_USER
 Environment=HOME=$STATE_DIR
 ExecStart=/usr/bin/node $INSTALL_DIR/current/dist/engine/main.js
-Restart=on-failure
+Restart=always
 RestartSec=2
+RestartSteps=5
+RestartMaxDelaySec=30
 NoNewPrivileges=yes
 ProtectHome=yes
 # No PrivateTmp: a restore check hands Docker files under /tmp, and Docker must
 # see the same /tmp as the engine.
 
 [Install]
-WantedBy=multi-user.target"
+WantedBy=multi-user.target docker.service"
 engine=$(basename "$UNIT_ENGINE")
 engine_restart=$NEW_RELEASE
 if [ "$(cat "$UNIT_ENGINE" 2>/dev/null || true)" != "$engine_content" ]; then
   printf '%s\n' "$engine_content" >"$UNIT_ENGINE"
   systemctl daemon-reload
+  # Enabled again, for what [Install] now says (with Docker as well as at boot).
+  quiet systemctl reenable "$engine"
   engine_restart=1
   changed "$engine"
 else

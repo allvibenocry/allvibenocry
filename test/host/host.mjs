@@ -4,7 +4,7 @@
  *
  *   node test/host/host.mjs create           # a fresh test host
  *   node test/host/host.mjs reset            # thrown away and created fresh
- *   node test/host/host.mjs restart          # a container restart, standing in for a reboot
+ *   node test/host/host.mjs restart [--hard] # a stand-in for a reboot (--hard: for a power cut), and whether the suite came back
  *   node test/host/host.mjs exec -- <cmd>    # run a command as root on it
  *   node test/host/host.mjs exec --stdin-file <file> -- <cmd>   # with a local file as its input
  *   node test/host/host.mjs pull <remote-file> <local-file>     # copy a file off it
@@ -34,6 +34,7 @@ import net from "node:net";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { COMEBACK_SECONDS, waitForSuite } from "./comeback.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -62,6 +63,7 @@ const BASE = "debian:trixie-20260918@sha256:9cc080028c43b27d2074d63a5f9caf7166d7
  * suite needs is added here; install.sh has to fetch that itself, as it will on
  * a fresh machine. The package lists are removed, as a fresh image has none.
  */
+const harnessFile = (name) => readFileSync(path.join(ROOT, "test", "host", "harness", name)).toString("base64");
 const SETUP = [
   "set -e",
   "export DEBIAN_FRONTEND=noninteractive",
@@ -73,6 +75,12 @@ const SETUP = [
   "systemctl mask getty.target console-getty.service systemd-firstboot.service",
   // Each host gets its own machine id at first boot.
   ": > /etc/machine-id",
+  // The cgroup tree a machine boots with, whatever entered the test host while
+  // it started (D80; test/host/harness/cgroups.sh says why).
+  "mkdir -p /usr/local/lib/test-host /etc/systemd/system/sysinit.target.wants",
+  `echo ${harnessFile("cgroups.sh")} | base64 -d > /usr/local/lib/test-host/cgroups.sh`,
+  `echo ${harnessFile("cgroups.service")} | base64 -d > /etc/systemd/system/test-host-cgroups.service`,
+  "ln -s /etc/systemd/system/test-host-cgroups.service /etc/systemd/system/sysinit.target.wants/test-host-cgroups.service",
 ].join(" && ");
 
 /** The recipe's hash names the image, so a changed recipe is a new image. */
@@ -315,12 +323,48 @@ async function reset({ keepBackup }) {
   await create({ portBase: base });
 }
 
-async function restart() {
+/**
+ * A stand-in for a reboot: the container stopped as a machine shuts down
+ * (systemd stops every unit), and started again. `--hard` is the nearest to a
+ * power cut the harness has: every process killed at once, nothing stopped
+ * cleanly, nothing unmounted (what a real power cut also loses, writes the
+ * disk had not yet made, the workstation's kernel still has). Then, if the
+ * suite is installed, whether it came back within the stated time (D80).
+ */
+async function restart({ hard = false } = {}) {
   requireLocal("restart");
   if (!exists()) throw new Error(`${NAME} does not exist`);
-  docker(["restart", NAME]);
-  say(`restarted ${NAME} (standing in for a reboot)`);
+  if (hard) {
+    docker(["kill", NAME]);
+    docker(["start", NAME]);
+    say(`stopped   ${NAME} hard (every process killed at once) and started again, standing in for a power cut`);
+  } else {
+    docker(["restart", NAME]);
+    say(`restarted ${NAME} (standing in for a reboot)`);
+  }
   await waitForBoot();
+  if (!(await comeback())) process.exitCode = 1;
+}
+
+/** The cgroups the test host booted with, and, with the suite installed, whether it all came back. */
+async function comeback() {
+  // This start's run of the unit only: the test host's journal spans every start of its container.
+  const cgroups = docker(["exec", NAME, "sh", "-c", "cat /sys/fs/cgroup/cgroup.subtree_control; journalctl _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value test-host-cgroups) --no-pager -o cat | grep -m1 '^moved' || true"], { allowFail: true, quiet: true }).out.split("\n");
+  const given = cgroups[0]?.trim() ?? "";
+  if (!/\bpids\b/.test(given) || !/\bmemory\b/.test(given)) {
+    say(`cgroups   NOT as a machine boots: the root cgroup gives its children "${given}", so no container with a limit can start`);
+    return false;
+  }
+  say(`cgroups   the root cgroup gives its children ${given}${cgroups[1] ? `; ${cgroups[1]}` : ""}`);
+  if (docker(["exec", NAME, "test", "-x", `/usr/local/bin/${CMD}`], { allowFail: true, quiet: true }).code !== 0) return true;
+  const panelPort = Number(inspect(`{{index .Config.Labels "${LABEL}.port-base"}}`)) + PORT_COUNT;
+  const result = await waitForSuite(NAME, panelPort);
+  if (result.ok) say(`suite     back ${result.seconds} s after the start: ${result.back.join("; ")}`);
+  else {
+    say(`suite     NOT back within ${COMEBACK_SECONDS} s of the start:`);
+    for (const line of result.notBack) say(`          ${line}`);
+  }
+  return result.ok;
 }
 
 function remove() {
@@ -536,7 +580,7 @@ function resources([action, file]) {
 /* ------------------------------------------------------------------ cli -- */
 
 const USAGE = `usage: node test/host/host.mjs <command>
-  create | reset [--keep-backup-target] | restart | remove | status
+  create | reset [--keep-backup-target] | restart [--hard] | remove | status
   exec [--stdin-file <file>] -- <command> [args]    shell
   push <local> <remote-dir>    pull <remote-file> <local-file>
   override list | set <key>=<value> | unset <key>
@@ -548,7 +592,7 @@ async function main() {
   switch (command) {
     case "create": return create();
     case "reset": return reset({ keepBackup: rest.includes("--keep-backup-target") });
-    case "restart": return restart();
+    case "restart": return restart({ hard: rest.includes("--hard") });
     case "remove": return remove();
     case "status": return status();
     case "exec": return execOnHost(rest[0] === "--" ? rest.slice(1) : rest);

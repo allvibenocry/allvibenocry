@@ -1,0 +1,11 @@
+[Unit]
+Description=Test host only: the machine's address back, 25 seconds later (D80)
+After=test-host-late-address.service
+Requires=test-host-late-address.service
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /usr/local/lib/test-host/late-address.sh give 25
+
+[Install]
+WantedBy=multi-user.target

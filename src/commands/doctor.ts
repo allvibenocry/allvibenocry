@@ -20,6 +20,7 @@ import { readConfig } from "../lib/config.js";
 import { containerState, engineInfo, tryDocker } from "../lib/docker.js";
 import { isSupportedArch, isSupportedOs, memory, osInfo, systemDisk } from "../lib/hostfacts.js";
 import { hostKeyOk, recoveryStatus } from "../lib/keys.js";
+import { seeAll, startError, toStart } from "../lib/keeper.js";
 import { readOverrides } from "../lib/overrides.js";
 import { panelUrl } from "../lib/panel.js";
 import { lanAddress } from "../lib/project.js";
@@ -226,8 +227,25 @@ export function checks(): Check[] {
   add(
     "proxy",
     proxy.status === "running" && proxy.health === "healthy" ? "ok" : "problem",
-    proxy.exists ? `Reverse proxy: ${proxy.status === "running" && proxy.health === "healthy" ? "running and healthy" : `${proxy.status}, ${proxy.health}`}` : "Reverse proxy: not there",
+    proxy.exists
+      ? `Reverse proxy: ${proxy.status === "running" && proxy.health === "healthy" ? "running and healthy" : proxy.status === "running" ? `running, ${proxy.health}` : `${proxy.status}${proxy.error ? `: Docker could not start it (${startError(proxy.error)})` : ""}; the engine starts it again within half a minute`}`
+      : "Reverse proxy: not there",
   );
+
+  // What Docker could not start (D80). Docker brings back a container that
+  // exits after it has run, and leaves one it could not start as it is; the
+  // engine starts such an app's containers again, and this says which and why.
+  const notStarted = toStart(seeAll()).filter((c) => c.name !== NAMES.proxyContainer);
+  if (projectNames().length || notStarted.length) {
+    add(
+      "started",
+      notStarted.length ? "problem" : "ok",
+      notStarted.length
+        ? `Docker could not start ${notStarted.map((c) => `${c.name} (${startError(c.error)})`).join("; ")}: the engine tries again every half minute, and the reason says what would have to change`
+        : "Apps: no container that Docker could not start",
+      "data",
+    );
+  }
 
   /* Backups */
   const projects = projectNames();
@@ -261,6 +279,7 @@ export function checks(): Check[] {
 
   // The control panel (D63, D64): its container, and its door answering, end to end.
   const panelState = containerState(NAMES.panelContainer);
+  const door = containerState(NAMES.panelDoorContainer);
   const url = panelUrl();
   const answered = panelState.exists
     ? tryRun(process.execPath, ["-e", `fetch(${JSON.stringify(`${url}health`)},{signal:AbortSignal.timeout(5000)}).then(r=>process.stdout.write(String(r.status))).catch(e=>process.stdout.write("no answer: "+(e.cause?.code??e.name)))`]).stdout.trim()
@@ -271,9 +290,11 @@ export function checks(): Check[] {
     panelState.status === "running" && answered === "200" ? "ok" : "problem",
     panelState.status === "running" && answered === "200"
       ? `Control panel: ${url} answers, on the home network only; ${auth.claimed ? "set up" : `waiting for its setup code (a new one: sudo ${NAMES.command} panel setup-code)`}`
-      : panelState.exists
-        ? `The control panel's container is ${panelState.status}, and ${url}health answered ${answered || "nothing"}: run install.sh again`
-        : "The control panel is not installed: run install.sh again",
+      : panelState.status === "running"
+        ? `The control panel's container is running, and ${url}health answered ${answered || "nothing"}${door.status === "running" ? "" : `: its door is ${door.exists ? door.status : "not there"}${door.error ? ` (Docker could not start it: ${startError(door.error)})` : ""}`}. The engine writes the door again within half a minute; if it stays so, run install.sh again`
+        : panelState.exists
+          ? `The control panel's container is ${panelState.status}${panelState.error ? `: Docker could not start it (${startError(panelState.error)})` : ""}. The engine starts it again within half a minute; if it stays so, run install.sh again`
+          : "The control panel is not installed: run install.sh again",
   );
 
   // Its name on the home network (D74): announced, and this machine's. A name

@@ -427,3 +427,33 @@ From the seventh brief, here:
     *Here:* after every push, its run is read, and a red one is the next thing
     fixed; the secret scan also runs on the test host before the report
     (D79).
+
+From the eighth brief, here:
+
+58. **A stand-in for a reboot must boot like the machine.** The test host's
+    restart let a shell that entered it in its first second into its root
+    cgroup, which kept every container with a limit from starting: the owner
+    saw a panel gone that a real machine would have brought back, and a real
+    weakness hid behind it. *Here:* the harness's image makes its root cgroup
+    what a machine's is before Docker starts, and `host.mjs restart` says what
+    it booted with and whether everything came back (D80).
+59. **A policy that restarts what exits does not restart what never
+    started.** Docker's `unless-stopped` brought back every container that
+    had run, and left the panel, which Docker could not start at boot, down
+    for good; the engine wrote the door once. *Here:* what must run is kept
+    running by the engine, again and again, and a probe of a restart makes a
+    start fail on purpose (the machine's address late, Docker's first start
+    failing) before it trusts the recovery (D80).
+60. **A stopped container's address is not an address.** Docker 29 prints
+    `invalid IP` for one, and `invalid Prefix` for a network with no range:
+    the engine wrote the first into the door's configuration, and install's
+    check took the second for somebody else's network. *Here:* an address is
+    worked out from what the suite decided (its pool), never read back from a
+    container, and a value read from Docker is checked for its shape.
+61. **A service that must outlive what it needs must not require it.** The
+    engine's unit required Docker, so Docker's failed first start failed the
+    engine's for good, and stopping Docker stopped it, which starting Docker
+    did not undo; and systemd gives up on Docker itself after a fourth start
+    in a minute. *Here:* a service the suite keeps running wants what it
+    needs, starts with it, and is started again whatever ends it, without
+    giving up; so is Docker, by a drop-in of the suite's (D80).

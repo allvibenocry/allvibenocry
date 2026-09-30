@@ -3200,3 +3200,138 @@ folder, both still found with it.
 **Why not a list of fingerprints**: a fingerprint names a commit and a line;
 the next update of the library would fail again, and a list says nothing of
 why. The rules say what and why.
+
+## D80. Everything comes back after a restart, in any order; the test host boots like a machine
+
+*2026-09-30. The eighth brief, items 1 and 2, after the owner's panel did not
+come back after `host.mjs restart` (friction log 8). The evidence and the root
+cause are in [reports/2026-09-30-brief-08.md](reports/2026-09-30-brief-08.md).*
+
+**What was wrong, in the product.** Four faults, each able to leave the panel
+gone after a restart of a real machine, none seen before:
+
+1. **Nothing brought back a container that Docker could not start.** Docker's
+   restart policy restarts a container that exits after it has run; one whose
+   start fails, when Docker itself starts or at any other time, it leaves as
+   it is and never tries again. The engine wrote the panel's door once, at its
+   own start, and never looked at the panel's container at all.
+2. **The door could take the panel's address.** The panel had a fixed address
+   on its internal network, and the door joined that network with an address
+   Docker chose. At a start where Docker started the door first, the door took
+   the panel's address, and the panel could not start ("failed to set up
+   container networking: Address already in use"). Which one Docker starts
+   first is up to Docker: seen on the previous bundle at a plain restart, a
+   hard stop, and after the machine's address came late.
+3. **The door was written from a stopped panel's address, or from no
+   address.** Docker 29 says `invalid IP` for a stopped container's address,
+   and the engine wrote that into the door's configuration (`proxy_pass
+   http://invalid IP:8080;`), so the door failed its own configuration for
+   good; and with the machine's address not there yet (a slow home router),
+   `docker run -p this-machine:80` was refused and never tried again.
+4. **The engine could be left stopped by Docker.** Its unit *required* Docker:
+   a Docker whose first start at boot fails (systemd starts it again) failed
+   the engine's start with it, and nothing started the engine afterwards; and
+   stopping Docker stopped the engine, which starting Docker did not start
+   again. And **Docker itself** could be left stopped: systemd refuses a
+   fourth start of Docker's own unit within a minute, and then nothing comes
+   back until the machine restarts.
+
+**What it is now.**
+
+- **The engine keeps what must run** (`src/lib/keeper.ts`, `keepPanel` in
+  `src/lib/panel.ts`, one round at a time on a thread of its own,
+  `src/engine/keeper-worker.ts`): every 5 seconds for the first three minutes
+  after it starts, then every 30 seconds. The panel's container is started
+  when it is not running; the door is made again when it is not running or
+  the machine's address changed, and waits, saying so, while the machine has
+  no address; the proxy is started whenever it is not running; an app's or its
+  database's container is started only when Docker tried to start it and could
+  not, which Docker's own state says, so that a container stopped on purpose
+  stays stopped, and only under the app's lock (D72), never waiting for it;
+  the agent's containers never. What a round changed is logged every time;
+  what it could not do, once, until it changes or goes away ("keeper: no
+  longer: ...").
+- **The panel and its door have fixed addresses**, `.2` and `.3`, and anything
+  else Docker gives an address on the panel's network comes from its upper
+  half (`--ip-range .128/25`). The door is made, joined to the panel's network
+  at its address, and only then started. An installation from before has its
+  panel network made again by `allvibe panel install` (install.sh); seen on
+  the test host, over the previous bundle with an app and the panel set up:
+  the app untouched, the panel still set up, doctor all green. (Found on the
+  way: Docker 29 prints a network with no range as `invalid Prefix`; the check
+  reads the range by its shape.)
+- **The door's addresses are worked out from Docker's address pool**, never
+  read from the panel's container.
+- **The engine wants Docker rather than requiring it**, is started whenever
+  Docker starts (`WantedBy=docker.service`), and is started again whatever ends
+  it, backing off to 30 seconds and never giving up (`Restart=always`,
+  `StartLimitIntervalSec=0`). **Docker gets the same**, as a drop-in of the
+  suite's own (`/etc/systemd/system/docker.service.d/allvibe.conf`), its own
+  unit left as it is.
+- **doctor says what Docker could not start, and why**: a check of every
+  app's containers, and the panel's, its door's and the proxy's problems with
+  Docker's own reason, the part after its layers ("error setting cgroup
+  config ... pids.max: no such file or directory"). `allvibe panel status`
+  shows health only for a running container, and the door beside the panel.
+
+**The test host boots like a machine.** The owner's trigger (item 1) cannot
+happen on a real machine: there systemd's cgroup is the real root, where the
+controllers for everything below it are always on. The test host's root is a
+cgroup inside the workstation's Docker, where the kernel refuses to turn them
+on while a process sits in it; a shell that entered the test host in the
+second it started (on the owner's workstation, an exec opened through
+Docker's API, most likely Docker Desktop's Exec tab) kept them off, and no
+container with a limit could start. The harness's own `waitForBoot` polls
+with `docker exec` from the same moment, so it could have done the same. The
+test host's image now has a unit of the harness's own
+(`test/host/harness/cgroups.sh`, never part of the suite) that, before
+containerd and Docker, moves whatever entered the root into `init.scope`,
+where runc puts every later exec, and turns the controllers on, saying what it
+moved. `host.mjs restart` says what the root cgroup gives its children, fails
+loudly if not what a machine gives, and, with the suite installed, **waits
+for everything to come back, within 120 seconds of the start, and says what
+came back or what did not**, with Docker's reason (`test/host/comeback.mjs`).
+`host.mjs restart --hard` is the nearest to a power cut the harness has:
+every process killed at once, nothing stopped cleanly, nothing unmounted.
+
+**Probed** (`test/host/restart-probe.mjs`, from the workstation, in headless
+Edge for the browser's part), nine ways, each checked within 120 seconds of
+the machine's start or of the command: doctor all green; Docker, the engine,
+the panel's name, the firewall, the key vault's unit and both timers active;
+the proxy, the panel, its door and the app's four containers running and
+healthy; the panel answering by its name and at the address; signed out after
+the machine stopped, still set up, and the same password signing in by the
+name and at the address, with the app on the home screen (a restart of Docker
+alone keeps the panel, and its sessions, which is said). The ways: a restart;
+a restart with a shell entering the test host as it starts, through Docker's
+API on Docker's own start event; the machine's address taken away before
+Docker starts and given back 25 seconds later; Docker's first start failing;
+Docker restarted; Docker stopped and started; Docker's daemon killed; a hard
+stop; a hard stop with the address late. **On a fresh test host: 55 of 55**,
+each way back in 11 to 41 seconds. **On the previous commit's bundle**, on a
+fresh test host: every one of the nine ways WRONG (the panel exited with its
+address taken by the door, or its door gone with "invalid IP address:
+this-machine", and after that every later way, since nothing brought them
+back); run again alone on another fresh test host, the ways of Docker and
+the hard stop: Docker stopped and started left the engine inactive, and a
+hard stop hit the address clash, while a restart of Docker and its daemon
+killed came back (live restore kept the containers, and the unit restarted
+the engine with Docker). Two faults of the probe's own were found by those
+runs and fixed after them: a Docker restart does not run the key vault's
+boot unit, so on a host that has never rebooted it is rightly inactive; and a
+browser still signed in is signed out first, so that signing in is what is
+tried. Unit tests: `test/unit/keeper.test.mjs` (what is started and what is
+not, Docker's reason without its layers, the lock taken and an app whose lock
+is held left for the next round, the fixed addresses).
+
+**The walkthrough's restart** (step 16, and step 30, which now carries its own
+command) is `node test/host/host.mjs restart`, which on the owner's test host
+would have said "NOT back within 120 s of the start", naming the panel and
+Docker's reason.
+
+**Limits.** A hard stop in the harness kills every process, but the
+workstation's kernel keeps what they wrote; a real power cut also loses what
+the disk had not written yet. The keeper starts what Docker could not; it does
+not repair what is wrong with it (a damaged image, a full disk): doctor names
+the reason, and the keeper keeps trying. After the first three minutes, a
+container can be down for up to 30 seconds before the next round.

@@ -1,0 +1,13 @@
+[Unit]
+Description=Test host only: the cgroup tree a machine boots with (D80)
+DefaultDependencies=no
+After=systemd-journald.service
+Before=sysinit.target containerd.service docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh /usr/local/lib/test-host/cgroups.sh
+
+[Install]
+WantedBy=sysinit.target

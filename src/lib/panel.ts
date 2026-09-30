@@ -21,6 +21,7 @@ import { posix as path } from "node:path";
 import { BRAND, INSTALL_ROOT, NAMES } from "./brand.js";
 import { containerState, docker, engineInfo, tryDocker, waitHealthy } from "./docker.js";
 import { ensureFile } from "./files.js";
+import { startError } from "./keeper.js";
 import { readOverrides } from "./overrides.js";
 import { ensureAllServerBlocks, lanAddress } from "./project.js";
 import { PROXY_IMAGE, reloadProxy, removeServerConf } from "./proxy.js";
@@ -56,10 +57,28 @@ export function lastSubnet(pool: string): string {
   return `${[24, 16, 8, 0].map((s) => Math.floor(last / 2 ** s) % 256).join(".")}/24`;
 }
 
+/**
+ * The panel's network, and a fixed address on it for the panel and for its
+ * door (D80). Anything else Docker gives an address there comes from the
+ * upper half, `range`, so that nothing can hold the panel's or the door's
+ * address when Docker starts it: at a boot where Docker started the door
+ * first, the door took the panel's address, and the panel could not start.
+ */
 export const panelAddresses = (subnet: string) => {
   const prefix = subnet.split("/")[0].split(".").slice(0, 3).join(".");
-  return { gateway: `${prefix}.1`, panel: `${prefix}.2` };
+  return { gateway: `${prefix}.1`, panel: `${prefix}.2`, door: `${prefix}.3`, range: `${prefix}.128/25` };
 };
+
+/** The panel's network, as this version makes it: from Docker's first address pool. */
+function panelNetwork(): ReturnType<typeof panelAddresses> & { subnet: string } {
+  const pools = engineInfo()?.addressPools ?? [];
+  if (!pools.length) throw new Error("Docker has no address pools set for the suite's networks: run install.sh again");
+  const subnet = lastSubnet(pools[0]);
+  return { subnet, ...panelAddresses(subnet) };
+}
+
+/** An IPv4 address, and nothing else (Docker says "invalid IP" for a stopped container's). */
+const isAddress = (value: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(value);
 
 /**
  * The panel's door (D63, D74): a small nginx of its own, from the proxy's
@@ -207,20 +226,32 @@ export async function ensurePanel(): Promise<PanelChange[]> {
     out.push({ what: `image ${tag}, built here from the pinned Node.js 24 image`, changed: true });
   } else out.push({ what: `image ${tag}`, changed: false });
 
-  const pools = engineInfo()?.addressPools ?? [];
-  if (!pools.length) throw new Error("Docker has no address pools set for the suite's networks: run install.sh again");
-  const subnet = lastSubnet(pools[0]);
-  const { gateway, panel } = panelAddresses(subnet);
-  const existing = tryDocker(["network", "inspect", NAMES.panelNetwork, "--format", "{{.Internal}} {{range .IPAM.Config}}{{.Subnet}}{{end}}"]);
+  const { subnet, gateway, panel, range } = panelNetwork();
+  // Docker 29 prints a network with no range for other addresses as "invalid Prefix", not as nothing.
+  const inspectNetwork = () => {
+    const r = tryDocker(["network", "inspect", NAMES.panelNetwork, "--format", "{{.Internal}}|{{range .IPAM.Config}}{{.Subnet}}|{{.IPRange}}{{end}}"]);
+    const [internal, sub, ipRange = ""] = r.stdout.trim().split("|");
+    return { code: r.code, seen: `${internal} ${sub}${/^\d+\.\d+\.\d+\.\d+\/\d+$/.test(ipRange) ? ` ${ipRange}` : ""}` };
+  };
+  let existing = inspectNetwork();
+  if (existing.code === 0 && existing.seen === `true ${subnet}`) {
+    // Made before D80, with no range for other addresses: made again, with the
+    // panel and its door, which are made again below.
+    tryDocker(["rm", "-f", NAMES.panelDoorContainer]);
+    tryDocker(["rm", "-f", NAMES.panelContainer]);
+    docker(["network", "rm", NAMES.panelNetwork]);
+    out.push({ what: `network ${NAMES.panelNetwork} removed, to be made with a fixed address for the panel and its door`, changed: true });
+    existing = inspectNetwork();
+  }
   if (existing.code !== 0) {
     const clash = tryDocker(["network", "ls", "-q"]).stdout.split("\n").filter(Boolean)
       .map((id) => tryDocker(["network", "inspect", id, "--format", "{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}"]).stdout.trim())
       .find((line) => line.split(" ").slice(1).includes(subnet));
     if (clash) throw new Error(`the panel's network would be ${subnet}, which the network ${clash.split(" ")[0]} already uses`);
-    docker(["network", "create", "--internal", "--subnet", subnet, "--gateway", gateway, "--label", `${C}.role=panel`, NAMES.panelNetwork]);
-    out.push({ what: `network ${NAMES.panelNetwork}, internal: no route out (${subnet})`, changed: true });
-  } else if (existing.stdout.trim() !== `true ${subnet}`) {
-    throw new Error(`the network ${NAMES.panelNetwork} is not the panel's (${existing.stdout.trim()}): remove it, and run install.sh again`);
+    docker(["network", "create", "--internal", "--subnet", subnet, "--ip-range", range, "--gateway", gateway, "--label", `${C}.role=panel`, NAMES.panelNetwork]);
+    out.push({ what: `network ${NAMES.panelNetwork}, internal: no route out (${subnet}; the panel and its door at fixed addresses)`, changed: true });
+  } else if (existing.seen !== `true ${subnet} ${range}`) {
+    throw new Error(`the network ${NAMES.panelNetwork} is not the panel's (${existing.seen}): remove it, and run install.sh again`);
   } else out.push({ what: `network ${NAMES.panelNetwork}, internal`, changed: false });
 
   const { uid, gid } = idOf(NAMES.panelUser);
@@ -236,7 +267,7 @@ export async function ensurePanel(): Promise<PanelChange[]> {
     out.push({ what: `container ${NAMES.panelContainer}, as ${NAMES.panelUser}, read-only, with only the engine's socket`, changed: true });
   } else out.push({ what: `container ${NAMES.panelContainer} running`, changed: false });
 
-  out.push(ensurePanelDoor(panel));
+  out.push(ensurePanelDoor());
   // Every app's doors, as this version writes them: without the panel's cookie, and never on its name (D74).
   const doors = ensureAllServerBlocks();
   out.push({ what: doors.length ? `the doors of ${doors.join(", ")}, without the panel's cookie` : "every app's doors, without the panel's cookie", changed: doors.length > 0 });
@@ -245,13 +276,16 @@ export async function ensurePanel(): Promise<PanelChange[]> {
 
 /**
  * The door, for the machine's address now (D74): its configuration written,
- * and its container made again when the address it is published on changed;
- * the proxy's own server for the panel, from before D74, taken away.
+ * and its container made again when the address it is published on changed,
+ * or when it is not running; the proxy's own server for the panel, from
+ * before D74, taken away. The panel's address and its own are worked out
+ * from Docker's address pool, never read from the panel's container, which
+ * says "invalid IP" when it is not running (D80).
  */
-export function ensurePanelDoor(panelIp?: string): PanelChange {
-  const ip = panelIp ?? tryDocker(["inspect", "-f", `{{(index .NetworkSettings.Networks "${NAMES.panelNetwork}").IPAddress}}`, NAMES.panelContainer]).stdout.trim();
-  if (!ip) throw new Error(`the panel's container ${NAMES.panelContainer} is not on its network`);
+export function ensurePanelDoor(): PanelChange {
+  const { panel: ip, door: doorIp } = panelNetwork();
   const address = lanAddress();
+  if (!isAddress(address)) throw new Error("this machine has no address on the home network yet, so the door cannot be published on it");
   let changed = false;
 
   mkdirSync(NAMES.panelDoorDir, { recursive: true, mode: 0o755 });
@@ -262,13 +296,16 @@ export function ensurePanelDoor(panelIp?: string): PanelChange {
     changed = true;
   }
   const args = doorRunArgs(address, conf);
-  const want = argsLabel(args);
+  const want = argsLabel([...args, doorIp]);
   const state = containerState(NAMES.panelDoorContainer);
   if (!state.exists || state.labels[`${C}.door-args`] !== want || state.status !== "running") {
     tryDocker(["rm", "-f", NAMES.panelDoorContainer]);
-    const [run, detached, ...rest] = args;
-    docker([run, detached, "--label", `${C}.door-args=${want}`, ...rest]);
-    docker(["network", "connect", NAMES.panelNetwork, NAMES.panelDoorContainer]);
+    // Made, joined to the panel's network at its own fixed address, and only
+    // then started, so that it never runs, even for a moment, anywhere else.
+    const [, , ...rest] = args;
+    docker(["create", "--label", `${C}.door-args=${want}`, ...rest]);
+    docker(["network", "connect", "--ip", doorIp, NAMES.panelNetwork, NAMES.panelDoorContainer]);
+    docker(["start", NAMES.panelDoorContainer]);
     changed = true;
   } else if (confChanged) {
     const test = tryDocker(["exec", NAMES.panelDoorContainer, "nginx", "-t"]);
@@ -281,6 +318,27 @@ export function ensurePanelDoor(panelIp?: string): PanelChange {
     changed = true;
   }
   return { what: `door ${panelUrls(address).join(" and ")}, port 80, for private addresses only`, changed };
+}
+
+/**
+ * What the engine does again and again (D80): the panel's container started
+ * when it is not running, and its door made what it should be. Docker brings
+ * back a container that exits after it has run; one it could not start, at
+ * boot or later, it leaves as it is, and the panel stayed down (the eighth
+ * brief, item 1). Before install has made the panel, there is none to keep.
+ */
+export function keepPanel(): PanelChange[] {
+  const out: PanelChange[] = [];
+  const state = containerState(NAMES.panelContainer);
+  if (!state.exists) return out;
+  if (state.status === "created" || state.status === "exited" || state.status === "dead") {
+    const why = state.error ? `Docker could not start it: ${startError(state.error)}` : `it was ${state.status}`;
+    const ran = tryDocker(["start", NAMES.panelContainer]);
+    if (ran.code !== 0) throw new Error(`the panel's container could not be started (${why}); now: ${startError(ran.stderr.replace(/^Error response from daemon: /, "").split("\n")[0] ?? "")}`);
+    out.push({ what: `the panel's container started again (${why})`, changed: true });
+  }
+  out.push(ensurePanelDoor());
+  return out;
 }
 
 /**

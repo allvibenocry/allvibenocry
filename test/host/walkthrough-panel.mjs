@@ -246,9 +246,10 @@ try {
   verdict("Tried by you done, Backup taken stopped", await page.eval(`[...document.querySelectorAll("#shipcard .safety li")].slice(0, 2).map((l) => l.className).join(",")`), "done,failed");
   await pressNext();
   // The disk back, as step 16 says for the test host: the test host starts again.
+  // Since D80 the restart waits for the suite, and says whether all of it came back, within two minutes.
   const restarted = harness("restart");
-  verdict("workstation: node test/host/host.mjs restart (step 16's)", restarted.status === 0 ? "ran" : `exit ${restarted.status}`, "ran");
-  await sleep(30000);
+  const cameBack = `${restarted.stdout}${restarted.stderr}`.split("\n").find((l) => l.startsWith("suite ")) ?? `no line about the suite (exit ${restarted.status})`;
+  verdict("workstation: node test/host/host.mjs restart: everything back", cameBack, (s) => restarted.status === 0 && /^suite +back \d+ s after the start: doctor all green; .*the panel answers at http:\/\/allvibe\.local\/ and at the address$/.test(s));
   await signIn();
   await page.goto(`${PANEL}/apps/hello`);
   await waitButton("Put v2 live", 120000);
