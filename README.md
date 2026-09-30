@@ -25,6 +25,8 @@ and without losing data.
 - [STATE.md](STATE.md): what works, and what has not been verified yet.
 - [docs/walkthrough.md](docs/walkthrough.md): the whole thing, step by step, on
   a disposable test host.
+- [docs/real-hardware.md](docs/real-hardware.md): from a blank laptop to a
+  working suite, and the checks only a real machine can pass.
 - [docs/roadmap.md](docs/roadmap.md): what is planned, and not built yet.
 - [CLAUDE.md](CLAUDE.md) and [DECISIONS.md](DECISIONS.md): the rules this is
   built by, and every decision with its reason.

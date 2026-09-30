@@ -23,7 +23,7 @@ run on real hardware.
 
 On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough.md):
 
-- **Installing a host.** `install.sh`, in fifteen steps, installs Docker Engine
+- **Installing a host.** `install.sh`, in sixteen steps, installs Docker Engine
   from Docker's repository, the service user, the directories, the CLI, the
   reverse proxy, the backup keys, the daily timer, the unit that puts the key
   vault's keys back into memory at boot, the firewall for project containers,
@@ -181,6 +181,8 @@ and accepted, with three points carried forward (D81).
 | 3. Records and the friction log | Recorded (D81): the owner's try (above); friction log entries 7 to 9, each with where it goes; the review's three points carried forward. Proved that a new project carries no local allow of any kind: `test/unit/no-allow.test.mjs` (the template and the agent's image) and `test/host/no-allow.sh` (a project made on the test host, its working copy and every commit), each seen passing and, with an allow planted in the template, failing. |
 | 4. The engine's next operations | Built and probed (D82): service keys (a value only ever goes in), going back with the data (the app's name typed; what is lost in the CLI's words; a fresh backup, now restore-checked, first), work outside a plan (a reason the release keeps; refused past an untried step), removing an app (the name typed; a last backup restore-checked, kept and where it is said), each through the app's lock. `ops-probe.mjs` 61 of 61 on a fresh test host; 46 of 61 WRONG on the previous commit's bundle. Found by the probe: two restore contexts made in one second shared a folder, and going back with the data put back the current data; fixed, with a unit test seen failing on the code before. |
 | 5. The panel for those operations | Built and checked in headless Edge (D83), in the demo's design: service keys under More (the value pasted into a password field, never shown again); going back with the data set apart under Live, never pink, never in the guided path, what is lost said with its counts and the app's name typed; work outside a plan only where a release would be refused for want of one, the reason kept; removing an app in its settings, the name typed, where its last backup is kept said. `panel-checks.mjs`: nine new checks (41), twelve new broken copies (46), 76 pairs of copy and check each seen failing; then 215, 215, 217 and 217 passed at 1280 and 390 pixels, light and dark. Found and fixed: after going back the panel named a version already used (the engine now says `nextVersion`); Service keys opened on a Remove button when a key was listed. |
+| 6. The website's demo | Built, in the website's repository (its D35, `b0f4cf5`), and **not tagged, released or deployed**: the demo shows the guided path, the AI's own terminal as a marked picture in plain text, "Start your AI", a new app from the home screen, and only "your own API key, or your own AI app through MCP". Its checks pass at 1440, 768, 390, 360 and 320 px in light and dark, each seen failing on a broken copy (15). |
+| 7. From a blank laptop to a working suite | Recorded, documentation only: [docs/real-hardware.md](docs/real-hardware.md), from a Debian 13 USB stick to a first app, one command per block and where each runs, then every line of "To verify on real hardware" below as a check, with how and what to see. Nothing of it run on a laptop. |
 
 ## The seventh brief
 
@@ -515,3 +517,15 @@ closes these. Each names the test override or stand-in used in the container.
   view as well. On the laptop, systemd shares mounts with its services: pull
   the USB disk and press "Put vN live" in the panel, which must stop at the
   backup target.
+- **Everything back after a real restart, a hard stop and a late address**
+  (D80). On the test host a container restart, a kill of every process at
+  once, and the address taken off its network card before Docker started stood
+  in. On the laptop: a reboot; the power button held until it is off, then
+  started again (with a battery, pulling the plug does nothing until the
+  battery is empty); and a start with the network cable out, plugged in a
+  minute later. Each time, within two minutes of the start (or of the cable):
+  doctor all green, the panel at its name and at the address, signed out and
+  still set up, the app back.
+
+Each of these, with its commands and what to see, is a check in
+[docs/real-hardware.md](docs/real-hardware.md).
