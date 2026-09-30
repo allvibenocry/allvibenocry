@@ -3,6 +3,9 @@
  * `host.mjs restart` and `restart-probe.mjs` wait for, within a stated time.
  *
  *   - doctor all green (no warning, no problem), as the machine itself says;
+ *     after `host.mjs restart`, nothing new since just before it (a problem
+ *     the machine already had, such as an app with no backup yet, is named as
+ *     already there, and a start does not have to mend it);
  *   - the suite's units active: the engine, the panel's name, the firewall,
  *     the key vault's boot unit, Docker, and both timers;
  *   - every container the suite runs running, and healthy where it has a
@@ -47,8 +50,23 @@ function health(port, host) {
   });
 }
 
-/** One look: what is back, and what is not, each in a line. `notYet`: units that have not had a boot to run at. */
-export async function look(name, panelPort, { notYet = [] } = {}) {
+/** Doctor's warnings and problems now, by check and status (`problem:backup-hello`), with their words. */
+export function doctorOff(name) {
+  try {
+    const checks = JSON.parse(onHost(name, [C, "doctor", "--json"]).out).checks ?? [];
+    return new Map(checks.filter((c) => c.status !== "ok" && c.status !== "info").map((c) => [`${c.status}:${c.id}`, c.text]));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One look: what is back, and what is not, each in a line. `notYet`: units
+ * that have not had a boot to run at. `before`: doctor's warnings and problems
+ * just before the machine stopped (doctorOff), which a start does not have to
+ * mend: a warning or problem counts only when it is new.
+ */
+export async function look(name, panelPort, { notYet = [], before = null } = {}) {
   const UNITS = UNITS_ALL.filter((u) => !notYet.includes(u));
   const notBack = [];
   const back = [];
@@ -61,8 +79,10 @@ export async function look(name, panelPort, { notYet = [] } = {}) {
     notBack.push(`doctor: no answer (${(doctor.err || doctor.out).trim().split("\n").at(-1) ?? ""})`);
   }
   const off = checks.filter((c) => c.status !== "ok" && c.status !== "info");
+  const already = off.filter((c) => before?.has(`${c.status}:${c.id}`));
   if (checks.length && !off.length) back.push("doctor all green");
-  for (const c of off) notBack.push(`doctor ${c.status}: ${c.text}`);
+  else if (checks.length && already.length === off.length) back.push(`doctor as before the restart, nothing new (already there: ${already.map((c) => c.text).join("; ")})`);
+  for (const c of off.filter((o) => !already.includes(o))) notBack.push(`doctor ${c.status}: ${c.text}`);
 
   const units = onHost(name, ["systemctl", "is-active", ...UNITS]).out.trim().split("\n");
   const inactive = UNITS.filter((u, i) => units[i] !== "active");
@@ -77,7 +97,7 @@ export async function look(name, panelPort, { notYet = [] } = {}) {
   const down = containers.filter((c) => c.status !== "running" || (c.health && c.health !== "healthy"));
   if (!containers.some((c) => c.role === "panel")) notBack.push("the panel's container is not there");
   if (down.length) notBack.push(`containers: ${down.map((c) => `${c.name} ${c.status}${c.health ? `/${c.health}` : ""}${c.error ? ` (${c.error.slice(-90)})` : ""}`).join("; ")}`);
-  else if (containers.length) back.push(`${containers.length} containers running (${[...new Set(containers.map((c) => c.role))].join(", ")})`);
+  else if (containers.length) back.push(`${containers.length} containers running (${[...ROLES].filter((r) => containers.some((c) => c.role === r)).join(", ")})`);
 
   const byName = await health(panelPort, `${C}.local`);
   const byAddress = await health(panelPort, "localhost");
@@ -97,10 +117,10 @@ export function startedAt(name) {
  * Looks every few seconds until everything is back or the stated time since
  * `since` (the machine's start, or the moment Docker was restarted) has passed.
  */
-export async function waitForSuite(name, panelPort, { since = startedAt(name), seconds = COMEBACK_SECONDS, notYet = [] } = {}) {
+export async function waitForSuite(name, panelPort, { since = startedAt(name), seconds = COMEBACK_SECONDS, notYet = [], before = null } = {}) {
   // At least one look, even when the time is already up (the harness's restart may have waited it out).
   for (;;) {
-    const last = await look(name, panelPort, { notYet });
+    const last = await look(name, panelPort, { notYet, before });
     const seen = Math.round((Date.now() - since) / 1000);
     if (last.ok || Date.now() >= since + seconds * 1000) return { ...last, ok: last.ok && seen <= seconds, seconds: seen };
     await sleep(3000);

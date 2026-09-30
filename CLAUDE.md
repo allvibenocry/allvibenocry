@@ -481,3 +481,9 @@ From the eighth brief, here:
     the dialog did not open. *Here:* after a change made outside the page,
     a check loads the page again, as a person coming to it would, and a
     control that is not there is said as such (D83).
+66. **"Came back" is not "nothing is wrong".** The restart's verdict asked
+    doctor for all green; in walkthrough step 30 an app has no backup yet,
+    on purpose, and the restart said "NOT back" for a problem it had not
+    made. The probes never met it, because they make the machine green
+    first. *Here:* a verdict about a change compares with just before it,
+    and what was already there is named, not counted (D84).

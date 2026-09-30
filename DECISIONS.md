@@ -3517,3 +3517,60 @@ that is not on the page is said as such.
 **Why.** D66 put these four in the panel, each in the place the demo gives
 it; D68 keeps whatever loses data or skips a plan out of the guided path, so
 that the ordinary way never leads there by accident.
+
+## D84. The walkthrough: every block says where it runs, every step carries its own commands
+
+*2026-09-30. The eighth brief, item 8; friction log 7 and 9.*
+
+- **Every command block says where it runs**, on the line just above it:
+  **Workstation:** or **Host:**, nothing else. "Before you start" says what
+  each looks like: the workstation's PowerShell or Git Bash, and the host's
+  root shell, whose prompt on the test host now starts with `(test host)`
+  (`host.mjs shell` sets Debian's own prompt variable for it, and says whose
+  shell it is before it opens). It asks for two terminals, one for each, and
+  says that a harness command typed in the host's shell fails.
+- **Every step carries its own commands**: no "as in step 16". Taking the disk
+  away and bringing it back, making a name free, and the setup code are
+  blocks of their own where they are needed. A restart ends the host's shell,
+  and the text says to open it again.
+- **`walkthrough-blocks.mjs`** refuses a block without its place, a
+  workstation command (the harness, npm) marked Host or a host command marked
+  Workstation, and "as in step N" anywhere; with the rules it already had (one
+  command per block, no heredoc, a name made free before `project create`).
+  On the walkthrough before this item: 174 problems; after: none.
+- **`walkthrough-panel.mjs`** checks each block's place against where it runs
+  it, reads the setup code from the text's own block, runs the restart that
+  brings the disk back as the text's block, and compares the text's quotes
+  with their placeholders (`<n>`, `<when>`, `<file>`).
+- **The restart's verdict is "everything came back"**, not "nothing is
+  wrong": `host.mjs restart` takes doctor's warnings and problems just before
+  the stop, and after the start one that was already there (in step 30, hello
+  with no backup yet, since the release that would have taken one stopped) is
+  named as already there; anything new still counts, as it did (mistake 66). Found by the
+  run of step 30 as written: the restart said "NOT back" for a problem the
+  restart had not made. `restart-probe.mjs` stays strict: it makes the
+  machine green first. The container roles in its line come in a fixed order,
+  so that the text can quote them.
+- **What the eighth brief changed, in the text**: step 16 with the restart
+  that says whether everything came back, and the hard stop; step 14's and
+  step 18's words for going back with the data (the fresh backup
+  restore-checked); step 25's and step 30's disk; step 30's new part, work
+  outside a plan, going back with the data, service keys and removing an app,
+  all in the panel; clean up without hello, which step 30 removed.
+
+**Run**, on fresh test hosts, as written: step 16's blocks (the restart and the
+hard stop each back within 10 seconds, the timer active, doctor all green);
+steps 29 to 31 by `walkthrough-panel.mjs`, **132 of 132 as the text says**,
+up to "Select login method" in the panel's terminal, where the owner's
+sign-in begins. The runs before it: 52 of 54, stopped at the restart that
+said "NOT back" (above); then 130 of 132 and 131 of 132, the runner's own
+comparisons (a check's name read with its spoken state; the restart's line
+compared before its spaces were collapsed). `walkthrough-blocks.mjs`: 174
+problems on the walkthrough before this item, none on its 178 blocks after.
+Steps 14, 18 and 25 changed in their words and their disk blocks only, and
+were not run again: they need the steps before them.
+
+**Why.** The owner scrolled back fourteen steps for one command, and typed a
+workstation command into the host's shell, because the two looked alike
+(friction log 7 and 9). A reader who follows the text should never have to
+look elsewhere, or guess where a command goes.

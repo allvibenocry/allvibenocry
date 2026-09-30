@@ -32,6 +32,7 @@ function verdict(label, seen, must) {
   const good = typeof must === "function" ? must(seen) : must instanceof RegExp ? must.test(String(seen)) : flat(seen) === flat(must);
   if (!good) wrong += 1;
   console.log(`  ${label.padEnd(66)} ${flat(seen).slice(0, 60).padEnd(60)} ${good ? "as the text says" : "NOT AS THE TEXT SAYS"}`);
+  if (!good) console.log(`      seen in full: ${flat(seen)}`);
   return good;
 }
 
@@ -41,8 +42,11 @@ function blocksOf(n) {
   const start = MD.indexOf(`\n## ${n}. `);
   const end = MD.indexOf("\n## ", start + 5);
   if (start === -1) throw new Error(`no step ${n} in the walkthrough`);
-  return [...MD.slice(start, end).matchAll(/```(\w*)\n([\s\S]*?)```/g)].map(([, lang, body]) => ({ lang, body: body.trimEnd() }));
+  // Each block with the place the line above it gives (friction log 9).
+  return [...MD.slice(start, end).matchAll(/(?:\*\*(Workstation|Host):\*\*\n)?```(\w*)\n([\s\S]*?)```/g)].map(([, place, lang, body]) => ({ place: place ?? null, lang, body: body.trimEnd() }));
 }
+/** A quote with the text's placeholders (<n>, <when>, <file>) as patterns, from its start. */
+const shape = (q) => new RegExp(`^${flat(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/<n>/g, "\\d+").replace(/<[a-z ]+>/g, ".+?")}`);
 let queue = [];
 let stepNo = 0;
 function step(n, title) {
@@ -55,13 +59,15 @@ function take(kind) {
   const b = queue.shift();
   if (!b) throw new Error(`step ${stepNo}: the text has no more blocks, the run expected ${kind}`);
   if ((kind === "command") !== (b.lang === "sh")) throw new Error(`step ${stepNo}: the text has ${b.lang === "sh" ? "a command" : "a quote"} here ("${b.body.split("\n")[0]}"), the run expected ${kind}`);
-  return b.body;
+  return kind === "command" ? b : b.body;
 }
 /** The next command block, run where the text says: the harness on the workstation, everything else on the host. */
 function command({ may = false } = {}) {
-  const body = take("command");
+  const { body, place } = take("command");
   if (body.includes("\n")) throw new Error(`step ${stepNo}: a block with more than one line: ${body}`);
   const onWorkstation = body.startsWith("node test/host/host.mjs ");
+  // The line above the block says where it runs, and says it right.
+  if (place !== (onWorkstation ? "Workstation" : "Host")) throw new Error(`step ${stepNo}: "${body}" runs on the ${onWorkstation ? "workstation" : "host"}, and the line above it says ${place ? `**${place}:**` : "nothing"}`);
   const r = onWorkstation ? harness(...body.split(" ").slice(2)) : harness("exec", "--", "sh", "-c", body);
   const out = `${r.stdout}${r.stderr}`;
   const ok = verdict(`${onWorkstation ? "workstation" : "host"}: ${body.slice(0, 58)}`, r.status === 0 ? "ran" : `exit ${r.status}: ${out.trim().split("\n").at(-1)}`, (s) => may || s === "ran");
@@ -119,9 +125,8 @@ try {
   step(29, "The control panel: the first visit");
   const printed = quote();
   verdict("install's last lines, as step 2 printed them (read, not run again)", printed.split("\n")[0], "The control panel: http://allvibe.local/");
-  // A new setup code, as `allvibe panel setup-code` makes one, read by the fixture and never printed.
-  harness("push", "test/host/panel-fixture.mjs", "/root/");
-  const code = harness("exec", "--", "node", "/root/panel-fixture.mjs", "setup-code").stdout.trim();
+  // A new setup code, by the text's own block; read from its answer and never printed.
+  const code = /setup code, for your first visit: ([A-Z0-9-]+)/.exec(command().out)?.[1] ?? "";
   if (!/^[A-Z0-9-]{16,19}$/.test(code)) throw new Error("no setup code from the test host");
   await page.goto(`${PANEL}/`);
   verdict("it opens on", await text("h1"), "Set up your control panel");
@@ -245,11 +250,15 @@ try {
   verdict("a backup that cannot be taken", noDisk, (s) => flat(s).startsWith(flat(quote())));
   verdict("Tried by you done, Backup taken stopped", await page.eval(`[...document.querySelectorAll("#shipcard .safety li")].slice(0, 2).map((l) => l.className).join(",")`), "done,failed");
   await pressNext();
-  // The disk back, as step 16 says for the test host: the test host starts again.
+  // The disk back: the test host starts again, the step's own block (friction log 7).
   // Since D80 the restart waits for the suite, and says whether all of it came back, within two minutes.
-  const restarted = harness("restart");
-  const cameBack = `${restarted.stdout}${restarted.stderr}`.split("\n").find((l) => l.startsWith("suite ")) ?? `no line about the suite (exit ${restarted.status})`;
-  verdict("workstation: node test/host/host.mjs restart: everything back", cameBack, (s) => restarted.status === 0 && /^suite +back \d+ s after the start: doctor all green; .*the panel answers at http:\/\/allvibe\.local\/ and at the address$/.test(s));
+  const restarted = command();
+  const cameBack = restarted.out.split("\n").find((l) => l.startsWith("suite ")) ?? "no line about the suite";
+  verdict("everything back, the panel included", flat(cameBack), shape(quote()));
+  // Signed out, and still set up (D80): its sign-in page, not its setup page.
+  await page.goto(`${PANEL}/`);
+  await page.waitFor(`location.pathname === "/sign-in" || location.pathname === "/setup"`, { what: "the panel, reloaded", timeout: 30000 });
+  verdict("reloaded: its sign-in page, not its setup page", await page.eval("location.pathname"), "/sign-in");
   await signIn();
   await page.goto(`${PANEL}/apps/hello`);
   await waitButton("Put v2 live", 120000);
@@ -297,6 +306,97 @@ try {
   verdict("Machine health: hello's backups", await page.eval(`[...document.querySelectorAll(".check-row")].map((r) => r.innerText).find((t) => /hello:/.test(t)) ?? ""`), /hello: last backup less than an hour ago; last restore check .* UTC passed, in going back \(1 entry\)/);
   const runs = harness("exec", "--", "ls", `/var/lib/${C}/runs/`).stdout;
   verdict("host: ls /var/lib/allvibe/runs/: the release and the rollback", `${/release-hello/.test(runs)} ${/rollback-hello/.test(runs)}`, "true true");
+
+  // The eighth brief (D82, D83): work outside a plan, going back with the data, service keys, removing the app.
+  const PINK = "rgb(255, 77, 148)";
+  command(); // the shorter button
+  command(); // dev commit
+  command(); // dev deploy
+  await page.goto(`${PANEL}/apps/hello`);
+  await page.waitFor(`!!document.querySelector("#guide .stages")`, { what: "hello" });
+  await tabTo("live");
+  await page.waitFor(`!!document.querySelector("#outside-card")`, { what: "the card for changes outside a plan", timeout: 30000 });
+  verdict("Live: changes outside a plan", await text("#outside-card"), shape(quote()));
+  verdict("its button, not pink", await page.eval(`getComputedStyle(document.querySelector('#outside-card [data-action="put-outside"]')).backgroundColor`), (c) => c !== PINK);
+  await page.click('#outside-card [data-action="put-outside"]');
+  await page.waitFor(`document.activeElement?.id === "outside-why"`, { what: "why, in your own words" });
+  await page.type("A shorter button, tried by hand");
+  await page.key("Enter");
+  verdict("put live outside a plan", await waitCard(/is live\.|is not live/), /^v3 is live\./);
+  verdict("Earlier versions: your reason, kept", await text("#live-pane .vers"), /^v3 .*A shorter button, tried by hand\. Live now/);
+  const liveApp = await page.eval(`[...document.querySelectorAll("#live-pane a")].find((a) => a.textContent.trim() === "Open the live app")?.href ?? ""`);
+  const app3 = await openPage(browser.port, { width: 1000, height: 800, scheme: "light" });
+  await app3.goto(liveApp);
+  const entry3 = `Lost ${randomBytes(2).toString("hex")}`;
+  await app3.eval(`(() => { document.querySelector("input[name=name]").value = ${JSON.stringify(entry3)}; const m = document.querySelector("textarea, input[name=message]"); if (m) m.value = "Written on v3."; document.querySelector("form button, form [type=submit]").click(); return true; })()`);
+  await sleep(2500);
+  verdict("an entry written in the live app, on v3", await app3.eval(`document.body.innerText.includes(${JSON.stringify(entry3)})`), true);
+  await page.goto(`${PANEL}/apps/hello`);
+  await page.waitFor(`!!document.querySelector("#guide .stages")`, { what: "hello" });
+  await tabTo("live");
+  verdict("Going back with the data: set apart, under Earlier versions", await text("#data-card h2"), "Go back with the data");
+  verdict("never pink, and not the next action", `${(await page.eval(`getComputedStyle(document.querySelector('[data-action="go-back-data"]')).backgroundColor`)) !== PINK} ${(await guide()).button}`, (s) => /^true /.test(s) && !/with the data/.test(s));
+  await page.click('[data-action="go-back-data"]');
+  await page.waitFor(`!!document.querySelector("#data-form")`, { what: "the dialog", timeout: 20000 });
+  verdict("the dialog: what it loses", await text("#dialog"), shape(quote()));
+  verdict("its button, before the name", await page.eval(`document.querySelector("#data-go").disabled`), true);
+  await page.click("#data-name");
+  await page.type("hello");
+  verdict("its button, with the name typed", await page.eval(`document.querySelector("#data-go").disabled`), false);
+  await page.click("#data-go");
+  verdict("back, with the data", await waitCard(/^Back on .*with its data|^Going back with the data stopped/), (s) => flat(s).startsWith(flat(quote())));
+  verdict("its six checks", await page.eval(`[...document.querySelectorAll("#shipcard .safety li")].map((l) => l.className + ":" + (l.querySelector("span:not(.g):not(.sr)")?.firstChild?.textContent ?? "").trim()).join(" | ")`), /^done:It can go back \| done:Backup taken \| done:Backup restored and checked \| done:Data put back \| done:v1 started \| done:v1 answers$/);
+  await app3.goto(liveApp);
+  verdict("the live app, reloaded: its heading", flat(await app3.text("h1")), /^Guestbook/);
+  verdict("the entry from v2 kept, the one from v3 gone", `${await app3.eval(`document.body.innerText.includes(${JSON.stringify(entry)})`)} ${await app3.eval(`document.body.innerText.includes(${JSON.stringify(entry3)})`)}`, "true false");
+  await app3.close();
+  verdict("host: allvibe project status hello", flat(command().out), /version +v1,.*check +answers: 1 entry/);
+  await page.click("#more-btn");
+  await page.click('[data-action="more-keys"]');
+  await page.waitFor(`!!document.querySelector("#dialog .keys-list")`, { what: "Service keys", timeout: 15000 });
+  verdict("Service keys", await text("#dialog .keys-list"), /^No keys yet\./);
+  await page.click('[data-action="add-key"]');
+  await page.waitFor(`document.activeElement?.id === "k-name"`, { what: "Add a service key" });
+  await page.type("WEATHER_API_KEY");
+  await page.eval(`(() => { const s = document.querySelector("#k-where"); s.value = "prod"; s.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+  verdict("the value's field hides it", `${await page.eval(`document.querySelector("#k-value").type`)}: ${await text("#k-value-hint")}`, "password: Paste the key here. It is never shown again.");
+  const madeUp = "made-up-for-the-walkthrough";
+  await page.click("#k-value");
+  await page.type(madeUp);
+  await page.click("#key-go");
+  await page.waitFor(`!!document.querySelector("#dialog .said")`, { what: "saved", timeout: 180000 });
+  verdict("saved", await text("#dialog .said"), "WEATHER_API_KEY is saved and will not be shown again.");
+  verdict("the list: the key, hidden", await text("#dialog .keys-list"), /^WEATHER_API_KEY •••••• Live app, changed just now\. Remove$/);
+  verdict("the value nowhere in the page", await page.eval(`document.documentElement.outerHTML.includes(${JSON.stringify(madeUp)}) || [...document.querySelectorAll("input")].some((i) => i.value === ${JSON.stringify(madeUp)})`), false);
+  const listed = command().out;
+  verdict("host: allvibe key list hello: its name, never its value", `${listed.includes("WEATHER_API_KEY")} ${listed.includes(madeUp)}`, "true false");
+  verdict("host: the live app reads it from a file", command().out.trim(), /(^|\n)WEATHER_API_KEY(\n|$)/);
+  await page.click('#dialog [data-action="remove-key"]');
+  await page.waitFor(`!!document.querySelector("#rk-go")`, { what: "Remove it?" });
+  verdict("removing it, in plain words", await text("#dialog"), /^Remove WEATHER_API_KEY from the live app\? The live app starts again without it\. If it still needs the key, it may stop working until you add it again\./);
+  await page.click("#rk-go");
+  await page.waitFor(`/is removed/.test(document.querySelector("#dialog .said")?.textContent ?? "")`, { what: "removed", timeout: 180000 });
+  verdict("removed", await text("#dialog .said"), "WEATHER_API_KEY is removed from the live app.");
+  await page.key("Escape");
+  await page.click("#more-btn");
+  await page.click('[data-action="more-settings"]');
+  await page.waitFor(`!!document.querySelector('#dialog [data-action="remove-app"]')`, { what: "App settings" });
+  verdict("App settings: Remove this app, set apart", await text("#dialog .apart"), /^Remove this app .*A last backup of the live app is taken first, and kept\. Remove hello…$/);
+  await page.click('#dialog [data-action="remove-app"]');
+  await page.waitFor(`!!document.querySelector("#rm-form")`, { what: "Remove hello?" });
+  verdict("Remove hello?", await text("#dialog"), shape(quote()));
+  verdict("its button, before the name", await page.eval(`document.querySelector("#rm-go").disabled`), true);
+  await page.click("#rm-name");
+  await page.type("hello");
+  await page.click("#rm-go");
+  await page.waitFor(`!!document.querySelector("#rm-home")`, { what: "hello removed", timeout: 300000 });
+  verdict("removed", await text("#dialog-title"), "hello is removed");
+  const kept = /is kept on the backup disk: (\S+)\. Its earlier backups are kept too\.$/.exec(await text("#dialog p"))?.[1] ?? "";
+  verdict("where its last backup is", kept, /^\/mnt\/allvibe-backup\/allvibe\/hello\/releases\/hello-prod-\S+\.dump\.age$/);
+  await page.click("#rm-home");
+  await page.waitFor(`location.pathname === "/" && !!document.querySelector("#main .head")`, { what: "Your apps" });
+  verdict("hello gone from the home screen and the side bar", await page.eval(`[...document.querySelectorAll(".app-card h3, #nav a")].some((e) => e.textContent.trim() === "hello")`), false);
+  verdict("host: the last backup, where the panel said", command().out.split("\n").includes(kept.split("/").pop()), true);
 
   /* ------------------------------------------------------------ 31 -- */
   step(31, "Your AI in the panel: a new app, and your own sign-in");

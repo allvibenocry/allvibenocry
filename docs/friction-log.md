@@ -83,9 +83,10 @@ One entry per snag, numbered in the order they came:
 - **2026-09-30, walkthrough step 30**, "Bring the disk back as in step 16":
   to know what to type, I had to scroll back fourteen steps.
 - **How much it hurt:** a little.
-- **Where it goes:** fixed in the eighth brief, item 8: every step carries its
-  own commands, in blocks of its own, and `walkthrough-blocks.mjs` refuses a
-  step that sends the reader to another step for a command.
+- **Where it goes:** fixed in the eighth brief, item 8 (D84): every step
+  carries its own commands, in blocks of its own (the disk taken away and
+  brought back, a name made free, the setup code), and
+  `walkthrough-blocks.mjs` refuses "as in step N" anywhere in the text.
 
 ### 8. The panel did not come back after a restart
 
@@ -105,6 +106,8 @@ One entry per snag, numbered in the order they came:
   into the test host's shell, because the two look alike in the walkthrough
   and on the screen.
 - **How much it hurt:** a little; it cost a few minutes to see why.
-- **Where it goes:** fixed in the eighth brief, item 8: every command block
-  says where it runs in a way that cannot be missed, and the test host's shell
-  looks different from the workstation's.
+- **Where it goes:** fixed in the eighth brief, item 8 (D84): every command
+  block has **Workstation:** or **Host:** on the line just above it, which
+  `walkthrough-blocks.mjs` checks, and "Before you start" asks for two
+  terminals, one for each. The test host's shell now says whose it is when it
+  opens, and its prompt starts with `(test host)`.

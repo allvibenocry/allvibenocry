@@ -1,11 +1,15 @@
 # State
 
-*Updated 2026-09-30: the seventh brief's items are built (D66 to D79): the
-workstation's protections, one lock per app, the panel at `allvibe.local` on
-port 80, the guided path, the engine's agent and new app, the chat as Claude
-Code's own terminal in the panel, and browser checks for all of it; its
-report is [reports/2026-09-30-brief-07.md](reports/2026-09-30-brief-07.md).
-The sixth brief's is
+*Updated 2026-09-30: the eighth brief's items are done (D80 to D84):
+everything back after a restart, in any order; no local allow in a new
+project, proved; service keys, going back with the data, work outside a plan
+and removing an app, in the engine and the panel; the website's demo brought
+to the guided path (not released); a guide from a blank laptop; the
+walkthrough saying where every command runs. Its report is
+[reports/2026-09-30-brief-08.md](reports/2026-09-30-brief-08.md). The
+seventh brief's is
+[reports/2026-09-30-brief-07.md](reports/2026-09-30-brief-07.md), the sixth
+brief's
 [reports/2026-09-29-brief-06.md](reports/2026-09-29-brief-06.md), the fifth
 brief's [reports/2026-09-29-brief-05.md](reports/2026-09-29-brief-05.md),
 the fourth's [reports/2026-09-28-brief-04.md](reports/2026-09-28-brief-04.md),
@@ -38,7 +42,9 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   cannot be reached at all, not even through its front door. Every new
   project starts with `AGENTS.md` (the agent's instructions, with the guided
   plan), a `CLAUDE.md` that points to it, and its own `STATE.md` and
-  `DECISIONS.md` (D36).
+  `DECISIONS.md` (D36). `allvibe project remove --delete-everything` first
+  takes a last backup of prod, restore-checks it and keeps it, and says where
+  (D82).
 - **The firewall for project containers** (D41). Every project container, the
   apps, the databases, the agent and its egress gate, is refused the machine's
   own ports and every private, link-local, shared and multicast address, where
@@ -59,7 +65,7 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   data intact; a manual rollback keeps the data, and first takes a fresh
   backup of prod that must pass its restore check, kept with the releases'
   backups (D57); putting data back needs explicit confirmation and takes a
-  backup first. Every release records the
+  backup first, which must pass its restore check too (D82). Every release records the
   schema it ran with; a breaking migration is released only when its file says
   so; a rollback goes ahead across migrations that only add, and stops, before
   changing anything, across a breaking one (D35).
@@ -109,8 +115,10 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   the service user, on a Unix socket only the panel's group may open, with no
   network port, speaking JSON one message a line and no HTTP (D76): an
   allow-list of operations, each with its arguments checked, calling the CLI's
-  own code; releasing, going back, starting the test copy, making an app and
-  starting and stopping the agent as jobs, one at a time, with the CLI's steps
+  own code; releasing, going back, starting the test copy, making an app,
+  starting and stopping the agent, and since D82 setting and removing service
+  keys (a value only ever goes in), going back with the data, work outside a
+  plan and removing an app, as jobs, one at a time, with the CLI's steps
   as progress, each change confirmed; the agent's terminal as a stream, one
   browser at a time; signing in to the panel kept here. It answers while it
   works: doctor's checks and every job's command run off its thread (D65,
@@ -137,7 +145,10 @@ On a fresh Debian 13 test host, following [docs/walkthrough.md](docs/walkthrough
   refusal in the engine's words; the app's backups; Machine health. Since
   the seventh brief: the guided path, one next action at a time (D75); a new
   app made from the home screen; and Your AI, Claude Code's own terminal on
-  the left under the plan, started from the panel (D77). Checked
+  the left under the plan, started from the panel (D77). Since the eighth:
+  service keys under More, going back with the data set apart under Live,
+  work outside a plan only where a release would be refused for want of one,
+  and removing an app in its settings (D83). Checked
   in headless Edge at 1280 and 390 pixels, light and dark
   (`test/host/panel-checks.mjs`), each check first seen failing on a broken
   copy of the panel.
@@ -174,6 +185,18 @@ test/host/host.mjs restart, the panel did not come back (ERR_EMPTY_RESPONSE;
 its container exited)." The seventh brief is **reviewed by the architect**
 and accepted, with three points carried forward (D81).
 
+**All nine items done, in one session** (D80 to D84; the website's D35).
+**Tried by the owner:** nothing of it yet. **Waiting for:** the owner to
+follow walkthrough steps 29 to 31 on the test host, which is left running,
+fresh, with its panel not set up and no project on it: from the setup code
+(`allvibe panel setup-code` in the host's root shell) through the guided
+path, the restart that brings the disk back, work outside a plan, going back
+with the data, service keys and removing an app, to the owner's own sign-in
+in step 31; and to say what happened, in their own words, with what got in
+the way in [docs/friction-log.md](docs/friction-log.md). The architect: to
+look at the website's demo (local, not released) and to try the panel's
+terminal on a phone (D81).
+
 | Item | State |
 |---|---|
 | 1. The panel after a restart: evidence | Recorded, reading only, before anything was changed: the panel and its door failed to start with a cgroup error; a shell had entered the test host through Docker's API in the second it started, into its root cgroup, so no container with a limit could start. That trigger is the test host's alone. The root cause in the product: nothing brought back a container Docker could not start. In the report. |
@@ -183,6 +206,7 @@ and accepted, with three points carried forward (D81).
 | 5. The panel for those operations | Built and checked in headless Edge (D83), in the demo's design: service keys under More (the value pasted into a password field, never shown again); going back with the data set apart under Live, never pink, never in the guided path, what is lost said with its counts and the app's name typed; work outside a plan only where a release would be refused for want of one, the reason kept; removing an app in its settings, the name typed, where its last backup is kept said. `panel-checks.mjs`: nine new checks (41), twelve new broken copies (46), 76 pairs of copy and check each seen failing; then 215, 215, 217 and 217 passed at 1280 and 390 pixels, light and dark. Found and fixed: after going back the panel named a version already used (the engine now says `nextVersion`); Service keys opened on a Remove button when a key was listed. |
 | 6. The website's demo | Built, in the website's repository (its D35, `b0f4cf5`), and **not tagged, released or deployed**: the demo shows the guided path, the AI's own terminal as a marked picture in plain text, "Start your AI", a new app from the home screen, and only "your own API key, or your own AI app through MCP". Its checks pass at 1440, 768, 390, 360 and 320 px in light and dark, each seen failing on a broken copy (15). |
 | 7. From a blank laptop to a working suite | Recorded, documentation only: [docs/real-hardware.md](docs/real-hardware.md), from a Debian 13 USB stick to a first app, one command per block and where each runs, then every line of "To verify on real hardware" below as a check, with how and what to see. Nothing of it run on a laptop. |
+| 8. Walkthrough and records | Built and run (D84): every command block marked **Workstation:** or **Host:** on the line above it, "Before you start" asking for two terminals, the host's shell saying whose it is with a prompt starting `(test host)`; no step sending the reader to another for its commands; step 16 with the restart that says whether everything came back, and the hard stop; step 30 with work outside a plan, going back with the data, service keys and removing an app. `walkthrough-blocks.mjs` refuses what friction log 7 and 9 met: 174 problems before, none after (178 blocks). On a fresh test host, step 16's blocks as written, and steps 29 to 31 by `walkthrough-panel.mjs`: 132 of 132 as the text says, up to the owner's sign-in. Found by that run: the restart's verdict asked for doctor all green, and said "NOT back" for an app with no backup yet; it now compares with just before the restart (mistake 66). The records; the guard in both repositories; every revision of both scanned for rule 10 (as before: only `864be95`, Known, and the website's first day). The test host left fresh, its panel not set up, no project on it. |
 
 ## The seventh brief
 

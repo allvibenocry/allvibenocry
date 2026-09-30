@@ -34,7 +34,7 @@ import net from "node:net";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { COMEBACK_SECONDS, waitForSuite } from "./comeback.mjs";
+import { COMEBACK_SECONDS, doctorOff, waitForSuite } from "./comeback.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -334,6 +334,8 @@ async function reset({ keepBackup }) {
 async function restart({ hard = false } = {}) {
   requireLocal("restart");
   if (!exists()) throw new Error(`${NAME} does not exist`);
+  // What doctor already said before the stop, which a start does not have to mend.
+  const before = docker(["exec", NAME, "test", "-x", `/usr/local/bin/${CMD}`], { allowFail: true, quiet: true }).code === 0 ? doctorOff(NAME) : null;
   if (hard) {
     docker(["kill", NAME]);
     docker(["start", NAME]);
@@ -343,11 +345,11 @@ async function restart({ hard = false } = {}) {
     say(`restarted ${NAME} (standing in for a reboot)`);
   }
   await waitForBoot();
-  if (!(await comeback())) process.exitCode = 1;
+  if (!(await comeback(before))) process.exitCode = 1;
 }
 
 /** The cgroups the test host booted with, and, with the suite installed, whether it all came back. */
-async function comeback() {
+async function comeback(before = null) {
   // This start's run of the unit only: the test host's journal spans every start of its container.
   const cgroups = docker(["exec", NAME, "sh", "-c", "cat /sys/fs/cgroup/cgroup.subtree_control; journalctl _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value test-host-cgroups) --no-pager -o cat | grep -m1 '^moved' || true"], { allowFail: true, quiet: true }).out.split("\n");
   const given = cgroups[0]?.trim() ?? "";
@@ -358,7 +360,7 @@ async function comeback() {
   say(`cgroups   the root cgroup gives its children ${given}${cgroups[1] ? `; ${cgroups[1]}` : ""}`);
   if (docker(["exec", NAME, "test", "-x", `/usr/local/bin/${CMD}`], { allowFail: true, quiet: true }).code !== 0) return true;
   const panelPort = Number(inspect(`{{index .Config.Labels "${LABEL}.port-base"}}`)) + PORT_COUNT;
-  const result = await waitForSuite(NAME, panelPort);
+  const result = await waitForSuite(NAME, panelPort, { before });
   if (result.ok) say(`suite     back ${result.seconds} s after the start: ${result.back.join("; ")}`);
   else {
     say(`suite     NOT back within ${COMEBACK_SECONDS} s of the start:`);
@@ -432,10 +434,14 @@ function pull(remoteFile, localFile) {
   say(`pulled    ${remoteFile} to ${localFile} (not shown)`);
 }
 
+// The host's shell looks unlike the workstation's (friction log 9): a line
+// before it says whose it is, and on the test host its prompt starts with
+// "(test host)", through Debian's own prompt variable for a chroot.
 function shell() {
+  say(`the host's root shell: the walkthrough's Host commands run here; exit goes back to the workstation`);
   if (REMOTE) return attached("ssh", [...sshArgs(true), "sudo -n -i"]);
   if (!exists()) throw new Error(`${NAME} does not exist; node test/host/host.mjs create`);
-  return attached("docker", ["exec", "-it", NAME, "bash", "-l"]);
+  return attached("docker", ["exec", "-it", "-e", "debian_chroot=test host", NAME, "bash", "-l"]);
 }
 
 function push(localPath, remoteDir) {
