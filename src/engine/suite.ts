@@ -60,6 +60,9 @@ function summary(project: Project) {
     testCopy,
     plan: { state: plan.state, title: plan.title, tried, steps: plan.steps.length, releasedIn: plan.releasedIn },
     unreleased: Boolean(testCopy.running && testCopyCommit && !(liveCommit ?? "").startsWith(testCopyCommit)),
+    // The version a release would be: one past the highest ever released, not
+    // past the live one, which is lower after going back (D83).
+    nextVersion: nextVersion(project),
     next: nextAction(testCopy.running, plan, nextVersion(project)),
     addresses: { live: urlFor(project, "prod"), testCopy: urlFor(project, "dev") },
     ports: { live: project.ports.prod, testCopy: project.ports.dev },

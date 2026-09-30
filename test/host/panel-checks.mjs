@@ -17,7 +17,7 @@
 // makes up and keeps in memory; neither is printed. The AI is started with a
 // stand-in key, never an account (D48), and nothing is typed to it.
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -127,13 +127,19 @@ async function tab(x, id) {
 async function planSide(x) {
   if (x.cfg.mobile) await tab(x, "chat");
 }
+// After a preparation changed the app from outside the page (a release, an
+// entry, a commit), the page is loaded again, as by a person coming to it: an
+// open page would only see the change at its next quiet look, up to 15 s later.
 async function openApp(x, app = APP) {
-  if (!(await P(x).eval(`location.pathname === "/apps/${app}" && !!document.querySelector("#guide .stages")`))) {
+  if (x.stale || !(await P(x).eval(`location.pathname === "/apps/${app}" && !!document.querySelector("#guide .stages")`))) {
+    x.stale = false;
     await P(x).goto(`${URL_}/apps/${app}`);
     await P(x).waitFor(`!!document.querySelector("#guide .stages")`, { what: "the app view" });
   }
 }
 const focusOn = (x, sel) => P(x).eval(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el?.focus(); return document.activeElement === el; })()`);
+// A dialog's opener: not there is said as such, not as a dialog that did not open.
+const focusMust = async (x, sel) => { if (!(await focusOn(x, sel))) throw new Error(`nothing to press: ${sel} is not on the page`); };
 const focusedIs = (x, sel) => P(x).eval(`document.activeElement === document.querySelector(${JSON.stringify(sel)})`);
 const inDialog = (x) => P(x).eval(`document.querySelector("#dialog").contains(document.activeElement)`);
 const modalOpen = (x) => P(x).eval(`!document.querySelector("#modal").hidden`);
@@ -308,6 +314,8 @@ const CHECKS = {
       if (x.cfg.mobile) await openMenuIfNeeded(x);
       await navTo(x, `/apps/${APP}`);
       await P(x).waitFor(`location.pathname === "/apps/${APP}" && !!document.querySelector("#guide .stages")`, { what: "the app view" });
+      // The pane an earlier check left open stays open; the frame is in Preview.
+      await tab(x, "preview");
       const plan = (await x.api("app.plan", { app: APP })).result;
       const detail = (await x.api("app.get", { app: APP })).result;
       x.appsHost = detail.appsHost;
@@ -453,7 +461,7 @@ const CHECKS = {
   async "kbd-dialog-report"(x) {
     await ensureTrying(x);
     return CHECKS.dialogByKeyboard(x, "kbd-dialog-report", {
-      open: async () => { await focusOn(x, '#guide [data-action="report"]'); await P(x).key("Enter"); },
+      open: async () => { await focusMust(x, '#guide [data-action="report"]'); await P(x).key("Enter"); },
       opener: '#guide [data-action="report"]',
       first: /^textarea "/,
     });
@@ -516,13 +524,20 @@ const CHECKS = {
         await sleep(150);
         want(await P(x).eval(`document.querySelector("#more-btn").getAttribute("aria-expanded")`), "true");
         want(await P(x).focused(), /^button "Backups/);
+        // Since D83, three items: Backups, Service keys, App settings, round and round with the arrows.
+        await P(x).key("ArrowDown");
+        want(await P(x).focused(), /^button "Service keys/);
+        await P(x).key("ArrowDown");
+        want(await P(x).focused(), /^button "App settings/);
         await P(x).key("ArrowDown");
         want(await P(x).focused(), /^button "Backups/);
+        await P(x).key("ArrowUp");
+        want(await P(x).focused(), /^button "App settings/);
         await P(x).key("Escape");
         await sleep(150);
         want(await P(x).eval(`document.querySelector("#more-menu").hidden`), true);
         want(await focusedIs(x, "#more-btn"), true);
-        return "Enter opens it on its first item; Escape closes it, back on More";
+        return "Enter opens it on its first item; the arrows go round its three; Escape closes it, back on More";
       } finally {
         if (!(await P(x).eval(`document.querySelector("#more-menu").hidden`))) await P(x).click("#more-btn");
       }
@@ -532,7 +547,7 @@ const CHECKS = {
   async "kbd-dialog-backups"(x) {
     await openApp(x);
     return CHECKS.dialogByKeyboard(x, "kbd-dialog-backups", {
-      open: async () => { await focusOn(x, "#more-btn"); await P(x).key("Enter"); await sleep(150); await P(x).key("Enter"); },
+      open: async () => { await focusMust(x, "#more-btn"); await P(x).key("Enter"); await sleep(150); await P(x).key("Enter"); },
       opener: "#more-btn",
       first: 'button "Close"',
     });
@@ -558,6 +573,8 @@ const CHECKS = {
       await x.check("refusal-untried: the answer", async () => want(card.heading, `${v} is not live`));
       await x.check("refusal-untried: in plain words", async () => want(await P(x).text("#shipcard .stopbox"), new RegExp(`^Nothing changed\\. It stopped at "every step of the plan is tried by you": the plan ".*" has steps you have not tried: step 3, "Let the home town be changed" What would have to be true: .* Here: press OK, and the next action at the top takes you to each step to try\\.$`)));
       await x.check("refusal-untried: the checks", async () => want(await gateClasses(x), "failed,next,next,next,next,next"));
+      // D83: work outside a plan is offered only where a plan is missing, never past an untried step.
+      await x.check("refusal-untried: no way outside a plan while the plan has untried steps", async () => want(await visible(x, '[data-action="put-outside"]'), false));
       await x.check("refusal-untried: the next action, OK", async () => { const g = await guideNow(x); want(`${g.stage}: ${g.button}`, "Live: OK"); return want(g.pinkIsButton, true); });
       await noOverflow(x, "the refusal");
       await x.shot("refusal-untried");
@@ -683,7 +700,7 @@ const CHECKS = {
     await tab(x, "live");
     const live = (await x.api("app.get", { app: APP })).result.live;
     return CHECKS.dialogByKeyboard(x, "kbd-dialog-goback", {
-      open: async () => { await focusOn(x, '[data-action="go-back"]'); await P(x).key("Enter"); },
+      open: async () => { await focusMust(x, '[data-action="go-back"]'); await P(x).key("Enter"); },
       opener: '[data-action="go-back"]',
       first: `button "Keep ${live}"`,
     });
@@ -714,11 +731,215 @@ const CHECKS = {
     });
   },
 
+  /* ---------------------------------------- the eighth brief (D83) -- */
+  // Going back with the data: set apart in Live, never pink, never in the guide;
+  // what is lost said with its counts; the name typed before the button works.
+  async "kbd-dialog-data"(x) {
+    await openApp(x);
+    await tab(x, "live");
+    return CHECKS.dialogByKeyboard(x, "kbd-dialog-data", {
+      open: async () => { await focusMust(x, '[data-action="go-back-data"]'); await P(x).key("Enter"); },
+      opener: '[data-action="go-back-data"]',
+      first: 'input "data-name"',
+    });
+  },
+  async "data-back"(x) {
+    return x.check("data-back", async () => {
+      await openApp(x);
+      await tab(x, "live");
+      const d = (await x.api("app.get", { app: APP })).result;
+      const from = d.live;
+      await x.check("data-back: set apart in Live, a choice of its own", async () => want(await P(x).text("#data-card h2"), "Go back with the data"));
+      await x.check("data-back: never pink, and never the next action", async () => {
+        const g = await guideNow(x);
+        want(await P(x).eval(`getComputedStyle(document.querySelector('[data-action="go-back-data"]')).backgroundColor !== "${PINK}"`), true);
+        return want(`${g.pinks} pink; the next action "${g.button}"`, (s) => !/Go back with the data/.test(s) && /^[01] pink/.test(s));
+      });
+      await P(x).click('[data-action="go-back-data"]');
+      await P(x).waitFor(`!document.querySelector("#modal").hidden && !!document.querySelector("#data-form")`, { what: "the confirmation", timeout: 15000 });
+      const plan = (await x.api("app.goBackWithDataPlan", { app: APP })).result;
+      await x.check("data-back: what is lost, in plain words, with the counts", async () => want(await P(x).text("#dialog"), new RegExp(`^Go back to ${plan.to} with the data\\? The live app goes back to ${plan.to}, and its data goes back to how it was .*, just before ${from} went live\\. Everything saved in the live app since then is lost from it\\. It has ${plan.entriesNow} entr(y|ies) now; the backup has ${plan.entriesAtBackup}\\. First, a backup of the live app as it is now is taken, restored and checked`)));
+      await x.check("data-back: the button waits for the app's name", async () => {
+        const off = await P(x).eval(`document.querySelector("#data-go").disabled`);
+        await P(x).click("#data-name");
+        await P(x).type(`${APP}x`);
+        const wrong = await P(x).eval(`document.querySelector("#data-go").disabled`);
+        await P(x).key("Backspace");
+        want(await P(x).eval(`document.querySelector("#data-name").value`), APP);
+        const right = await P(x).eval(`document.querySelector("#data-go").disabled`);
+        return want(`nothing typed: ${off ? "off" : "on"}; another name: ${wrong ? "off" : "on"}; the name: ${right ? "off" : "on"}`, "nothing typed: off; another name: off; the name: on");
+      });
+      await noOverflow(x, "data-dialog");
+      await x.shot("data-dialog");
+      await P(x).click("#data-go");
+      const started = await x.check("data-back: it starts", async () => { await P(x).waitFor(`/^Going back to .* with the data|^Back on|^Going back with the data stopped/.test(document.querySelector("#shipcard h2")?.textContent ?? "")`, { what: "the card going back with the data", timeout: 10000 }); return "the card"; });
+      if (!started) throw new Error("it did not start");
+      const card = await waitCard(x, /^Back on|stopped$/);
+      await x.check("data-back: the answer", async () => want(card.heading, `Back on ${plan.to}, with its data.`));
+      await x.check("data-back: every check done", async () => want(await gateClasses(x), "done,done,done,done,done,done"));
+      await x.check("data-back: the live app, back, with the backup's entries", async () => {
+        const after = (await x.api("app.get", { app: APP })).result.live;
+        return want(`${after}; ${onHost("entries", APP)}`, `${plan.to}; ${plan.entriesAtBackup} entries`);
+      });
+      await noOverflow(x, "data-back");
+      await x.shot("data-back");
+      await P(x).click('#shipcard [data-action="dismiss-job"]');
+    });
+  },
+  // Work outside a plan: offered only where a release would be refused for want of a plan.
+  async "kbd-dialog-outside"(x) {
+    await openApp(x);
+    await tab(x, "live");
+    return CHECKS.dialogByKeyboard(x, "kbd-dialog-outside", {
+      open: async () => { await focusMust(x, '#outside-card [data-action="put-outside"]'); await P(x).key("Enter"); },
+      opener: '#outside-card [data-action="put-outside"]',
+      first: 'input "outside-why"',
+    });
+  },
+  async "outside-plan"(x) {
+    return x.check("outside-plan", async () => {
+      await openApp(x);
+      await tab(x, "live");
+      const v = await P(x).eval(`document.querySelector('#outside-card [data-action="put-outside"]')?.dataset.v ?? "(not offered)"`);
+      await x.check("outside-plan: offered, where a release would be refused for want of a plan", async () => want(`${v}: ${await P(x).text("#outside-card h2").catch(() => "")}`, /^v\d+: v\d+: changes outside a plan$/));
+      await x.check("outside-plan: not pink", async () => want(await P(x).eval(`getComputedStyle(document.querySelector('#outside-card [data-action="put-outside"]')).backgroundColor !== "${PINK}"`), true));
+      await P(x).click('#outside-card [data-action="put-outside"]');
+      await P(x).waitFor(`!document.querySelector("#modal").hidden && !!document.querySelector("#outside-form")`, { what: "the dialog" });
+      await x.check("outside-plan: the dialog says what it means", async () => want(await P(x).text("#dialog"), new RegExp(`^Put ${v} live outside a plan\\? Nobody has tried ${v}'s changes as steps of a plan\\..*The release keeps your reason`)));
+      const why = `a fix outside any plan (${x.label ?? x.cfgName})`;
+      await P(x).click("#outside-why");
+      await P(x).type(why);
+      await P(x).key("Enter");
+      const started = await x.check("outside-plan: it starts", async () => { await P(x).waitFor(`/^Putting .* live|is live\\.|is not live/.test(document.querySelector("#shipcard h2")?.textContent ?? "")`, { what: "the card putting it live", timeout: 10000 }); return "the card"; });
+      if (!started) throw new Error("it did not start");
+      const card = await waitCard(x, /is live\.$|is not live$/);
+      await x.check("outside-plan: the answer", async () => want(card.heading, `${v} is live.`));
+      await x.check("outside-plan: the release keeps the reason, in Earlier versions", async () => want(await P(x).text("#live-pane .vers"), new RegExp(`^${v} just now .*${why.charAt(0).toUpperCase()}${why.slice(1).replace(/[()]/g, "\\$&")}\\.`)));
+      await x.check("outside-plan: and the engine too, with the version the panel named", async () => {
+        const r = (await x.api("app.get", { app: APP })).result.versions[0];
+        return want(`${r.version}: ${r.outsidePlan}`, `${v}: ${why}`);
+      });
+      await noOverflow(x, "outside");
+      await x.shot("outside");
+    });
+  },
+  // Service keys: under More; a value goes in and is never shown again.
+  async "kbd-dialog-keys"(x) {
+    await openApp(x);
+    return CHECKS.dialogByKeyboard(x, "kbd-dialog-keys", {
+      open: async () => { await focusMust(x, "#more-btn"); await P(x).key("Enter"); await sleep(150); await P(x).key("ArrowDown"); await P(x).key("Enter"); },
+      opener: "#more-btn",
+      first: 'button "Close"',
+    });
+  },
+  async keys(x) {
+    return x.check("keys", async () => {
+      await openApp(x);
+      const value = `svc-${randomBytes(16).toString("hex")}`;
+      const name = `CHECK_${randomBytes(3).toString("hex").toUpperCase()}`;
+      await P(x).click("#more-btn");
+      await P(x).click('[data-action="more-keys"]');
+      await P(x).waitFor(`!document.querySelector("#modal").hidden && !!document.querySelector("#dialog .keys-list")`, { what: "Service keys", timeout: 10000 });
+      await x.check("keys: under More, in the demo's words", async () => want(await P(x).text("#dialog"), new RegExp(`^Service keys of ${APP} Service keys let your app use services outside your machine, like a weather service\\. .* never shown again, not even here\\.`)));
+      await P(x).click('#dialog [data-action="add-key"]');
+      await P(x).waitFor(`!!document.querySelector("#key-form")`, { what: "Add a service key" });
+      await x.check("keys: the value is a password field, and the words say it is never shown again", async () => want(`${await P(x).eval(`document.querySelector("#k-value").type`)}: ${await P(x).text("#k-value-hint")}`, "password: Paste the key here. It is never shown again."));
+      await P(x).click("#k-name");
+      await P(x).type(name);
+      await P(x).eval(`(() => { const s = document.querySelector("#k-where"); s.value = "prod"; s.dispatchEvent(new Event("change", { bubbles: true })); return s.value; })()`);
+      await P(x).click("#k-value");
+      await P(x).type(value);
+      await noOverflow(x, "keys-add");
+      await P(x).click("#key-go");
+      const row = `[...document.querySelectorAll("#dialog .keys-list .row")].find((r) => r.querySelector("h3")?.textContent.startsWith(${JSON.stringify(`${name} `)}))`;
+      await x.check("keys: saved, and back in the list, its value hidden", async () => {
+        await P(x).waitFor(`!!document.querySelector("#dialog .keys-list") && document.querySelector("#dialog").innerText.includes(${JSON.stringify(name)})`, { what: "the key in the list", timeout: 120000 });
+        return want((await P(x).eval(`${row}?.innerText ?? ""`)).replace(/\s+/g, " ").trim(), new RegExp(`^${name} •••••• Live app, changed just now\\. Remove$`));
+      });
+      // A dialog opens on a safe control: with keys listed, never on a Remove.
+      await x.check("keys: with a key listed, the dialog opens on Close, never on Remove", async () => {
+        await closeAnyDialog(x);
+        await focusMust(x, "#more-btn");
+        await P(x).key("Enter");
+        await sleep(150);
+        await P(x).key("ArrowDown");
+        await P(x).key("Enter");
+        await P(x).waitFor(`!!document.querySelector("#dialog .keys-list .row")`, { what: "Service keys, with the key", timeout: 10000 });
+        await sleep(150);
+        return want(await P(x).focused(), 'button "Close"');
+      });
+      await x.check("keys: the value is nowhere in the page", async () => want(await P(x).eval(`(document.documentElement.outerHTML + [...document.querySelectorAll("input")].map((i) => i.value).join(" ")).includes(${JSON.stringify(value)})`), false));
+      await x.check("keys: the live app reads it, from its file", async () => want(onHost("secret-hash", APP, "prod", name), createHash("sha256").update(value).digest("hex")));
+      await noOverflow(x, "keys");
+      await x.shot("keys");
+      await P(x).click(`#dialog [data-action="remove-key"][data-name="${name}"]`);
+      await P(x).waitFor(`!!document.querySelector("#rk-go")`, { what: "the removal's confirmation" });
+      await x.check("keys: removing it, confirmed in plain words", async () => want(await P(x).text("#dialog"), new RegExp(`^Remove ${name} from the live app\\? The live app starts again without it\\.`)));
+      await P(x).click("#rk-go");
+      await x.check("keys: removed, and gone from the list and the live app", async () => {
+        await P(x).waitFor(`!!document.querySelector("#dialog .keys-list") && !document.querySelector("#dialog .keys-list").innerText.includes(${JSON.stringify(name)})`, { what: "the key gone", timeout: 120000 });
+        return want(`${await P(x).text("#dialog .said")}; the live app: ${onHost("secret-hash", APP, "prod", name)}`, `${name} is removed from the live app.; the live app: none`);
+      });
+      await closeAnyDialog(x);
+    });
+  },
+  // Removing an app: in its settings, its name typed, its last backup kept and where it is said.
+  async "kbd-dialog-settings"(x) {
+    await openApp(x, x.newApp);
+    return CHECKS.dialogByKeyboard(x, "kbd-dialog-settings", {
+      open: async () => { await focusMust(x, "#more-btn"); await P(x).key("Enter"); await sleep(150); await P(x).key("ArrowDown"); await P(x).key("ArrowDown"); await P(x).key("Enter"); },
+      opener: "#more-btn",
+      first: `button "Remove ${x.newApp}…"`,
+    });
+  },
+  async "kbd-dialog-remove"(x) {
+    await openApp(x, x.newApp);
+    return CHECKS.dialogByKeyboard(x, "kbd-dialog-remove", {
+      open: async () => { await P(x).click("#more-btn"); await P(x).click('[data-action="more-settings"]'); await P(x).waitFor(`!!document.querySelector('#dialog [data-action="remove-app"]')`, { what: "the settings" }); await P(x).click('#dialog [data-action="remove-app"]'); },
+      opener: "#more-btn",
+      first: 'input "rm-name"',
+    });
+  },
+  async "remove-app"(x) {
+    return x.check("remove-app", async () => {
+      const app = x.newApp;
+      await openApp(x, app);
+      await P(x).click("#more-btn");
+      await P(x).click('[data-action="more-settings"]');
+      await P(x).waitFor(`!!document.querySelector('#dialog [data-action="remove-app"]')`, { what: "the settings" });
+      await x.check("remove-app: in the app's settings", async () => want(await P(x).text("#dialog .apart"), /^Remove this app Its test copy and its live app go, with their data, .* A last backup of the live app is taken first, and kept\. Remove /));
+      await P(x).click('#dialog [data-action="remove-app"]');
+      await P(x).waitFor(`!!document.querySelector("#rm-form")`, { what: "the removal's confirmation" });
+      await x.check("remove-app: what goes, and the backup first, in plain words", async () => want(await P(x).text("#dialog"), new RegExp(`^Remove ${app}\\? This deletes, for good: the test copy and the live app, with their data .* First, a last backup of the live app is taken, restored and checked, and kept on the backup disk with the others\\. If that cannot be done, nothing is removed\\.`)));
+      await x.check("remove-app: the button waits for the app's name", async () => {
+        const off = await P(x).eval(`document.querySelector("#rm-go").disabled`);
+        await P(x).click("#rm-name");
+        await P(x).type(`${app.slice(0, -1)}`);
+        const part = await P(x).eval(`document.querySelector("#rm-go").disabled`);
+        await P(x).type(app.slice(-1));
+        const right = await P(x).eval(`document.querySelector("#rm-go").disabled`);
+        return want(`nothing typed: ${off ? "off" : "on"}; part of it: ${part ? "off" : "on"}; the name: ${right ? "off" : "on"}`, "nothing typed: off; part of it: off; the name: on");
+      });
+      await noOverflow(x, "remove-dialog");
+      await P(x).click("#rm-go");
+      await x.check("remove-app: removed, and where its last backup is", async () => {
+        await P(x).waitFor(`/ is removed$/.test(document.querySelector("#dialog-title")?.textContent ?? "") || !document.querySelector("#rm-error").hidden`, { what: "the removal's end", timeout: 300000 });
+        return want(await P(x).text("#dialog"), new RegExp(`^${app} is removed Its last backup, restored and checked, is kept on the backup disk: /mnt/[a-z-]+backup/[a-z]+/${app}/releases/${app}-prod-\\d{8}T\\d{6}Z\\.dump\\.age\\. Its earlier backups are kept too\\. Back to your apps$`));
+      });
+      await noOverflow(x, "removed");
+      await x.shot("removed");
+      await P(x).click("#rm-home");
+      await P(x).waitFor(`location.pathname === "/" && !!document.querySelector("#main .head")`, { what: "Your apps" });
+      await x.check("remove-app: gone from the home screen and the side", async () => want(await P(x).eval(`document.body.innerText.includes(${JSON.stringify(app)})`), false));
+      x.made = x.made.filter((m) => m !== app);
+    });
+  },
+
   async "kbd-dialog-new-app"(x) {
     await P(x).goto(`${URL_}/`);
     await P(x).waitFor(`!!document.querySelector('[data-action="new-app"]')`, { what: "Make a new app" });
     return CHECKS.dialogByKeyboard(x, "kbd-dialog-new-app", {
-      open: async () => { await focusOn(x, '[data-action="new-app"]'); await P(x).key("Enter"); },
+      open: async () => { await focusMust(x, '[data-action="new-app"]'); await P(x).key("Enter"); },
       opener: '[data-action="new-app"]',
       first: 'input "new-app-name"',
     });
@@ -883,7 +1104,7 @@ const CHECKS = {
     await openApp(x, x.newApp);
     await planSide(x);
     return CHECKS.dialogByKeyboard(x, "kbd-dialog-stop-ai", {
-      open: async () => { await focusOn(x, '#ai-top [data-action="stop-ai"]'); await P(x).key("Enter"); },
+      open: async () => { await focusMust(x, '#ai-top [data-action="stop-ai"]'); await P(x).key("Enter"); },
       opener: '#ai-top [data-action="stop-ai"]',
       first: 'button "Keep it running"',
     });
@@ -1006,11 +1227,17 @@ async function released(x) {
 }
 
 /* --------------------------------------------------------------- runs -- */
-const FULL = ["setup", "app", "fresh-plan", "home", "kbd-skip", "machine", "app-view", "frame-text", "kbd-tabs", "kbd-dialog-report", "report", "guided", "kbd-menu", "kbd-dialog-backups", "refusal-untried", "refusal-backup", "lock-refusal", "put-live", "backups", "kbd-dialog-goback", "go-back", "kbd-dialog-new-app", "new-app", "ai-start", "kbd-terminal", "terminal-refusals", "kbd-dialog-stop-ai", "ai-stop", "sign-out", "sign-in-refused", "sign-in", "no-console-errors", "no-other-origins"];
+const FULL = ["setup", "app", "fresh-plan", "home", "kbd-skip", "machine", "app-view", "frame-text", "kbd-tabs", "kbd-dialog-report", "report", "guided", "kbd-menu", "kbd-dialog-backups", "refusal-untried", "refusal-backup", "lock-refusal", "put-live", "backups", "kbd-dialog-goback", "go-back",
+  // D83: going back with the data (from a new release, over an entry written since), then work outside a plan, then service keys.
+  "released", "entry", "kbd-dialog-data", "data-back", "unplanned", "kbd-dialog-outside", "outside-plan", "kbd-dialog-keys", "keys",
+  "kbd-dialog-new-app", "new-app", "ai-start", "kbd-terminal", "terminal-refusals", "kbd-dialog-stop-ai", "ai-stop",
+  // D83: removing the app the run made, in its settings.
+  "kbd-dialog-settings", "kbd-dialog-remove", "remove-app",
+  "sign-out", "sign-in-refused", "sign-in", "no-console-errors", "no-other-origins"];
 
 // Each broken copy, where it is tried, the checks it must make fail, and what runs.
-const DIALOGS = ["kbd-dialog-report", "kbd-dialog-backups", "kbd-dialog-goback", "kbd-dialog-new-app", "kbd-dialog-stop-ai"];
-const EVERY_DIALOG = ["setup", "app", "released", "fresh-plan", "app-view", "kbd-dialog-report", "kbd-dialog-backups", "kbd-dialog-goback", "kbd-dialog-new-app", "new-app", "ai-start", "kbd-dialog-stop-ai", "ai-stop"];
+const DIALOGS = ["kbd-dialog-report", "kbd-dialog-backups", "kbd-dialog-goback", "kbd-dialog-data", "kbd-dialog-outside", "kbd-dialog-keys", "kbd-dialog-new-app", "kbd-dialog-stop-ai", "kbd-dialog-settings", "kbd-dialog-remove"];
+const EVERY_DIALOG = ["setup", "app", "released", "kbd-dialog-data", "unplanned", "kbd-dialog-outside", "kbd-dialog-keys", "fresh-plan", "app-view", "kbd-dialog-report", "kbd-dialog-backups", "kbd-dialog-goback", "kbd-dialog-new-app", "new-app", "ai-start", "kbd-dialog-stop-ai", "ai-stop", "kbd-dialog-settings", "kbd-dialog-remove"];
 const BROKEN = [
   ["console-error", "desktop-light", ["no-console-errors"], ["setup", "app", "home", "no-console-errors"]],
   ["other-origin", "desktop-light", ["no-other-origins"], ["setup", "app", "home", "no-other-origins"]],
@@ -1046,6 +1273,19 @@ const BROKEN = [
   ["ws-any-origin", "desktop-light", ["terminal-refusals"], ["setup", "app", "new-app", "ai-start", "terminal-refusals", "ai-stop"]],
   ["ws-no-token", "desktop-light", ["terminal-refusals"], ["setup", "app", "new-app", "ai-start", "terminal-refusals", "ai-stop"]],
   ["ai-stop-noop", "desktop-light", ["ai-stop"], ["setup", "app", "new-app", "ai-start", "ai-stop"]],
+  // The eighth brief's (item 5, D83).
+  ["keys-kept", "desktop-light", ["keys"], ["setup", "app", "keys"]],
+  ["keys-noop", "desktop-light", ["keys"], ["setup", "app", "keys"]],
+  ["keys-no-remove", "phone-light", ["keys"], ["setup", "app", "keys"]],
+  ["keys-focus-remove", "desktop-light", ["keys"], ["setup", "app", "keys"]],
+  ["ungated", "desktop-light", ["data-back", "remove-app"], ["setup", "app", "released", "entry", "data-back", "new-app", "remove-app"]],
+  ["data-silent", "desktop-light", ["data-back"], ["setup", "app", "released", "entry", "data-back"]],
+  ["data-pink", "phone-light", ["data-back"], ["setup", "app", "released", "entry", "data-back"]],
+  ["data-noop", "desktop-light", ["data-back"], ["setup", "app", "released", "entry", "data-back"]],
+  ["outside-always", "desktop-light", ["refusal-untried"], ["setup", "app", "fresh-plan", "app-view", "guided", "refusal-untried"]],
+  ["outside-noop", "desktop-light", ["outside-plan"], ["setup", "app", "released", "unplanned", "outside-plan"]],
+  ["remove-noop", "desktop-light", ["remove-app"], ["setup", "app", "new-app", "remove-app"]],
+  ["remove-silent", "phone-light", ["remove-app"], ["setup", "app", "new-app", "remove-app"]],
 ];
 
 async function runOne(browser, name, cfgName, targets, sequence) {
@@ -1056,7 +1296,9 @@ async function runOne(browser, name, cfgName, targets, sequence) {
       if (item === "app") note(onHost("app", APP));
       else if (item === "fresh-plan") await freshPlan(x, 2);
       else if (item === "all-tried") await allTried(x);
-      else if (item === "released") await released(x);
+      else if (item === "released") { await released(x); x.stale = true; }
+      else if (item === "entry") { note(onHost("entry", APP)); x.stale = true; }
+      else if (item === "unplanned") { note(onHost("unplanned", APP)); x.stale = true; }
       else {
         if (["refusal-backup", "put-live", "lock-refusal"].includes(item)) x.liveBefore = (await x.api("app.get", { app: APP })).result?.live;
         await CHECKS[item](x);

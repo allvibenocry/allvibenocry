@@ -19,7 +19,7 @@ const CANDIDATES = [
 const KEYS = {
   Tab: [9, "Tab"], Enter: [13, "Enter", "\r"], Escape: [27, "Escape"], " ": [32, "Space", " "],
   ArrowLeft: [37, "ArrowLeft"], ArrowUp: [38, "ArrowUp"], ArrowRight: [39, "ArrowRight"], ArrowDown: [40, "ArrowDown"],
-  Home: [36, "Home"], End: [35, "End"], "]": [221, "BracketRight", "]"],
+  Home: [36, "Home"], End: [35, "End"], "]": [221, "BracketRight", "]"], Backspace: [8, "Backspace"],
 };
 
 export async function launch() {

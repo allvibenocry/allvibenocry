@@ -70,7 +70,8 @@
   // An app's address: on the apps' host, which the engine gives, never the
   // panel's own name, whose cookie the browser would send along (D74).
   const hostUrl = (port) => `http://${S.detail?.appsHost ?? location.hostname}:${port}/`;
-  const nextV = (d) => `v${d.next?.version?.replace(/^v/, "") ?? Number((d.live ?? "v0").replace(/^v/, "")) + 1}`;
+  // The engine's word for it: after going back, the live version plus one is a version already used (D83).
+  const nextV = (d) => d.nextVersion;
   const jobKey = (app) => `panel-job-${app}`;
   const remember = (app, value) => { try { if (value) sessionStorage.setItem(jobKey(app), JSON.stringify(value)); else sessionStorage.removeItem(jobKey(app)); } catch {} };
   const recalled = (app) => { try { return JSON.parse(sessionStorage.getItem(jobKey(app)) ?? "null"); } catch { return null; } };
@@ -273,7 +274,9 @@
     let text;
     let primary = "";
     let second = "";
-    if ((stage === "plan" || stage === "try") && restarting) text = "The test copy is starting. This takes a minute.";
+    // Going back, with the data or without, is a deliberate choice (D68): while it runs, the guide only says so.
+    if ((S.jobKind === "goBack" || S.jobKind === "goBackWithData") && running()) text = `Going back to ${esc(S.jobFor)}${S.jobKind === "goBackWithData" ? " with the data" : ""}. The safety checks are running in Live.`;
+    else if ((stage === "plan" || stage === "try") && restarting) text = "The test copy is starting. This takes a minute.";
     else if ((stage === "plan" || stage === "try") && !d.testCopy?.running) {
       text = "The test copy is not running. Start it to try the app.";
       primary = btn("start-test", "Start the test copy");
@@ -582,6 +585,8 @@
       <div class="more" id="more"><button type="button" class="more-btn" id="more-btn" aria-expanded="${S.moreOpen}" aria-controls="more-menu" data-action="more">More</button>
         <div class="more-menu" id="more-menu"${S.moreOpen ? "" : " hidden"}>
           <button type="button" data-action="more-backups">Backups<small>${d.live ? "Every night, and before every change to the live app" : "They start when the app goes live"}</small></button>
+          <button type="button" data-action="more-keys">Service keys<small>Keys for services outside your machine</small></button>
+          <button type="button" data-action="more-settings">App settings<small>Who can use it, and removing it</small></button>
         </div></div>
       <div class="chipline">${chip}</div>`;
   }
@@ -640,6 +645,15 @@
     [`${v} started`, /deployed on/],
     [`${v} answers`, /answers its smoke check/],
   ];
+  // Going back with the data (D82): the same six places, with the data put back where going back keeps it.
+  const DATA_GATES = (v) => [
+    ["It can go back", /^the backup from before|^the version to go back to|can run on$|^the recovery key/],
+    ["Backup taken", /backup target|database is running|an encrypted backup/],
+    ["Backup restored and checked", /^the backup to check|decrypts|key vault restores|scratch copy|against the copy/],
+    ["Data put back", /^prod's data replaced/],
+    [`${v} started`, /deployed on/],
+    [`${v} answers`, /answers its smoke check/],
+  ];
   function gatesOf(job, gates) {
     const steps = job.phases[0]?.steps ?? [];
     let at = 0;
@@ -693,7 +707,18 @@
       if (job.state === "running") return `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>Putting ${esc(v)} live</h2><p>Nothing anyone sees changes until every check has passed. If ${esc(v)} does not answer, ${d.live ? `${esc(d.live)} comes straight back` : "nothing live changes"}.</p>${safetyList(job, RELEASE_GATES(v))}${everyCheck(job)}</section>`;
       if (job.ok) return `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>${esc(v)} is live.</h2><p>Nothing lost. The version before it is kept below, so you can go back any time.</p>${safetyList(job, RELEASE_GATES(v))}${everyCheck(job)}</section>`;
       const back = job.phases.length > 1;
-      return `<section class="strong lcard warncard" id="shipcard" tabindex="-1"><h2>${esc(v)} is not live</h2>${stopBox(job, back ? `${v} did not come up, so the live app went back by itself, keeping its data` : "Nothing changed")}${safetyList(job, RELEASE_GATES(v))}${everyCheck(job)}<div class="acts"><button type="button" class="btn small line" data-action="dismiss-job">OK</button></div></section>`;
+      // Refused only for want of a plan (none, or one already put live): the one place it may go live outside a plan (D82).
+      const f = failedStep(job);
+      const noPlan = f && /^every step of the plan is tried/.test(f.name) && f.lines.some((l) => / has no plan, | was already put live in /.test(l));
+      const outside = noPlan ? `<button type="button" class="btn small line" data-action="put-outside" data-v="${esc(v)}">Put ${esc(v)} live outside a plan…</button>` : "";
+      return `<section class="strong lcard warncard" id="shipcard" tabindex="-1"><h2>${esc(v)} is not live</h2>${stopBox(job, back ? `${v} did not come up, so the live app went back by itself, keeping its data` : "Nothing changed")}${safetyList(job, RELEASE_GATES(v))}${everyCheck(job)}<div class="acts"><button type="button" class="btn small line" data-action="dismiss-job">OK</button>${outside}</div></section>`;
+    }
+    if (S.jobKind === "goBackWithData") {
+      const v = S.jobFor;
+      if (job.state === "running") return `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>Going back to ${esc(v)} with the data</h2><p>A backup of the live app as it is now is taken and checked first, so even this can be undone.</p>${safetyList(job, DATA_GATES(v))}${everyCheck(job)}</section>`;
+      if (job.ok) return `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>Back on ${esc(v)}, with its data.</h2><p>The live app's data is as it was before the version you left. What it held a moment ago is in the backup taken first, restored and checked.</p>${safetyList(job, DATA_GATES(v))}${everyCheck(job)}<div class="acts"><button type="button" class="btn small line" data-action="dismiss-job">OK</button></div></section>`;
+      const replaced = job.phases.some((p) => p.steps.some((s) => /^prod's data replaced/.test(s.name) && s.state === "ok"));
+      return `<section class="strong lcard warncard" id="shipcard" tabindex="-1"><h2>Going back with the data stopped</h2>${stopBox(job, replaced ? "It stopped after the data was put back; the backup taken first holds what was there" : "Nothing changed")}${safetyList(job, DATA_GATES(v))}${everyCheck(job)}<div class="acts"><button type="button" class="btn small line" data-action="dismiss-job">OK</button></div></section>`;
     }
     if (S.jobKind === "goBack") {
       const v = S.jobFor;
@@ -711,8 +736,11 @@
       ? `<section class="quiet lcard"><h2>${esc(d.live)} is live ${d.prod?.running ? '<span class="chip live">for everyone</span>' : '<span class="chip stop">not running</span>'}</h2><p>This is the version everyone uses.</p><div class="acts"><a class="btn small line" href="${esc(hostUrl(d.ports.live))}" target="_blank" rel="noopener noreferrer">Open the live app</a></div></section>`
       : '<section class="quiet lcard"><h2>Not live yet</h2><p>Only the test copy exists so far.</p></section>';
     let next = "";
-    if (jobHere() && (S.jobKind === "putLive" || S.jobKind === "goBack")) next = jobCard();
-    else if (allTried(p)) {
+    if (jobHere() && (S.jobKind === "putLive" || S.jobKind === "goBack" || S.jobKind === "goBackWithData")) next = jobCard();
+    else if (d.unreleased && (p.state === "none" || p.releasedIn) && !running()) {
+      // Changes with no plan to try: a release would be refused, so this is where it may go live outside a plan (D82).
+      next = `<section class="quiet lcard" id="outside-card"><h2>${esc(v)}: changes outside a plan</h2><p>Your AI changed the test copy without a plan, so there are no steps for you to try. ${esc(v)} can still go live outside a plan: you say why, and the release keeps your reason. The safety checks run as for every release.</p><div class="acts"><button type="button" class="btn small line" data-action="put-outside" data-v="${esc(v)}">Put ${esc(v)} live outside a plan…</button></div></section>`;
+    } else if (allTried(p)) {
       next = `<section class="strong lcard" id="shipcard" tabindex="-1"><h2>${esc(v)} is ready: ${esc(lc(p.title))}</h2><p>You have tried all ${p.steps.length} steps. Before anything changes, your data is backed up and the backup is restored and checked. Then ${esc(v)} starts, and if it does not answer, ${d.live ? `${esc(d.live)} comes straight back` : "nothing live changes"}.</p><p>When you are ready: <b>Put ${esc(v)} live</b>, at the top.</p></section>`;
     } else if (p.state === "plan" && !p.releasedIn) {
       const left = p.steps.length - triedCount(p);
@@ -727,7 +755,11 @@
     const vers = d.versions.length
       ? `<section class="quiet lcard"><h2>Earlier versions</h2><p>Every version you put live is kept. Going back keeps your data: what was written since then stays where it is.</p><div class="vers">${rows}</div></section>`
       : "";
-    return top + next + vers;
+    // Going back with the data (D82): set apart, a deliberate choice, never a next action (D68).
+    const data = d.live && target && !running()
+      ? `<section class="quiet lcard apart" id="data-card"><h2>Go back with the data</h2><p>Only for when the data itself went wrong. The live app goes back to the version before, and its data to how it was just before ${esc(d.live)} went live: everything saved since then is lost from the live app. You are told exactly what, and you confirm by typing the app's name.</p><div class="acts"><button type="button" class="btn small line" data-action="go-back-data">Go back with the data…</button></div></section>`
+      : "";
+    return top + next + vers + data;
   }
 
   /* ----------------------------------------------------------- render -- */
@@ -882,6 +914,176 @@
       <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Keep ${esc(S.detail.live)}</button><button type="button" class="btn" data-action="confirm-go-back" data-v="${esc(v)}">Go back to ${esc(v)}</button></div>`, opener);
   }
 
+  /* ------------------------------------------------ the next operations -- */
+  // D82: service keys, removing the app, going back with the data, and work
+  // outside a plan. Each is the engine's, each confirmed in its dialog.
+  const PLACE = { dev: "Test copy", prod: "Live app", agent: "Your AI" };
+  const PLACE_IN = { dev: "the test copy", prod: "the live app", agent: "your AI" };
+  // A job followed inside a dialog: its steps as they run, into `list`, until it ends.
+  async function followJob(id, list, doing) {
+    list.hidden = false;
+    for (;;) {
+      await new Promise((ok) => setTimeout(ok, 1000));
+      const j = await api("job.get", { job: id });
+      if (!j.ok) continue;
+      const steps = j.result.phases.flatMap((p) => p.steps);
+      if (list.isConnected) list.innerHTML = steps.map((s) => `<li class="${s.state}"><span class="st">${s.state === "ok" ? "done" : s.state === "failed" ? "stopped" : doing}</span> ${esc(up(s.name))}</li>`).join("");
+      if (j.result.state === "finished") return j.result;
+    }
+  }
+  const stoppedAt = (job) => {
+    const s = failedStep(job);
+    return s ? `It stopped at "${s.name}": ${s.lines.filter((l) => l !== "what would have to be true:").join(" ")}` : "It did not finish.";
+  };
+  // The app's name, typed, before something that cannot be undone: the button waits for it.
+  function typedGate(input, button) {
+    const sync = () => { button.disabled = input.value !== S.app; };
+    input.addEventListener("input", sync);
+    sync();
+  }
+  function sayIn(id) {
+    return (t) => { const er = $(id); er.textContent = t; er.hidden = !t; if (t) er.focus(); };
+  }
+
+  async function keysDialog(opener, said = "") {
+    const r = await api("keys.list", { app: S.app });
+    const rows = r.ok ? r.result.map((k) => `<div class="row"><div><h3>${esc(k.name)} <span class="hidden-val" aria-label="set, hidden">••••••</span></h3><p>${PLACE[k.scope]}, changed ${esc(when(k.changed))}.</p></div><button type="button" class="btn small line" data-action="remove-key" data-scope="${k.scope}" data-name="${esc(k.name)}" aria-label="Remove ${esc(k.name)} from ${PLACE_IN[k.scope]}">Remove</button></div>`).join("") : "";
+    openModal(`<h2 id="dialog-title">Service keys of ${esc(S.app)}</h2>
+      <p>Service keys let your app use services outside your machine, like a weather service. They are not the same as your recovery key. They are stored encrypted, handed to the app when it runs, and never shown again, not even here. The test copy, the live app and your AI each have their own.</p>
+      ${said ? `<p class="said" role="status">${esc(said)}</p>` : ""}
+      <div class="quiet rows keys-list">${!r.ok ? `<p class="intro">${esc(up(r.error.message))}</p>` : rows || '<p class="intro">No keys yet. Add one when your app needs a service outside the machine, like a weather or payment service.</p>'}</div>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close" autofocus>Close</button><button type="button" class="btn" data-action="add-key">Add a service key</button></div>`, opener);
+  }
+  function addKeyDialog(opener) {
+    openModal(`<h2 id="dialog-title">Add a service key</h2>
+      <p>For a service outside your machine. The value is stored encrypted and is never shown again, not even to you.</p>
+      <form id="key-form">
+      <div class="field"><label for="k-name">Name</label><input id="k-name" autocomplete="off" autocapitalize="characters" spellcheck="false" required maxlength="64" aria-describedby="k-name-hint" autofocus><span class="hint" id="k-name-hint">Capital letters, digits and underscores, like WEATHER_API_KEY</span></div>
+      <div class="field"><label for="k-where">Where it is used</label><select id="k-where"><option value="dev">Test copy</option><option value="prod">Live app</option><option value="both">Both, with the same value</option><option value="agent">Your AI</option></select></div>
+      <div class="field"><label for="k-value">Value</label><input id="k-value" type="password" autocomplete="off" spellcheck="false" required aria-describedby="k-value-hint"><span class="hint" id="k-value-hint">Paste the key here. It is never shown again.</span></div>
+      <p class="consent block"><b>Check the value carefully.</b> You will not be able to see it again after saving. If it is wrong, you add it again. The app that uses it starts again with it.</p>
+      <p class="form-error" id="key-error" role="alert" tabindex="-1" hidden></p>
+      <ol class="every new-app-steps" id="key-steps" aria-live="polite" hidden></ol>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="keys-back">Cancel</button><button type="submit" class="btn" id="key-go">Save the service key</button></div></form>`, opener);
+    const say = sayIn("#key-error");
+    $("#key-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = $("#k-name").value.trim().toUpperCase();
+      const where = $("#k-where").value;
+      const field = $("#k-value");
+      if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(name)) return say("The name needs 2 to 64 capital letters, digits and underscores, starting with a letter, like WEATHER_API_KEY.");
+      if (!field.value) return say("Paste the value first.");
+      const go = $("#key-go");
+      go.disabled = true;
+      say("");
+      let value = field.value;
+      for (const scope of where === "both" ? ["dev", "prod"] : [where]) {
+        const r = await api("keys.set", { app: S.app, scope, name, value, confirm: true });
+        if (!r.ok) { go.disabled = false; return say(up(r.error.message)); }
+        // Taken in: out of the page for good.
+        field.value = "";
+        go.textContent = "Saving…";
+        const job = await followJob(r.result.job, $("#key-steps"), "saving");
+        if (!job.ok) { value = ""; go.disabled = false; go.textContent = "Save the service key"; return say(`${up(stoppedAt(job))} Nothing else changed.`); }
+      }
+      value = "";
+      keysDialog(opener, `${name} is saved and will not be shown again.`);
+    });
+  }
+  function removeKeyDialog(scope, name, opener) {
+    openModal(`<h2 id="dialog-title">Remove ${esc(name)} from ${PLACE_IN[scope]}?</h2>
+      <p>${scope === "agent" ? "Your AI gets it no more the next time it starts." : `${up(PLACE_IN[scope])} starts again without it. If it still needs the key, it may stop working until you add it again.`}</p>
+      <p class="form-error" id="rk-error" role="alert" tabindex="-1" hidden></p>
+      <ol class="every new-app-steps" id="rk-steps" aria-live="polite" hidden></ol>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="keys-back">Keep it</button><button type="button" class="btn" id="rk-go" data-action="confirm-remove-key" data-scope="${scope}" data-name="${esc(name)}">Remove ${esc(name)}</button></div>`, opener);
+  }
+  async function removeKey(scope, name, button) {
+    const say = sayIn("#rk-error");
+    button.disabled = true;
+    const r = await api("keys.remove", { app: S.app, scope, name, confirm: true });
+    if (!r.ok) { button.disabled = false; return say(up(r.error.message)); }
+    const job = await followJob(r.result.job, $("#rk-steps"), "removing");
+    if (!job.ok) { button.disabled = false; return say(up(stoppedAt(job))); }
+    keysDialog($("#more-btn"), `${name} is removed from ${PLACE_IN[scope]}.`);
+  }
+  function settingsDialog(opener) {
+    openModal(`<h2 id="dialog-title">Settings of ${esc(S.app)}</h2>
+      <div class="quiet rows">
+        <div class="row"><div><h3>Who can use it</h3><p>Anyone on your home network, like the family's phones and computers.</p></div><span class="chip live">Home network only</span></div>
+        <div class="row"><div><h3>Publish</h3><p>Makes the app reachable from the internet, with a sign-in so that only you and the people you invite can use it.</p></div><span class="chip idle">Planned</span></div>
+      </div>
+      <section class="apart" aria-labelledby="rm-h"><h3 id="rm-h">Remove this app</h3><p>Its test copy and its live app go, with their data, its code and its history, its service keys, and what your AI did in it. A last backup of the live app is taken first, and kept.</p><button type="button" class="btn small line" data-action="remove-app">Remove ${esc(S.app)}…</button></section>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Close</button></div>`, opener);
+  }
+  function removeAppDialog(opener) {
+    const app = S.app;
+    openModal(`<h2 id="dialog-title">Remove ${esc(app)}?</h2>
+      <p>This deletes, for good:</p>
+      <ul class="gone"><li>the test copy and the live app, with their data</li><li>its code, with its whole history</li><li>its service keys</li><li>your AI's conversations in it, and what it did</li></ul>
+      <p>First, a last backup of the live app is taken, restored and checked, and kept on the backup disk with the others. If that cannot be done, nothing is removed.</p>
+      <form id="rm-form"><div class="field"><label for="rm-name">To confirm, type the app's name: ${esc(app)}</label><input id="rm-name" autocomplete="off" autocapitalize="none" spellcheck="false" required maxlength="30" autofocus></div>
+      <p class="form-error" id="rm-error" role="alert" tabindex="-1" hidden></p>
+      <ol class="every new-app-steps" id="rm-steps" aria-live="polite" hidden></ol>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Keep ${esc(app)}</button><button type="submit" class="btn" id="rm-go">Remove ${esc(app)}</button></div></form>`, opener);
+    typedGate($("#rm-name"), $("#rm-go"));
+    const say = sayIn("#rm-error");
+    $("#rm-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const go = $("#rm-go");
+      if ($("#rm-name").value !== app) return;
+      go.disabled = true;
+      go.textContent = "Removing…";
+      const r = await api("app.remove", { app, typedName: $("#rm-name").value, confirm: true });
+      if (!r.ok) { go.textContent = `Remove ${app}`; typedGate($("#rm-name"), go); return say(up(r.error.message)); }
+      const job = await followJob(r.result.job, $("#rm-steps"), "working");
+      if (!job.ok) { go.textContent = `Remove ${app}`; typedGate($("#rm-name"), go); return say(`Nothing was removed. ${up(stoppedAt(job))}`); }
+      const kept = job.phases.flatMap((p) => p.notes).join(" ").match(/Its last backup is kept on the backup target: (\S+)/)?.[1] ?? null;
+      openModal(`<h2 id="dialog-title">${esc(app)} is removed</h2>
+        <p>${kept ? `Its last backup, restored and checked, is kept on the backup disk: <span class="mono path">${esc(kept)}</span>. Its earlier backups are kept too.` : "It had no data to back up. Any backups of it on the backup disk are kept."}</p>
+        <div class="dialog-actions"><a class="btn" href="/" id="rm-home" autofocus>Back to your apps</a></div>`, null);
+    });
+  }
+  async function dataBackDialog(opener) {
+    const r = await api("app.goBackWithDataPlan", { app: S.app });
+    if (!r.ok || !r.result.possible) {
+      openModal(`<h2 id="dialog-title">Going back with the data is not possible</h2><p>${esc(up(r.ok ? r.result.why : r.error.message))}</p><div class="dialog-actions"><button type="button" class="btn line" data-action="close">Close</button></div>`, opener);
+      return;
+    }
+    const p = r.result;
+    const counts = p.entriesNow !== null && p.entriesAtBackup !== null ? ` It has ${p.entriesNow} ${p.entriesNow === 1 ? "entry" : "entries"} now; the backup has ${p.entriesAtBackup}.` : "";
+    openModal(`<h2 id="dialog-title">Go back to ${esc(p.to)} with the data?</h2>
+      <p>The live app goes back to ${esc(p.to)}, and its data goes back to how it was ${esc(when(p.backup.created))}, just before ${esc(p.from)} went live.</p>
+      <p class="consent block" id="data-lost"><b>Everything saved in the live app since then is lost from it.</b>${esc(counts)}</p>
+      <p>First, a backup of the live app as it is now is taken, restored and checked, so even this can be undone. If that cannot be done, nothing changes.</p>
+      <form id="data-form"><div class="field"><label for="data-name">To confirm, type the app's name: ${esc(S.app)}</label><input id="data-name" autocomplete="off" autocapitalize="none" spellcheck="false" required maxlength="30" autofocus></div>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Keep ${esc(p.from)} and its data</button><button type="submit" class="btn" id="data-go">Go back with the data</button></div></form>`, opener);
+    typedGate($("#data-name"), $("#data-go"));
+    $("#data-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const typed = $("#data-name").value;
+      if (typed !== S.app) return;
+      closeModal();
+      selectTab("live");
+      startJob("goBackWithData", "app.goBackWithData", { args: { typedName: typed, confirm: true }, for: p.to });
+    });
+  }
+  function outsidePlanDialog(v, opener) {
+    openModal(`<h2 id="dialog-title">Put ${esc(v)} live outside a plan?</h2>
+      <p>Nobody has tried ${esc(v)}'s changes as steps of a plan. If you know what changed and want it live anyway, say why, in your own words. The release keeps your reason, and the safety checks run as for every release.</p>
+      <form id="outside-form"><div class="field"><label for="outside-why">Why it goes live without a plan</label><input id="outside-why" autocomplete="off" required minlength="3" maxlength="300" aria-describedby="outside-hint" autofocus><span class="hint" id="outside-hint">For example: the AI fixed a typo on the front page</span></div>
+      <p class="form-error" id="outside-error" role="alert" tabindex="-1" hidden></p>
+      <div class="dialog-actions"><button type="button" class="btn line" data-action="close">Cancel</button><button type="submit" class="btn">Put ${esc(v)} live</button></div></form>`, opener);
+    $("#outside-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const why = $("#outside-why").value.trim();
+      if (why.length < 3 || why.startsWith("--")) return sayIn("#outside-error")("Say why in a few words of your own.");
+      closeModal();
+      S.job = null;
+      selectTab("live");
+      startJob("putLive", "app.putLive", { args: { outsidePlan: why, confirm: true }, for: v });
+    });
+  }
+
   /* -------------------------------------------------------------- jobs -- */
   let pollT = null;
   function poll() {
@@ -917,6 +1119,7 @@
       const said = {
         putLive: S.job.ok ? `${S.jobFor} is live.` : `${S.jobFor} is not live. Nothing was lost.`,
         goBack: S.job.ok ? `Back on ${S.jobFor}.` : "Nothing changed.",
+        goBackWithData: S.job.ok ? `Back on ${S.jobFor}, with its data.` : "Going back with the data stopped.",
         startTestCopy: S.job.ok ? "The test copy is running." : "The test copy did not start.",
         agentStart: S.job.ok ? "Your AI is running." : "Your AI did not start.",
         agentStop: S.job.ok ? "Your AI has stopped." : "Your AI did not stop.",
@@ -978,7 +1181,20 @@
       if (S.moreOpen) $("#more-menu button")?.focus();
       return;
     }
-    if (a === "more-backups") { S.moreOpen = false; $("#more-menu").hidden = true; $("#more-btn").setAttribute("aria-expanded", "false"); return backupsDialog($("#more-btn")); }
+    if (a === "more-backups" || a === "more-keys" || a === "more-settings") {
+      S.moreOpen = false;
+      $("#more-menu").hidden = true;
+      $("#more-btn").setAttribute("aria-expanded", "false");
+      return (a === "more-backups" ? backupsDialog : a === "more-keys" ? keysDialog : settingsDialog)($("#more-btn"));
+    }
+    // D82: service keys, removing the app, going back with the data, outside a plan.
+    if (a === "add-key") return addKeyDialog($("#more-btn"));
+    if (a === "keys-back") return keysDialog($("#more-btn"));
+    if (a === "remove-key") return removeKeyDialog(b.dataset.scope, b.dataset.name, $("#more-btn"));
+    if (a === "confirm-remove-key") return removeKey(b.dataset.scope, b.dataset.name, b);
+    if (a === "remove-app") return removeAppDialog($("#more-btn"));
+    if (a === "go-back-data") return dataBackDialog(b);
+    if (a === "put-outside") return outsidePlanDialog(b.dataset.v, b);
     if (a === "to-live") return selectTab("live");
     if (a === "to-preview") return selectTab("preview");
     if (a === "works") {

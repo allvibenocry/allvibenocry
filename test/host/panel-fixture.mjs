@@ -16,6 +16,10 @@
 //   node panel-fixture.mjs agent-key <app>      a stand-in key in the app's vault, for its AI
 //   node panel-fixture.mjs hold-lock <app> <op> the app's lock, held from the command line until free-lock
 //   node panel-fixture.mjs free-lock <app>      that lock, let go
+//   node panel-fixture.mjs entry <app>          an entry written in the live app (D83), which going back with the data loses
+//   node panel-fixture.mjs entries <app>        how many entries the live app holds
+//   node panel-fixture.mjs unplanned <app>      a change committed in the test copy without a plan, and the test copy started on it
+//   node panel-fixture.mjs secret-hash <app> <env> <NAME>   the SHA-256 of what the app reads for a service key, or "none"; never the value
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chownSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -76,6 +80,19 @@ const BROKEN = {
   "ai-stop-noop": [[SHELL, 'if (a === "confirm-stop-ai") { closeModal(); return startJob("agentStop", "agent.stop", { args: { confirm: true } }); }', 'if (a === "confirm-stop-ai") { closeModal(); return; }']],
   "dot-wide": [["static/assets/panel.css", ".nav .dot{width:8px;height:8px;", ".nav .dot{width:80px;height:8px;"]],
   "ai-overflow": [["static/assets/panel.css", ".ai-keys{display:none;font-size:.8rem;color:var(--muted)}", ".ai-keys{display:none;font-size:.8rem;color:var(--muted)}\n.ai-choices{min-width:600px}"]],
+  // The eighth brief's (item 5, D83): service keys, going back with the data, outside a plan, removing an app.
+  "keys-kept": [[SHELL, '        // Taken in: out of the page for good.\n        field.value = "";', "        document.body.dataset.kept = field.value;"]],
+  "keys-noop": [[SHELL, 'const r = await api("keys.set", { app: S.app, scope, name, value, confirm: true });', 'const r = { ok: false, error: { message: "not saved" } };']],
+  "keys-no-remove": [[SHELL, 'const r = await api("keys.remove", { app: S.app, scope, name, confirm: true });', 'const r = { ok: false, error: { message: "not removed" } };']],
+  "keys-focus-remove": [[SHELL, '<button type="button" class="btn line" data-action="close" autofocus>Close</button><button type="button" class="btn" data-action="add-key">', '<button type="button" class="btn line" data-action="close">Close</button><button type="button" class="btn" data-action="add-key">']],
+  "ungated": [[SHELL, "const sync = () => { button.disabled = input.value !== S.app; };", "const sync = () => { button.disabled = false; };"]],
+  "data-silent": [[SHELL, '<p class="consent block" id="data-lost"><b>Everything saved in the live app since then is lost from it.</b>${esc(counts)}</p>', ""]],
+  "data-pink": [[SHELL, '<button type="button" class="btn small line" data-action="go-back-data">', '<button type="button" class="btn small pink" data-action="go-back-data">']],
+  "data-noop": [[SHELL, 'startJob("goBackWithData", "app.goBackWithData", { args: { typedName: typed, confirm: true }, for: p.to });', "void typed;"]],
+  "outside-always": [[SHELL, "const outside = noPlan ?", "const outside = true ?"]],
+  "outside-noop": [[SHELL, 'startJob("putLive", "app.putLive", { args: { outsidePlan: why, confirm: true }, for: v });', "void why;"]],
+  "remove-noop": [[SHELL, 'const r = await api("app.remove", { app, typedName: $("#rm-name").value, confirm: true });', 'const r = { ok: false, error: { message: "not removed" } };']],
+  "remove-silent": [[SHELL, '${kept ? `Its last backup, restored and checked, is kept on the backup disk: <span class="mono path">${esc(kept)}</span>. Its earlier backups are kept too.` : "It had no data to back up. Any backups of it on the backup disk are kept."}', "It is gone."]],
 };
 const inspect = (format) => sh("docker", ["inspect", "-f", format, PANEL]).stdout.trim();
 function waitHealthy() {
@@ -263,6 +280,36 @@ if (action === "plan") {
   const dir = `${STATE}/projects/${rest[0]}/reports`;
   const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".txt")).sort() : [];
   console.log(files.length ? `${files.at(-1)}\n${readFileSync(`${dir}/${files.at(-1)}`, "utf8")}` : "no reports");
+} else if (action === "entry") {
+  // An entry written in the live app, as a person there would (D83): something that going back with the data loses.
+  const [app] = rest;
+  const project = JSON.parse(readFileSync(`${STATE}/projects/${app}/project.json`, "utf8"));
+  const name = `Kim ${randomBytes(2).toString("hex")}`;
+  must("an entry", sh("node", ["-e", `fetch("http://127.0.0.1:${project.ports.prodApp}/entries",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:"name=${encodeURIComponent(name)}&message=written+in+the+live+app"}).then(r=>process.exit(r.status<400?0:1),()=>process.exit(1))`]));
+  const health = sh("node", ["-e", `fetch("http://127.0.0.1:${project.ports.prodApp}/healthz").then(r=>r.json()).then(j=>console.log(j.entries))`]).stdout.trim();
+  console.log(`entry: ${name}, in the live app; it has ${health} now`);
+} else if (action === "entries") {
+  // How many entries the live app holds, as its own health check says.
+  const [app] = rest;
+  const project = JSON.parse(readFileSync(`${STATE}/projects/${app}/project.json`, "utf8"));
+  const n = sh("node", ["-e", `fetch("http://127.0.0.1:${project.ports.prodApp}/healthz").then(r=>r.json()).then(j=>console.log(j.entries),()=>console.log("no answer"))`]).stdout.trim();
+  console.log(`${n} entries`);
+} else if (action === "unplanned") {
+  // A change the builder committed without a new plan, and the test copy started on it (D83).
+  const [app] = rest;
+  const repo = `${STATE}/projects/${app}/repo`;
+  const readme = `${repo}/README.md`;
+  writeFileSync(readme, `${readFileSync(readme, "utf8")}\n<!-- a change outside any plan, ${new Date().toISOString()} -->\n`);
+  const [uid, gid] = [sh("id", ["-u", C]).stdout.trim(), sh("id", ["-g", C]).stdout.trim()].map(Number);
+  chownSync(readme, uid, gid);
+  must("dev commit", sh(C, ["dev", "commit", app, "The builder: a change outside any plan"]));
+  must("dev deploy", sh(C, ["dev", "deploy", app]));
+  console.log("unplanned: a change committed without a plan; the test copy runs it");
+} else if (action === "secret-hash") {
+  // What an app's container reads for a key, as a hash: the check compares, and no value is ever printed.
+  const [app, scope, name] = rest;
+  const r = sh("docker", ["exec", `${C}-${app}-${scope}-app`, "sh", "-c", `sha256sum /run/secrets/${name} 2>/dev/null | cut -c1-64 || echo none`]);
+  console.log(r.stdout.trim() || "none");
 } else if (action === "live") {
   const status = must("status", sh(C, ["project", "status", rest[0]])).stdout;
   console.log(status.split("\n").filter((l) => /prod|live|v\d/.test(l)).slice(0, 6).join("\n"));

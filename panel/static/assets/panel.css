@@ -726,3 +726,11 @@ body.appview main{max-width:none;padding:0}
 .nav .dot.act{background:var(--sun);box-shadow:0 0 0 3px rgba(255,196,0,.3)}
 .chip.stop{background:var(--stop-soft);border-color:var(--stop);color:var(--text)}
 .chip.stop::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--stop)}
+/* D82: the next operations: their dialogs, and the Live pane's choice set apart */
+.consent.block{display:block}
+.dialog .said{margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--go-soft);border:1.5px solid var(--go);color:var(--text)}
+.dialog .apart{margin-top:22px;padding-top:16px;border-top:1.5px solid var(--line)}
+.dialog .apart p{margin:6px 0 12px;color:var(--muted)}
+.lcard.apart{margin-top:28px}
+.gone{margin:8px 0 0 1.2em}
+.mono.path{overflow-wrap:anywhere;word-break:break-all}

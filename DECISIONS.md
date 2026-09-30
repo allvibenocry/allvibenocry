@@ -3457,3 +3457,63 @@ HTTP (D64's known limit; TLS at home is the next security milestone, D66). A
 key for both the test copy and the live app is two jobs, each restarting its
 app. A new app later made with a removed app's name finds the removed app's
 backups in its folder on the backup target, listed as its own.
+
+## D83. The panel for service keys, going back with the data, work outside a plan and removing an app
+
+*2026-09-30. The eighth brief, item 5: D82's four operations in the panel, in
+the demo's design (D51), each the engine's own (rule 5).*
+
+- **Service keys, under More** (as in the demo): the list of the app's keys,
+  each with where it is used and when it changed, its value shown as hidden
+  dots; "Add a service key" with a name, where it is used (the test copy, the
+  live app, both with the same value, or your AI) and the value in a password
+  field: "Paste the key here. It is never shown again." The value is sent once
+  to `keys.set` and the field emptied as soon as the engine has taken it; no
+  answer, page or log holds it afterwards. Removing a key is confirmed in
+  plain words ("the live app starts again without it"). "Both" is two jobs,
+  one per place, each restarting its app (D82's limit).
+- **Going back with the data, set apart under Live**: a card of its own,
+  "Go back with the data", below the earlier versions, never pink and never in
+  the guided path (D68: going back and restoring data are never a next
+  action). Its dialog asks the engine what it would do and lose
+  (`app.goBackWithDataPlan`) and says it: to which version, to the data as it
+  was just before the version it leaves went live, "Everything saved in the
+  live app since then is lost from it", with the entries now and in the
+  backup, and that a backup of the live app as it is now is taken, restored and
+  checked first. Its button works only once the app's name is typed exactly.
+- **Work outside a plan, only where a release would be refused**: under Live,
+  when the test copy runs changes that no plan covers (no plan, or one already
+  put live), a card offers "Put vN live outside a plan…"; after a release
+  refused for that reason, the same button is in the refusal. Never while a
+  plan has an untried step: there the refusal says to try it. The dialog asks
+  why, in the person's own words; the release keeps the reason, and the
+  earlier versions show it.
+- **Removing an app, in its settings**: More, App settings, "Remove this app",
+  set apart at the bottom. Its dialog lists what goes for good, says that a
+  last backup is taken, restored, checked and kept first, and that nothing is
+  removed if that cannot be done; the button works only once the name is typed.
+  When it is done, the panel says where the last backup is kept, and the app
+  is gone from the home screen and the side bar.
+- **Dialogs** keep D65's keyboard and screen reader behaviour: focus goes in,
+  Tab and Shift+Tab stay in, Escape closes, focus goes back to what opened it;
+  progress is announced; an error is an alert that takes focus.
+- **Found by the checks, fixed**: after going back, the panel named the next
+  release after the live version plus one, a version already used (it said
+  "Put v2 live outside a plan" and the engine released v4). `app.get` now says
+  `nextVersion`, the engine's own rule (one past the highest ever released),
+  and the panel only shows it (mistake 64). And with a key already listed,
+  Service keys opened with the focus on that key's **Remove**, its first
+  button; it opens on **Close** now, as every dialog opens on a safe control.
+
+**Checked** (`test/host/panel-checks.mjs`, headless Edge, fresh test hosts):
+nine new checks, 41 in all (a keyboard check of each new dialog; data-back,
+outside-plan, keys and remove-app), and twelve new broken copies, 46 in all.
+Every copy seen failing on the checks it names and on nothing else: 76 pairs
+of copy and check. Then the real panel: 215, 215, 217 and 217 passed at 1280
+and 390 pixels, light and dark. The checks load the page again after a
+preparation changed the app from the host (mistake 65), and a dialog's opener
+that is not on the page is said as such.
+
+**Why.** D66 put these four in the panel, each in the place the demo gives
+it; D68 keeps whatever loses data or skips a plan out of the guided path, so
+that the ordinary way never leads there by accident.

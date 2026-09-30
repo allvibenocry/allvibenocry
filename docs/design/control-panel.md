@@ -124,8 +124,8 @@ Code's own plan mode is used**, not a mechanism of the suite's own.
 ### The chat, and the guided path
 
 *Decided by the owner in the seventh brief (D68, D69), and built in it (D75,
-D77). The demo will be adjusted to them later; until then, where the demo
-differs, these win.*
+D77). The demo shows them since the website's D35 (the eighth brief, item 6),
+not yet released; where the demo differs, these win.*
 
 - **The chat is Claude Code's own interface**, in both modes: a terminal on the
   left, under the plan's checklist, where the person talks to Claude Code and
@@ -140,3 +140,21 @@ differs, these win.*
   the next action, and there is only ever one.** The tabs stay, and the
   ordinary path never needs them. Going back and restoring data are never a
   "next": they stay deliberate, with their confirmations.
+
+### Set apart: what loses data, what skips a plan, and what is secret
+
+*Built in the eighth brief (D82, D83), in the demo's design.*
+
+- **Service keys, under More**: listed with where each is used and when it
+  changed, the value as hidden dots; added with the value pasted into a
+  password field, "never shown again", and gone from the page as soon as the
+  engine has it.
+- **Going back with the data, under Live**, below the earlier versions, in a
+  card of its own: never pink, never in the guided path. Its dialog says what
+  is lost, with the entries now and in the backup, and its button works only
+  once the app's name is typed.
+- **Work outside a plan**, only where a release would be refused for want of
+  a plan: a card under Live, and a button in that refusal. The person says
+  why; the release keeps it, and the earlier versions show it.
+- **Removing an app, in its settings**, set apart at the bottom: what goes, a
+  last backup first, the name typed; afterwards, where that backup is kept.

@@ -469,3 +469,15 @@ From the eighth brief, here:
     done. The probe counted the entries. *Here:* a scratch name has a random
     part, and a probe of anything that restores data checks the data, never
     only the job's word (D82).
+64. **The panel must not work out what the engine knows.** It named the next
+    release after the live version plus one; after going back, that version
+    was already used, and the panel offered "Put v2 live" while the engine
+    released v4. Rule 5 again, for a number. *Here:* the engine says
+    `nextVersion`, and the panel only shows it (D83).
+65. **A page open while something changes elsewhere shows the old state.**
+    The checks changed an app from the host and then looked for a control
+    the change brings, on a page that would see it only at its next quiet
+    look, 15 seconds later; the control was not there, and the check said
+    the dialog did not open. *Here:* after a change made outside the page,
+    a check loads the page again, as a person coming to it would, and a
+    control that is not there is said as such (D83).
