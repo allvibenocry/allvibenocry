@@ -207,6 +207,7 @@ terminal on a phone (D81).
 | 6. The website's demo | Built, in the website's repository (its D35, `b0f4cf5`), and **not tagged, released or deployed**: the demo shows the guided path, the AI's own terminal as a marked picture in plain text, "Start your AI", a new app from the home screen, and only "your own API key, or your own AI app through MCP". Its checks pass at 1440, 768, 390, 360 and 320 px in light and dark, each seen failing on a broken copy (15). |
 | 7. From a blank laptop to a working suite | Recorded, documentation only: [docs/real-hardware.md](docs/real-hardware.md), from a Debian 13 USB stick to a first app, one command per block and where each runs, then every line of "To verify on real hardware" below as a check, with how and what to see. Nothing of it run on a laptop. |
 | 8. Walkthrough and records | Built and run (D84): every command block marked **Workstation:** or **Host:** on the line above it, "Before you start" asking for two terminals, the host's shell saying whose it is with a prompt starting `(test host)`; no step sending the reader to another for its commands; step 16 with the restart that says whether everything came back, and the hard stop; step 30 with work outside a plan, going back with the data, service keys and removing an app. `walkthrough-blocks.mjs` refuses what friction log 7 and 9 met: 174 problems before, none after (178 blocks). On a fresh test host, step 16's blocks as written, and steps 29 to 31 by `walkthrough-panel.mjs`: 132 of 132 as the text says, up to the owner's sign-in. Found by that run: the restart's verdict asked for doctor all green, and said "NOT back" for an app with no backup yet; it now compares with just before the restart (mistake 66). The records; the guard in both repositories; every revision of both scanned for rule 10 (as before: only `864be95`, Known, and the website's first day). The test host left fresh, its panel not set up, no project on it. |
+| 9. The report | Recorded: [reports/2026-09-30-brief-08.md](reports/2026-09-30-brief-08.md), with every push and its CI run in both repositories (all green), what is not verified, and what is for the owner to do. |
 
 ## The seventh brief
 
@@ -437,6 +438,15 @@ Debian's Node.js 20 is recorded as deliberate (D32).
   lines and shows its logo first; it works, and is cramped.
 - **A key put in the vault from the command line** shows in the panel within
   a quarter of a minute (the page's quiet look for changes), not at once.
+- **A loop device would pass as a separate disk** (found by reading, in the
+  eighth brief, not tried and not fixed): the backup target's disk check
+  follows a device's slaves, not a loop device's backing file, so a disk
+  image on the system disk, mounted through a loop device, would be taken for
+  a disk of its own (rule 2). A beginner would not do that by accident; it is
+  a gap in the check all the same.
+- **The same after a restart is not all green** (D84): `host.mjs restart`
+  names what doctor said just before the stop as already there, and counts
+  only what is new; the probes still ask for all green, having made it so.
 
 ## Next
 
