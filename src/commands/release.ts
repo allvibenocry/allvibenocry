@@ -42,7 +42,6 @@ import {
   listBackups,
   newRestoreContext,
   replaceProdData,
-  takeBackup,
   verifyAndDecrypt,
   type Backup,
 } from "../lib/backup.js";
@@ -467,21 +466,16 @@ async function rollback(args: string[]): Promise<number> {
   }
 
   /* --restore-data: the data too, back to the backup taken before `from` was released (rule 8). */
-  const backup = listBackups(config, name).find((b) => b.manifest.file === from.backup) ?? null;
-  if (!backup) {
-    process.stderr.write(`there is no backup from before ${from.version} on the backup target${from.backup ? ` (${from.backup})` : ""}, so the data cannot be put back.\n`);
+  const plan = await restoreDataPlan(project, config);
+  if ("error" in plan) {
+    process.stderr.write(`${plan.error}\n`);
     return 1;
   }
-  const now = await smoke(project, "prod");
-  const atBackup = backup.manifest.prodCheck?.entries;
-  const lost = [
-    `prod's data goes back to how it was at ${backup.manifest.created.slice(0, 16).replace("T", " ")} UTC, just before ${from.version} was released;`,
-    "everything written to prod since then is lost from prod",
-  ].join(" ") + (now.entries !== null && atBackup !== undefined && atBackup !== null ? ` (prod has ${now.entries} entries now; the backup has ${atBackup})` : "");
+  const { backup, lost } = plan;
   if (!args.includes("--confirm-data-loss")) {
     process.stdout.write(
       `This rollback would also restore data, and that loses data (rule 8):\n  ${lost}.\n` +
-        `A backup of prod as it is now is taken first, so even this can be undone.\n\n` +
+        `A backup of prod as it is now is taken and restore-checked first, so even this can be undone.\n\n` +
         `To do it: ${C} rollback ${name} --restore-data --confirm-data-loss\n`,
     );
     return 2;
@@ -489,19 +483,17 @@ async function rollback(args: string[]): Promise<number> {
 
   const context = newRestoreContext(project);
   context.backup = backup;
+  // The backup of prod as it is now, restore-checked before anything of prod
+  // changes: the one way to undo this (D82; rule 2, D57).
   const safety: { backup: Backup | null } = { backup: null };
+  const safetyCheck = newRestoreContext(project);
   let record;
   try {
     record = await runSteps(
       [
         { name: `the backup from before ${from.version}: whole, and it decrypts`, run: async () => ok(`${backup.manifest.file}\n${await verifyAndDecrypt(context)}`) },
-        {
-          name: "a backup of prod as it is now, first",
-          run: async () => {
-            safety.backup = await takeBackup(project, config, "manual");
-            return ok(`${safety.backup.file}: what is about to be replaced, kept`);
-          },
-        },
+        ...backupSteps(project, config, "rollback", safety),
+        ...restoreCheckSteps(project, safetyCheck, () => safety.backup),
         { name: "prod's data replaced by the backup", run: async () => ok(await replaceProdData(project, context)) },
         ...codeRollbackSteps(project, to, from.version, false, project.failed ? [{ version: `${project.failed.version}, which failed`, commit: project.failed.commit }] : []).filter((step) => step.name !== "prod's data"),
       ],
@@ -509,9 +501,37 @@ async function rollback(args: string[]): Promise<number> {
     );
   } finally {
     cleanupRestore(context);
+    cleanupRestore(safetyCheck);
   }
+  record.facts.backup = safety.backup?.manifest.file ?? null;
+  record.facts.entries = safetyCheck.entries;
+  saveRecord(record);
   if (record.ok) process.stdout.write(`\n${name} is back on ${to.version}, with its data as it was before ${from.version}. The data it replaced is in ${safety.backup?.file}.\n`);
   return record.ok ? 0 : 1;
+}
+
+/**
+ * What going back with the data would do (rule 8): from which version to
+ * which, the backup it restores (the one taken just before `from` went live),
+ * and, in words, what is lost. `allvibe rollback --restore-data` prints it and
+ * the engine answers with it (D82), so the two can never say different things.
+ */
+export async function restoreDataPlan(project: Project, config = readConfig()): Promise<
+  | { from: string; to: string; backup: Backup; created: string; entriesAtBackup: number | null; entriesNow: number | null; lost: string }
+  | { error: string }
+> {
+  const from = project.failed ?? currentRelease(project);
+  const to = project.failed ? currentRelease(project) : previousRelease(project);
+  if (!from || !to) return { error: `prod runs ${from?.version ?? "nothing"}, the first version: there is nothing earlier to go back to.` };
+  const backup = listBackups(config, project.name).find((b) => b.manifest.file === from.backup) ?? null;
+  if (!backup) return { error: `there is no backup from before ${from.version} on the backup target${from.backup ? ` (${from.backup})` : ""}, so the data cannot be put back.` };
+  const now = await smoke(project, "prod");
+  const atBackup = backup.manifest.prodCheck?.entries ?? null;
+  const lost = [
+    `prod's data goes back to how it was at ${backup.manifest.created.slice(0, 16).replace("T", " ")} UTC, just before ${from.version} was released;`,
+    "everything written to prod since then is lost from prod",
+  ].join(" ") + (now.entries !== null && atBackup !== null ? ` (prod has ${now.entries} entries now; the backup has ${atBackup})` : "");
+  return { from: from.version, to: to.version, backup, created: backup.manifest.created, entriesAtBackup: atBackup, entriesNow: now.entries, lost };
 }
 
 /** Each under the app's lock (D72): never two at once, from here or from the panel. */

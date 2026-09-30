@@ -80,7 +80,17 @@ async function set(args: string[]): Promise<number> {
     process.stderr.write(`${C} key set reads the value from standard input and never asks for it.\nPut it in a file, then: ${C} key set ${name} ${scope} ${key} < the-file\n`);
     return 2;
   }
-  const input = await readStdin();
+  return setKey(project, scope, key, await readStdin());
+}
+
+/**
+ * The value in, encrypted, and the app that uses it started again with it; the
+ * one way a key is set, from the command line (standard input) and from the
+ * panel (the engine's job, D82), which hands the value over in memory. The
+ * value is never printed, logged or returned: the steps say its length.
+ */
+export async function setKey(project: Project, scope: Scope, key: string, input: Buffer): Promise<number> {
+  const name = project.name;
   let value = "";
   let staged: ReturnType<typeof stageKey> | null = null;
 
@@ -97,6 +107,7 @@ async function set(args: string[]): Promise<number> {
       run: () => {
         staged = stageKey(name, scope, key, value);
         value = "";
+        input.fill(0);
         return ok(`${staged.replaced ? "replaced" : "added"}: encrypted to this machine's key and the recovery key (D13), in ${vaultDir(name)}`);
       },
     },
@@ -154,7 +165,12 @@ async function remove(args: string[]): Promise<number> {
     process.stderr.write(`${problem}\n`);
     return 2;
   }
-  const scope = scopeArg as Scope;
+  return removeKeyFrom(project, scopeArg as Scope, key);
+}
+
+/** A key out of the vault, and the app that used it started again without it: from the command line and the panel (D82). */
+export async function removeKeyFrom(project: Project, scope: Scope, key: string): Promise<number> {
+  const name = project.name;
   const record = await runSteps(
     [
       {

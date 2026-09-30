@@ -47,7 +47,9 @@ import { renderProjectDocs } from "../lib/template.js";
 import { lockProject } from "../lib/vault.js";
 import { ensureHook } from "../lib/keycheck.js";
 import { agentContainer, agentState, signInOf, stopAgent } from "../lib/agent.js";
-import { fail, ok, runSteps } from "../lib/steps.js";
+import { fail, ok, runSteps, saveRecord, type Step } from "../lib/steps.js";
+import { cleanupRestore, newRestoreContext, type Backup } from "../lib/backup.js";
+import { backupSteps, restoreCheckSteps } from "./backup.js";
 import { withLock } from "../lib/lock.js";
 
 const TEMPLATE = "guestbook";
@@ -220,12 +222,27 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
   if (!flags.includes("--delete-everything")) {
     process.stdout.write(
       `This would delete, and nothing could bring it back except a backup:\n${what.map((w) => `  - ${w}`).join("\n")}\n` +
-        `Backups on the backup target are kept.\n\nTo do it: ${NAMES.command} project remove ${name} --delete-everything\n`,
+        `First, a last backup of prod is taken and restore-checked, and kept with every other backup on the backup target.\n\n` +
+        `To do it: ${NAMES.command} project remove ${name} --delete-everything\n`,
     );
     return 2;
   }
-  const record = await runSteps(
+  // A last backup of prod, restore-checked, before anything goes (D82): it may
+  // be all that is left of the app. Without a backup target, or when prod's
+  // data cannot be backed up, nothing is removed (rule 7). A project whose
+  // prod never got as far as its data (a creation that failed half-way,
+  // mistake 20) has nothing to back up.
+  const hasData = tryDocker(["volume", "inspect", volumeName(name, "prod")]).code === 0;
+  const last: { backup: Backup | null } = { backup: null };
+  const check = newRestoreContext(readProject(name));
+  const lastBackup: Step[] = hasData
+    ? [...backupSteps(readProject(name), readConfig(), "remove", last), ...restoreCheckSteps(readProject(name), check, () => last.backup)]
+    : [{ name: "a last backup of prod", run: () => ok(`prod has no data (no volume ${volumeName(name, "prod")}): nothing to back up`) }];
+  let record;
+  try {
+    record = await runSteps(
     [
+      ...lastBackup,
       {
         name: "the agent, if it runs",
         run: () => {
@@ -274,8 +291,20 @@ async function remove(name: string | undefined, flags: string[]): Promise<number
         },
       },
     ],
-    { kind: "project-remove", project: name },
-  );
+    { kind: "project-remove", project: name, facts: { lastBackup: null } },
+    );
+  } finally {
+    cleanupRestore(check);
+  }
+  if (record.ok) {
+    record.facts.lastBackup = last.backup?.file ?? null;
+    saveRecord(record);
+    process.stdout.write(
+      last.backup
+        ? `\n${name} is removed. Its last backup is kept on the backup target: ${last.backup.file}\n(restore-checked just now; its earlier backups are kept too).\n`
+        : `\n${name} is removed. It had no data to back up; any backups of it on the backup target are kept.\n`,
+    );
+  }
   return record.ok ? 0 : 1;
 }
 

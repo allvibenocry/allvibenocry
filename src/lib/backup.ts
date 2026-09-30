@@ -47,8 +47,13 @@ import { listKeys, runtimeFile, secretPath, unlockScope, vaultDir } from "./vaul
 
 const C = NAMES.command;
 
-/** A release's and a rollback's backups are kept with the releases, and never pruned (D57). */
-export type BackupKind = "scheduled" | "manual" | "release" | "rollback";
+/**
+ * A release's and a rollback's backups are kept with the releases, and never
+ * pruned (D57); so is the last backup taken before an app is removed (D82),
+ * which may be all that is left of it.
+ */
+export type BackupKind = "scheduled" | "manual" | "release" | "rollback" | "remove";
+const KEPT: BackupKind[] = ["release", "rollback", "remove"];
 
 export interface BackupManifest {
   format: 1;
@@ -165,7 +170,7 @@ function sha256File(file: string): Promise<string> {
 export async function takeBackup(project: Project, config: HostConfig, kind: BackupKind): Promise<Backup> {
   const target = checkTarget(config.backupTarget);
   if (!target.ok) throw new Error(target.why);
-  const dir = kind === "release" || kind === "rollback" ? releaseBackupDir(config, project.name) : projectBackupDir(config, project.name);
+  const dir = KEPT.includes(kind) ? releaseBackupDir(config, project.name) : projectBackupDir(config, project.name);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const recipients = { host: readRecipient(NAMES.hostRecipient), recovery: readRecipient(NAMES.recoveryRecipient) };
@@ -257,7 +262,7 @@ export function listBackups(config: HostConfig, project: string): Backup[] {
 export function prune(config: HostConfig, project: string, now = new Date()): string[] {
   const removed: string[] = [];
   const cutoff = now.getTime() - config.backupRetentionDays * 86_400_000;
-  const scheduled = listBackups(config, project).filter((b) => b.manifest.kind !== "release" && b.manifest.kind !== "rollback");
+  const scheduled = listBackups(config, project).filter((b) => !KEPT.includes(b.manifest.kind));
   for (const backup of scheduled.slice(0, Math.max(0, scheduled.length - 3))) {
     if (new Date(backup.manifest.created).getTime() >= cutoff) continue;
     const pattern = new RegExp(`^${project}-prod-\\d{8}T\\d{6}Z\\.dump\\.age$`);
@@ -287,7 +292,10 @@ export interface RestoreCheckContext {
 }
 
 export function newRestoreContext(project: Project): RestoreCheckContext {
-  const work = path.join(NAMES.stateDir, "tmp", `restore-${project.name}-${stamp()}`);
+  // A folder of its own, even for two contexts made in the same second: going
+  // back with the data decrypts the backup it restores and then restore-checks
+  // a fresh one, and with one folder the second copy replaced the first (D82).
+  const work = path.join(NAMES.stateDir, "tmp", `restore-${project.name}-${stamp()}-${randomBytes(4).toString("hex")}`);
   return {
     backup: null,
     work,

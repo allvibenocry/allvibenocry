@@ -21,8 +21,24 @@ export class EngineError extends Error {
   }
 }
 
-export type LongKind = "putLive" | "goBack" | "startTestCopy" | "agentStart" | "agentStop" | "createApp";
+export type LongKind = "putLive" | "goBack" | "startTestCopy" | "agentStart" | "agentStop" | "createApp" | "keySet" | "keyRemove" | "goBackWithData" | "removeApp";
 export type SignIn = "key" | "account";
+export type KeyScope = "dev" | "prod" | "agent";
+
+/** What going back with the data would do (D82), as `allvibe rollback --restore-data` says it. */
+export type DataPlan =
+  | { possible: true; from: string; to: string; backup: { file: string; created: string }; entriesAtBackup: number | null; entriesNow: number | null; lost: string }
+  | { possible: false; why: string };
+
+/** The options a long operation's job carries to its thread. */
+export interface RunOptions {
+  signIn?: SignIn;
+  lock?: string;
+  outsidePlan?: string;
+  scope?: KeyScope;
+  name?: string;
+  value?: string;
+}
 
 /** What the operations need from the suite. */
 export interface Suite {
@@ -39,17 +55,31 @@ export interface Suite {
    * Runs the CLI's command for a long operation, feeding back what it prints;
    * its exit code. `lock`: the app's lock, which the engine already holds for it.
    */
-  run(kind: LongKind, app: string, options: { signIn?: SignIn; lock?: string }, feed: Feed): Promise<number>;
+  run(kind: LongKind, app: string, options: RunOptions, feed: Feed): Promise<number>;
   /** The app's lock for a long operation, shared with the CLI (D72), or why not, in plain words. */
   lock(app: string, kind: LongKind): { ok: true; release: () => void } | { ok: false; message: string };
   /** The agent of an app (D76): whether it runs, how it signs in, whether the vault has its key. */
   agentStatus(app: string): { running: boolean; signIn: SignIn | null; hasKey: boolean };
   /** Why a new app may not have this name, in the CLI's words, or null. */
   nameProblem(name: string): string | null;
+  /** The app's service keys (D82): where each is used, its name, and when it changed; never a value. */
+  keys(app: string): Array<{ scope: KeyScope; name: string; changed: string }>;
+  /** Why a key may not have this name, in the vault's words, or null. */
+  keyNameProblem(name: string): string | null;
+  /** What going back with the data would do, and lose (D82). */
+  dataPlan(app: string): Promise<DataPlan>;
 }
 
 /** The long operations the app's lock covers, as the lock names them (src/lib/lock.ts). */
-export const LOCK_OPERATION: Partial<Record<LongKind, string>> = { putLive: "release", goBack: "rollback", startTestCopy: "dev-deploy" };
+export const LOCK_OPERATION: Partial<Record<LongKind, string>> = {
+  putLive: "release",
+  goBack: "rollback",
+  startTestCopy: "dev-deploy",
+  keySet: "key-set",
+  keyRemove: "key-set",
+  goBackWithData: "rollback",
+  removeApp: "project-remove",
+};
 
 export interface Context {
   suite: Suite;
@@ -114,7 +144,15 @@ export interface Operation {
   run(args: Args, ctx: Context): unknown;
 }
 
-const KIND_OF: Record<string, LongKind> = { "app.putLive": "putLive", "app.goBack": "goBack", "app.startTestCopy": "startTestCopy" };
+const KIND_OF: Record<string, LongKind> = {
+  "app.putLive": "putLive",
+  "app.goBack": "goBack",
+  "app.startTestCopy": "startTestCopy",
+  "keys.set": "keySet",
+  "keys.remove": "keyRemove",
+  "app.goBackWithData": "goBackWithData",
+  "app.remove": "removeApp",
+};
 /** How the other long operations are said, when one of them is the job that runs. */
 const SAID: Record<string, (app: string) => string> = {
   "agent.start": (app) => `Starting the AI of ${app}`,
@@ -137,7 +175,7 @@ function busyError(busy: Job): EngineError {
  * that change an app, only with the app's lock, which the CLI takes too
  * (D72), held until the job ends.
  */
-function startJob(ctx: Context, kind: LongKind, operation: string, name: string, options: { signIn?: SignIn } = {}): { job: string } {
+function startJob(ctx: Context, kind: LongKind, operation: string, name: string, options: Omit<RunOptions, "lock"> = {}): { job: string } {
   if (ctx.jobs.busy) throw busyError(ctx.jobs.busy);
   const lock = LOCK_OPERATION[kind] ? ctx.suite.lock(name, kind) : { ok: true as const, release: () => {} };
   if (!lock.ok) throw new EngineError("busy", lock.message);
@@ -163,6 +201,52 @@ function confirmed(args: Args): void {
 function signIn(args: Args): SignIn {
   if (args.signIn !== "key" && args.signIn !== "account") throw new EngineError("bad_arguments", 'signIn: "key" (the key in the vault) or "account" (the person\'s own Claude account)');
   return args.signIn;
+}
+
+/** Where a service key is used (D82). */
+function scope(args: Args): KeyScope {
+  if (args.scope !== "dev" && args.scope !== "prod" && args.scope !== "agent") {
+    throw new EngineError("bad_arguments", 'scope: where the key is used: "dev" (the test copy), "prod" (the live app) or "agent" (the AI)');
+  }
+  return args.scope;
+}
+
+/** A service key's name, in the vault's own rule; a name it refuses is refused in its words. */
+function keyName(args: Args, ctx: Context): string {
+  if (typeof args.name !== "string" || args.name.length > 64) throw new EngineError("bad_arguments", "name: the key's name, like WEATHER_API_KEY");
+  const problem = ctx.suite.keyNameProblem(args.name);
+  if (problem) throw new EngineError("refused", problem);
+  return args.name;
+}
+
+/** The largest value the panel may send: well inside the engine's 16 kB line (D76). */
+export const KEY_VALUE_MAX = 8192;
+
+/**
+ * A service key's value (D82): text, never empty, at most 8,192 bytes. It goes
+ * in, and nowhere else: no answer, refusal or log line says it, or any part of it.
+ */
+function keyValue(args: Args): string {
+  const v = args.value;
+  if (typeof v !== "string" || v.length === 0 || Buffer.byteLength(v, "utf8") > KEY_VALUE_MAX || v.includes("\0")) {
+    throw new EngineError("bad_arguments", `value: the key itself, as text, from 1 to ${KEY_VALUE_MAX} bytes`);
+  }
+  return v;
+}
+
+/** The app's name, typed by the person to confirm what cannot be undone (D66, question 8). */
+function typedName(args: Args, name: string, what: string): void {
+  if (args.typedName !== name) throw new EngineError("refused", `To ${what}, type the app's name, ${name}, exactly as it is written.`);
+}
+
+/** Why a version goes live outside any plan, in the person's words, which the release keeps (D56, D82). */
+function reason(args: Args): string {
+  const r = args.outsidePlan;
+  // The CLI's own rule for a reason (releaseArgs): three characters or more, not an option; and one line here.
+  if (typeof r !== "string" || r.trim().length < 3 || r.length > 300 || r.trim().startsWith("--") || /[\u0000-\u001f\u007f]/.test(r)) {
+    throw new EngineError("bad_arguments", "outsidePlan: why this goes live outside any plan, in your own words: 3 to 300 characters on one line");
+  }
+  return r.trim();
 }
 
 export const OPERATIONS: Record<string, Operation> = {
@@ -193,8 +277,93 @@ export const OPERATIONS: Record<string, Operation> = {
     },
   },
   "app.startTestCopy": { kind: "long", args: ["app"], run: long("startTestCopy", "app.startTestCopy") },
-  "app.putLive": { kind: "long", args: ["app"], run: long("putLive", "app.putLive") },
+  // Putting a version live; outside any plan only with the person's reason,
+  // confirmed, which the release keeps (D56, D82). The CLI's own gate decides
+  // whether a plan was needed: with an untried plan, a reason is refused.
+  "app.putLive": {
+    kind: "long",
+    args: ["app", "outsidePlan", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "outsidePlan", "confirm"]);
+      const name = app(a, ctx);
+      if (a.outsidePlan === undefined) {
+        only(a, ["app"]);
+        return startJob(ctx, "putLive", "app.putLive", name);
+      }
+      const why = reason(a);
+      confirmed(a);
+      return startJob(ctx, "putLive", "app.putLive", name, { outsidePlan: why });
+    },
+  },
   "app.goBack": { kind: "long", args: ["app"], run: long("goBack", "app.goBack") },
+  // Going back with the data (D82): what it would do and lose, and doing it,
+  // confirmed by the app's name typed. Never part of the guided path (D68).
+  "app.goBackWithDataPlan": {
+    kind: "read",
+    args: ["app"],
+    run: (a, ctx) => (only(a, ["app"]), ctx.suite.dataPlan(app(a, ctx))),
+  },
+  "app.goBackWithData": {
+    kind: "long",
+    args: ["app", "typedName", "confirm"],
+    run: async (a, ctx) => {
+      only(a, ["app", "typedName", "confirm"]);
+      const name = app(a, ctx);
+      typedName(a, name, "go back with the data");
+      confirmed(a);
+      const plan = await ctx.suite.dataPlan(name);
+      if (!plan.possible) throw new EngineError("refused", plan.why);
+      return startJob(ctx, "goBackWithData", "app.goBackWithData", name);
+    },
+  },
+  // Removing an app (D82), confirmed by its name typed: a last backup of the
+  // live app first, restore-checked and kept, and where it is said.
+  "app.remove": {
+    kind: "long",
+    args: ["app", "typedName", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "typedName", "confirm"]);
+      const name = app(a, ctx);
+      typedName(a, name, `remove ${name}`);
+      confirmed(a);
+      return startJob(ctx, "removeApp", "app.remove", name);
+    },
+  },
+  // Service keys (D82): values go in and never come out. The list has names,
+  // where each is used and when it changed.
+  "keys.list": {
+    kind: "read",
+    args: ["app"],
+    run: (a, ctx) => (only(a, ["app"]), ctx.suite.keys(app(a, ctx))),
+  },
+  "keys.set": {
+    kind: "long",
+    args: ["app", "scope", "name", "value", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "scope", "name", "value", "confirm"]);
+      const name = app(a, ctx);
+      const where = scope(a);
+      const key = keyName(a, ctx);
+      const value = keyValue(a);
+      confirmed(a);
+      return startJob(ctx, "keySet", "keys.set", name, { scope: where, name: key, value });
+    },
+  },
+  "keys.remove": {
+    kind: "long",
+    args: ["app", "scope", "name", "confirm"],
+    run: (a, ctx) => {
+      only(a, ["app", "scope", "name", "confirm"]);
+      const name = app(a, ctx);
+      const where = scope(a);
+      const key = keyName(a, ctx);
+      if (!ctx.suite.keys(name).some((k) => k.scope === where && k.name === key)) {
+        throw new EngineError("refused", `${name} has no key called ${key} for ${where === "dev" ? "the test copy" : where === "prod" ? "the live app" : "the AI"}.`);
+      }
+      confirmed(a);
+      return startJob(ctx, "keyRemove", "keys.remove", name, { scope: where, name: key });
+    },
+  },
   // A new app, from the panel (D76): `allvibe project create`, confirmed.
   "app.create": {
     kind: "long",

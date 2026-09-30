@@ -39,11 +39,17 @@ function fakeSuite(calls = []) {
     report: (app, text) => (calls.push(`report ${app} ${text.length}`), { file: "reports/x.txt" }),
     machineStatus: () => (calls.push("status"), { summary: "All green.", checks: [] }),
     lastNight: () => (calls.push("last"), null),
-    run: async (kind, app, options = {}) => (calls.push(`run ${kind} ${app} ${options.signIn ?? "-"}`), 0),
+    run: async (kind, app, options = {}) => (
+      calls.push(`run ${kind} ${app} ${options.signIn ?? "-"}${options.outsidePlan ? ` outside:${options.outsidePlan}` : ""}${options.scope ? ` ${options.scope} ${options.name}` : ""}${options.value !== undefined ? ` value:${options.value.length}` : ""}`), 0
+    ),
     agentStatus: () => ({ running: true, signIn: "key", hasKey: true }),
     nameProblem: (name) => (name === "reserved" ? "that name is reserved" : null),
+    keys: (app) => (calls.push(`keys ${app}`), [{ scope: "prod", name: "WEATHER_API_KEY", changed: "2026-09-30T08:00:00Z" }]),
+    keyNameProblem: (name) => (/^[A-Z][A-Z0-9_]{1,63}$/.test(name) && !name.startsWith("DATABASE_") ? null : `not a key's name: ${name}`),
+    dataPlan: async (app) => (calls.push(`dataPlan ${app}`), dataPlanOf(app)),
   };
 }
+let dataPlanOf = () => ({ possible: true, from: "v2", to: "v1", backup: { file: "guestbook-prod-x.dump.age", created: "2026-09-30T07:00:00Z" }, entriesAtBackup: 3, entriesNow: 5, lost: "prod's data goes back ..." });
 
 function context(dir = tmp(), calls = [], now) {
   return { suite: fakeSuite(calls), jobs: new Jobs(), auth: new AuthStore(path.join(dir, "auth.json"), now) };
@@ -62,8 +68,8 @@ const waitFor = async (check, ms = 3000) => {
 test("the allow-list is exactly the operations the architecture names, and one stream (D76)", () => {
   assert.deepEqual(Object.keys(OPERATIONS).sort(), [
     "agent.start", "agent.status", "agent.stop",
-    "app.backups", "app.create", "app.get", "app.goBack", "app.markTried", "app.plan", "app.putLive", "app.report", "app.startTestCopy",
-    "apps.list", "auth.check", "auth.claim", "auth.status", "job.get", "machine.lastNight", "machine.status",
+    "app.backups", "app.create", "app.get", "app.goBack", "app.goBackWithData", "app.goBackWithDataPlan", "app.markTried", "app.plan", "app.putLive", "app.remove", "app.report", "app.startTestCopy",
+    "apps.list", "auth.check", "auth.claim", "auth.status", "job.get", "keys.list", "keys.remove", "keys.set", "machine.lastNight", "machine.status",
   ]);
   assert.deepEqual([...STREAMS], ["agent.terminal"]);
 });
@@ -436,6 +442,123 @@ test("the agent's operations and a new app: arguments checked, and each change c
   assert.deepEqual(ctx.suite.locks, [], "none of them takes an app's lock, and none is left");
   const status = await perform("agent.status", { app: "guestbook" }, ctx);
   assert.deepEqual(status.result, { running: true, signIn: "key", hasKey: true, terminal: { open: false, attached: false } });
+});
+
+/* ------------------------------------------------------------- D82 -- */
+
+const MARK = "sk-planted-value-7f3a9c";
+const noValue = (answer) => assert.ok(!JSON.stringify(answer).includes(MARK), `the value came back: ${JSON.stringify(answer)}`);
+
+test("service keys: the list has names, where and when, never a value; setting one goes in and never comes out", async () => {
+  const ctx = context();
+  assert.deepEqual((await perform("keys.list", { app: "guestbook" }, ctx)).result, [{ scope: "prod", name: "WEATHER_API_KEY", changed: "2026-09-30T08:00:00Z" }]);
+  const refused = [
+    [{ app: "guestbook", scope: "live", name: "WEATHER_API_KEY", value: MARK, confirm: true }, "bad_arguments"],
+    [{ app: "guestbook", scope: "prod", name: "weather", value: MARK, confirm: true }, "refused"],
+    [{ app: "guestbook", scope: "prod", name: "DATABASE_URL", value: MARK, confirm: true }, "refused"],
+    [{ app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", value: "", confirm: true }, "bad_arguments"],
+    [{ app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", value: MARK.repeat(400), confirm: true }, "bad_arguments"],
+    [{ app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", value: `${MARK}\0`, confirm: true }, "bad_arguments"],
+    [{ app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", value: MARK }, "bad_arguments"],
+    [{ app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", value: MARK, confirm: true, echo: 1 }, "bad_arguments"],
+    [{ app: "nosuchapp", scope: "prod", name: "WEATHER_API_KEY", value: MARK, confirm: true }, "not_found"],
+  ];
+  for (const [args, code] of refused) {
+    const answer = await perform("keys.set", args, ctx);
+    assert.equal(answer.error?.code, code, JSON.stringify({ ...args, value: "…" }));
+    noValue(answer);
+  }
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), [], "nothing ran");
+  const set = await perform("keys.set", { app: "guestbook", scope: "dev", name: "WEATHER_API_KEY", value: MARK, confirm: true }, ctx);
+  assert.equal(set.ok, true);
+  noValue(set);
+  await waitFor(() => !ctx.jobs.busy);
+  noValue(ctx.jobs.get(set.result.job));
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), [`run keySet guestbook - dev WEATHER_API_KEY value:${MARK.length}`]);
+});
+
+test("service keys: removing one that is there, confirmed; one that is not, refused in plain words", async () => {
+  const ctx = context();
+  const none = await perform("keys.remove", { app: "guestbook", scope: "dev", name: "WEATHER_API_KEY", confirm: true }, ctx);
+  assert.equal(none.error.code, "refused");
+  assert.equal(none.error.message, "guestbook has no key called WEATHER_API_KEY for the test copy.");
+  assert.equal((await perform("keys.remove", { app: "guestbook", scope: "prod", name: "WEATHER_API_KEY" }, ctx)).error.code, "bad_arguments", "no confirm");
+  const removed = await perform("keys.remove", { app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", confirm: true }, ctx);
+  assert.equal(removed.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), ["run keyRemove guestbook - prod WEATHER_API_KEY"]);
+});
+
+test("going back with the data: what it would lose, then only with the app's name typed and confirmed", async () => {
+  const ctx = context();
+  const plan = await perform("app.goBackWithDataPlan", { app: "guestbook" }, ctx);
+  assert.equal(plan.result.possible, true);
+  assert.equal(plan.result.entriesNow, 5);
+  for (const [args, code, words] of [
+    [{ app: "guestbook", confirm: true }, "refused", /type the app's name, guestbook, exactly/],
+    [{ app: "guestbook", typedName: "Guestbook", confirm: true }, "refused", /type the app's name/],
+    [{ app: "guestbook", typedName: "guestbook" }, "bad_arguments", /confirm/],
+  ]) {
+    const answer = await perform("app.goBackWithData", args, ctx);
+    assert.equal(answer.error?.code, code);
+    assert.match(answer.error.message, words);
+  }
+  dataPlanOf = () => ({ possible: false, why: "prod runs v1, the first version: there is nothing earlier to go back to." });
+  const first = await perform("app.goBackWithData", { app: "guestbook", typedName: "guestbook", confirm: true }, ctx);
+  assert.equal(first.error.code, "refused");
+  assert.match(first.error.message, /nothing earlier/);
+  dataPlanOf = () => ({ possible: true, from: "v2", to: "v1", backup: { file: "x", created: "y" }, entriesAtBackup: 3, entriesNow: 5, lost: "..." });
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), [], "nothing ran");
+  const went = await perform("app.goBackWithData", { app: "guestbook", typedName: "guestbook", confirm: true }, ctx);
+  assert.equal(went.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), ["run goBackWithData guestbook -"]);
+});
+
+test("removing an app: only with its name typed and confirmed", async () => {
+  const ctx = context();
+  assert.match((await perform("app.remove", { app: "guestbook", typedName: "hello", confirm: true }, ctx)).error.message, /To remove guestbook, type the app's name, guestbook, exactly/);
+  assert.equal((await perform("app.remove", { app: "guestbook", typedName: "guestbook" }, ctx)).error.code, "bad_arguments");
+  const removed = await perform("app.remove", { app: "guestbook", typedName: "guestbook", confirm: true }, ctx);
+  assert.equal(removed.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), ["run removeApp guestbook -"]);
+});
+
+test("work outside a plan: a reason in the person's words, on one line, confirmed; without one, putting live is as before", async () => {
+  const ctx = context();
+  for (const outsidePlan of ["", "ok", "--dry-run", "two\nlines", "x".repeat(301), 42]) {
+    assert.equal((await perform("app.putLive", { app: "guestbook", outsidePlan, confirm: true }, ctx)).error?.code, "bad_arguments", JSON.stringify(outsidePlan));
+  }
+  assert.equal((await perform("app.putLive", { app: "guestbook", outsidePlan: "a fix for the typo" }, ctx)).error.code, "bad_arguments", "no confirm");
+  assert.equal((await perform("app.putLive", { app: "guestbook", confirm: true }, ctx)).error.code, "bad_arguments", "a confirm alone is not an argument of it");
+  const outside = await perform("app.putLive", { app: "guestbook", outsidePlan: "  a fix for the typo  ", confirm: true }, ctx);
+  assert.equal(outside.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  const plain = await perform("app.putLive", { app: "guestbook" }, ctx);
+  assert.equal(plain.ok, true);
+  await waitFor(() => !ctx.jobs.busy);
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), ["run putLive guestbook - outside:a fix for the typo", "run putLive guestbook -"]);
+});
+
+test("each of them waits for no one: with the app's lock held, refused as busy, and nothing runs (D72)", async () => {
+  const ctx = context();
+  const held = ctx.suite.lock("guestbook");
+  assert.equal(held.ok, true);
+  for (const [op, args] of [
+    ["keys.set", { app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", value: MARK, confirm: true }],
+    ["keys.remove", { app: "guestbook", scope: "prod", name: "WEATHER_API_KEY", confirm: true }],
+    ["app.goBackWithData", { app: "guestbook", typedName: "guestbook", confirm: true }],
+    ["app.remove", { app: "guestbook", typedName: "guestbook", confirm: true }],
+    ["app.putLive", { app: "guestbook", outsidePlan: "a fix for the typo", confirm: true }],
+  ]) {
+    const answer = await perform(op, args, ctx);
+    assert.equal(answer.error?.code, "busy", op);
+    assert.equal(answer.error.message, "guestbook is locked", op);
+    noValue(answer);
+  }
+  assert.deepEqual(ctx.suite.calls.filter((c) => c.startsWith("run ")), []);
+  held.release();
 });
 
 /** A stand-in for Docker's exec API: each start is a pair of streams, one the test holds. */

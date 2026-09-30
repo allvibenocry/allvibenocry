@@ -87,6 +87,12 @@ export interface JobOrder {
   app: string;
   signIn?: SignIn;
   lock?: string;
+  /** Putting live outside any plan: the person's reason, which the release keeps (D82). */
+  outsidePlan?: string;
+  /** A service key (D82): where it is used, its name, and, to set it, its value, handed to the job's thread in memory and nowhere else. */
+  scope?: "dev" | "prod" | "agent";
+  name?: string;
+  value?: string;
 }
 
 /** What the worker sends, in the order it happens. */

@@ -10,6 +10,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { listBackups } from "../lib/backup.js";
+import { NAMES } from "../lib/brand.js";
 import { readConfig } from "../lib/config.js";
 import { containerState } from "../lib/docker.js";
 import { writeAtomic } from "../lib/files.js";
@@ -18,6 +19,8 @@ import { agentContainer, agentState, hasAgentKey, signInOf } from "../lib/agent.
 import { readNightly, summarise, type Check } from "../commands/doctor.js";
 import { markTried, planView, type PlanView } from "../commands/plan.js";
 import { takeLock } from "../lib/lock.js";
+import { keyNameProblem, listKeys } from "../lib/vault.js";
+import { restoreDataPlan } from "../commands/release.js";
 import { appsHost } from "../lib/panel.js";
 import { inWorker } from "./jobs.js";
 import { LOCK_OPERATION, type LongKind, type Suite } from "./operations.js";
@@ -45,12 +48,18 @@ function summary(project: Project) {
   const testCopy = state(containerName(project.name, "dev", "app"));
   const plan = planView(project);
   const tried = plan.steps.filter((s) => s.state === "tried").length;
+  // Whether the test copy runs a commit the live app does not (D82): with no
+  // plan, or one already put live, that is where a release would be refused
+  // and work outside a plan is offered.
+  const testCopyCommit = containerState(containerName(project.name, "dev", "app")).labels[`${NAMES.label}.commit`] ?? null;
+  const liveCommit = currentRelease(project)?.commit ?? null;
   return {
     name: project.name,
     live: currentRelease(project)?.version ?? null,
     prod,
     testCopy,
     plan: { state: plan.state, title: plan.title, tried, steps: plan.steps.length, releasedIn: plan.releasedIn },
+    unreleased: Boolean(testCopy.running && testCopyCommit && !(liveCommit ?? "").startsWith(testCopyCommit)),
     next: nextAction(testCopy.running, plan, nextVersion(project)),
     addresses: { live: urlFor(project, "prod"), testCopy: urlFor(project, "dev") },
     ports: { live: project.ports.prod, testCopy: project.ports.dev },
@@ -120,4 +129,21 @@ export const realSuite: Suite = {
     return { running, signIn: running ? signInOf(agentContainer(app)) : null, hasKey: hasAgentKey(app) };
   },
   nameProblem: (name) => nameProblem(name),
+  // Service keys (D82): the vault's own list, names only, and its rule for names.
+  keys: (app) => listKeys(app).map((k) => ({ scope: k.scope, name: k.name, changed: k.changed })),
+  keyNameProblem: (name) => keyNameProblem(name),
+  // Going back with the data (D82): what `allvibe rollback --restore-data` says it would do, field by field.
+  dataPlan: async (app) => {
+    const plan = await restoreDataPlan(readProject(app));
+    if ("error" in plan) return { possible: false, why: plan.error };
+    return {
+      possible: true,
+      from: plan.from,
+      to: plan.to,
+      backup: { file: plan.backup.manifest.file, created: plan.created },
+      entriesAtBackup: plan.entriesAtBackup,
+      entriesNow: plan.entriesNow,
+      lost: plan.lost,
+    };
+  },
 };

@@ -462,3 +462,10 @@ From the eighth brief, here:
     refused, not one commit was read, and the check found nothing, green.
     Mistake 38 again. *Here:* a check counts what it looked at, and the count
     is a verdict of its own (D81).
+63. **A name made of the time to the second is not a unique name.** Two
+    restore contexts made in one second shared a scratch folder, so going back
+    with the data decrypted the backup it meant to restore, then the fresh
+    backup it checks, over it, and put the current data back; the job said
+    done. The probe counted the entries. *Here:* a scratch name has a random
+    part, and a probe of anything that restores data checks the data, never
+    only the job's word (D82).

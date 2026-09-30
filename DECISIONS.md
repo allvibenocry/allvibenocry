@@ -3384,3 +3384,76 @@ where it goes: "as in step 16" (every step carries its own commands, item 8);
 the panel after a restart (items 1 and 2, D80); a workstation command run in
 the test host's shell (every block says where it runs, and the test host's
 shell looks different, item 8).
+
+## D82. The engine's next operations: service keys, going back with the data, work outside a plan, removing an app
+
+*2026-09-30. The eighth brief, item 4: the last four of D66's next operations
+(question 8), in its order, after the agent and a new app (D76).*
+
+Each operation is on the engine's allow-list with its arguments checked before
+anything runs; each change needs `confirm: true`, which the panel sends only
+after the person confirmed it; each long one is a job that takes the app's
+lock (D72) and is refused as busy, in the lock's words, while anything else
+holds it; each runs the CLI's own code (rule 5).
+
+- **Service keys**: `keys.list` (where each key is used, its name, and when it
+  changed; never a value); `keys.set` (`scope`, `name`, `value`): the vault's
+  own rule for names, the suite's own names (`DATABASE_`, `ALLVIBE_`) refused
+  in its words, a value of text from 1 to 8,192 bytes; `keys.remove`, and a
+  key that is not there refused in plain words ("hello has no key called
+  WEATHER_API_KEY for the test copy."). **A value only ever goes in**: it
+  travels from the panel to the engine on the socket and to the job's thread
+  in memory, where `allvibe key set`'s own steps (now `setKey`, which the CLI
+  calls with standard input) encrypt it into the vault and start the app that
+  uses it again with it; no answer, refusal, job, log line or file of the
+  suite's holds it, and the input's buffer is zeroed once it is encrypted.
+  The key lock is the CLI's `key-set`.
+- **Going back with the data**: `app.goBackWithDataPlan` answers what it would
+  do and lose, in the CLI's own words, since the CLI's `rollback
+  --restore-data` and the engine now work it out in one function
+  (`restoreDataPlan`): from which version to which, the backup it restores (the
+  one taken just before the version it leaves went live), the entries now and
+  in the backup, and "everything written to prod since then is lost from
+  prod". `app.goBackWithData` needs the app's name typed exactly
+  (`typedName`), and refuses where the plan says it cannot (the first
+  version, no backup from before). The CLI's `rollback --restore-data` now
+  **restore-checks the fresh backup it takes of prod as it is**, before prod's
+  data is replaced (it took one, without the check): the one way to undo it
+  must be known to restore (rule 2, D57).
+- **Work outside a plan**: `app.putLive` with `outsidePlan`, the person's
+  reason in the CLI's own rule (three characters or more, not an option) and
+  on one line, and `confirm`; the release's own gate decides, so a reason is
+  refused while the commit has a plan with an untried step. The release keeps
+  the reason (D56). `app.get` says whether the test copy runs a commit the
+  live app does not (`unreleased`), so that the panel can offer this only
+  where a release would otherwise be refused.
+- **Removing an app**: `app.remove`, the name typed and confirmed. The CLI's
+  `project remove --delete-everything` now **takes a last backup of prod,
+  restore-checks it, and keeps it**, before anything goes, and says where it
+  is ("Its last backup is kept on the backup target: <file>"). Without a
+  backup target, or with prod's database down, nothing is removed (rule 7); a
+  project whose prod never got as far as its data (a creation that failed
+  half-way, mistake 20) has nothing to back up. The last backup is a kind of
+  its own, `remove`, kept with the releases' backups and never pruned (D57's
+  rule for what a rollback needs, now for what may be all that is left).
+
+**Found by the probe, fixed:** a restore context's scratch folder was named by
+the project and the time to the second. Going back with the data now decrypts
+the backup it restores and then restore-checks a fresh one, within one second:
+the fresh copy replaced the one to be restored, and prod got its own data back.
+The job said done; the probe counted the entries. Every context now has a
+folder of its own (`test/unit/restore-context.test.mjs`, seen failing on the
+code before).
+
+**Probed** (`test/host/ops-probe.mjs`, on the test host, with a project of
+its own): 61 of 61 on a fresh test host; on the previous commit's bundle 46 of
+61 WRONG (the operations unknown; what must not change unchanged). Unit tests:
+the engine's, six new (every argument and refusal of each operation, the
+value never in any answer, a job, or the stand-in's record; each refused as
+busy while the lock is held).
+
+**Limits.** A value typed in the panel crosses the home network in plain
+HTTP (D64's known limit; TLS at home is the next security milestone, D66). A
+key for both the test copy and the live app is two jobs, each restarting its
+app. A new app later made with a removed app's name finds the removed app's
+backups in its folder on the backup target, listed as its own.
