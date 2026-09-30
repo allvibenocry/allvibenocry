@@ -77,3 +77,34 @@ One entry per snag, numbered in the order they came:
 - **How much it hurt:** a little; it is how it should feel.
 - **Where it goes:** the guided path, decided in D68 and built in the seventh
   brief, item 5 (`3360ece`, D75); to try in steps 30 and 31.
+
+### 7. "As in step 16" sends me back several steps for one command
+
+- **2026-09-30, walkthrough step 30**, "Bring the disk back as in step 16":
+  to know what to type, I had to scroll back fourteen steps.
+- **How much it hurt:** a little.
+- **Where it goes:** fixed in the eighth brief, item 8: every step carries its
+  own commands, in blocks of its own, and `walkthrough-blocks.mjs` refuses a
+  step that sends the reader to another step for a command.
+
+### 8. The panel did not come back after a restart
+
+- **2026-09-30, walkthrough step 30**, "Bring the disk back": after `node
+  test/host/host.mjs restart` the panel never came back
+  (`ERR_EMPTY_RESPONSE`; its container exited).
+- **How much it hurt:** it stopped me.
+- **Where it goes:** the eighth brief, items 1 and 2: the evidence and the root
+  cause in its report; fixed in D80 (the engine keeps the panel, its door and
+  whatever Docker could not start running, the panel and its door at fixed
+  addresses, the engine coming back in any order), with a probe of every way
+  the machine stops and starts, which step 16's restart now runs.
+
+### 9. I ran a workstation command in the host's shell
+
+- **2026-09-30, the walkthrough**: a command meant for the workstation went
+  into the test host's shell, because the two look alike in the walkthrough
+  and on the screen.
+- **How much it hurt:** a little; it cost a few minutes to see why.
+- **Where it goes:** fixed in the eighth brief, item 8: every command block
+  says where it runs in a way that cannot be missed, and the test host's shell
+  looks different from the workstation's.

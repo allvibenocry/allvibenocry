@@ -457,3 +457,8 @@ From the eighth brief, here:
     in a minute. *Here:* a service the suite keeps running wants what it
     needs, starts with it, and is started again whatever ends it, without
     giving up; so is Docker, by a drop-in of the suite's (D80).
+62. **A check that cannot read what it checks passes.** The template check on
+    the test host ran git as root in a repository the service user owns; git
+    refused, not one commit was read, and the check found nothing, green.
+    Mistake 38 again. *Here:* a check counts what it looked at, and the count
+    is a verdict of its own (D81).

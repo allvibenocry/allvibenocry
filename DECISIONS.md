@@ -3335,3 +3335,52 @@ the disk had not written yet. The keeper starts what Docker could not; it does
 not repair what is wrong with it (a damaged image, a full disk): doctor names
 the reason, and the keeper keeps trying. After the first three minutes, a
 container can be down for up to 30 seconds before the next round.
+
+## D81. The architect's review of the seventh brief: three points carried forward
+
+*2026-09-30. The architect's review, relayed by the owner in the eighth brief,
+with the owner's try of walkthrough steps 29 and 30 (STATE.md).*
+
+The seventh brief is accepted: the two layers that keep the panel's cookie
+from code the agent writes, the engine no longer frozen by a long job, and
+protections the tools enforce rather than instructions. Three points are
+carried forward:
+
+1. **Every report lists each push with its CI run and its result.** CI was
+   red on three pushes of the seventh brief and nobody looked (mistake 57).
+   After every push its run is read to the end, a red one is the next thing
+   fixed, and the report has a table: the commit, what it was, the run and
+   how it ended.
+2. **The working copy's local allow for the stand-in model is a test fixture
+   and never reaches a real project.** `panel-fixture.mjs stub` writes it into
+   a test project's `.claude/settings.local.json` (D77). Proved two ways,
+   each seen passing and, with an allow planted, failing:
+   - `test/unit/no-allow.test.mjs`: the project template has no Claude Code
+     settings file and nothing in any file that allows a tool, widens what
+     Claude Code may do or skips its questions (`"allow":`, allowed tools in
+     any spelling, `dangerously-skip-permissions`, `bypassPermissions`,
+     `"additionalDirectories"`); the agent's image allows nothing, and its
+     mode is `auto`; the patterns themselves find what they look for (the
+     control). With `.claude/settings.local.json` planted in the template it
+     failed naming the file; with an allow planted in the text of the
+     template's README it failed naming that file.
+   - `test/host/no-allow.sh`, on the test host, on a project made by
+     `allvibe project create`: every file of the working copy and of every
+     commit in its history, no local settings file, no settings of any kind,
+     and no file that allows, widens or skips anything: 6 of 6 on a project
+     made on a fresh test host (every file of its working copy and of its
+     commits read); with `.claude/settings.local.json` planted in the installed
+     template and a project made from it, 3 WRONG, naming the file in the
+     working copy and in the commit. Its first run passed without reading a
+     single commit: git refused, as root, a repository the service user owns
+     (mistake 62). It now names the folder safe for its own commands only,
+     and counts the commits it read as a verdict of its own.
+3. **Whether the terminal works on a phone is for the architect's own test to
+   decide.** STATE.md says what was seen (about 40 columns, Claude Code
+   wrapping its lines); the verdict is not the implementer's.
+
+**The friction log** (D70): entries 7 to 9, from the owner's try, each with
+where it goes: "as in step 16" (every step carries its own commands, item 8);
+the panel after a restart (items 1 and 2, D80); a workstation command run in
+the test host's shell (every block says where it runs, and the test host's
+shell looks different, item 8).
